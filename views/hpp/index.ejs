@@ -1,0 +1,50 @@
+<h1 class="text-2xl font-bold mb-4">💰 Detail HPP per Varian</h1>
+<form method="GET" class="mb-4 bg-white shadow rounded p-4 flex gap-2">
+  <select name="variant_id" class="border rounded p-2 flex-1">
+    <option value="">-- Pilih Varian --</option>
+    <%
+    let lastProduct = '';
+    products.forEach(p => {
+      if (p.nama_produk !== lastProduct) {
+        lastProduct = p.nama_produk;
+    %>
+      <optgroup label="<%= p.nama_produk %>">
+    <% } %>
+        <option value="<%= p.varian_id %>" <%= String(p.varian_id) === String(selectedVariantId) ? 'selected' : '' %>>
+          <%= p.warna %> - <%= p.size %> (HPP: Rp <%= Number(p.hpp_saat_ini).toLocaleString('id-ID') %>)
+        </option>
+    <% }) %>
+  </select>
+  <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">Lihat</button>
+</form>
+
+<% if (histories.length > 0) { %>
+<div class="bg-white shadow rounded overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead><tr class="bg-gray-100">
+      <th class="p-3 text-left">Tanggal</th>
+      <th class="p-3 text-left">Sumber</th>
+      <th class="p-3 text-right">Kain</th>
+      <th class="p-3 text-right">Aksesoris</th>
+      <th class="p-3 text-right">Jahit</th>
+      <th class="p-3 text-right">Lainnya</th>
+      <th class="p-3 text-right">Total</th>
+    </tr></thead>
+    <tbody>
+      <% histories.forEach(h => { %>
+      <tr class="border-t">
+        <td class="p-3"><%= new Date(h.created_at).toLocaleDateString('id-ID') %></td>
+        <td class="p-3"><span class="px-2 py-0.5 text-xs rounded-full <%= h.sumber === 'produksi' ? 'bg-orange-100 text-orange-700' : 'bg-teal-100 text-teal-700' %>"><%= h.sumber === 'produksi' ? 'Produksi' : 'Beli Jadi' %></span></td>
+        <td class="p-3 text-right"><%= h.komponen_kain > 0 ? 'Rp ' + Number(h.komponen_kain).toLocaleString('id-ID') : '-' %></td>
+        <td class="p-3 text-right"><%= h.komponen_aksesoris > 0 ? 'Rp ' + Number(h.komponen_aksesoris).toLocaleString('id-ID') : '-' %></td>
+        <td class="p-3 text-right"><%= h.komponen_jahit > 0 ? 'Rp ' + Number(h.komponen_jahit).toLocaleString('id-ID') : '-' %></td>
+        <td class="p-3 text-right"><%= h.komponen_lain > 0 ? 'Rp ' + Number(h.komponen_lain).toLocaleString('id-ID') : '-' %></td>
+        <td class="p-3 text-right font-bold">Rp <%= Number(h.hpp_total).toLocaleString('id-ID') %></td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+<% } else if (req.query.variant_id) { %>
+  <div class="bg-gray-50 border p-6 rounded text-center text-gray-500">Belum ada riwayat HPP untuk varian ini</div>
+<% } %>

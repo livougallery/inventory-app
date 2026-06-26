@@ -1,0 +1,51 @@
+<div class="mb-4">
+  <a href="/purchase-orders" class="text-blue-600 hover:underline text-sm">← Kembali</a>
+</div>
+<h1 class="text-2xl font-bold mb-4">Detail PO: <%= po.no_po %></h1>
+<div class="bg-white shadow rounded p-4 mb-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+  <div><span class="text-gray-500">Vendor:</span> <strong><%= po.vendor_nama %></strong></div>
+  <div><span class="text-gray-500">Tanggal:</span> <strong><%= po.tgl_beli %></strong></div>
+  <div>
+    <span class="text-gray-500">Status:</span>
+    <span class="px-2 py-0.5 text-xs rounded-full
+      <%= po.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : '' %>
+      <%= po.status === 'validated' ? 'bg-green-100 text-green-700' : '' %>
+      <%= po.status === 'rejected' ? 'bg-red-100 text-red-700' : '' %>">
+      <%= po.status %>
+    </span>
+  </div>
+  <div><span class="text-gray-500">Dibuat:</span> <strong><%= po.creator_name %></strong></div>
+</div>
+
+<div class="bg-white shadow rounded overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead><tr class="bg-gray-100">
+      <th class="p-3 text-left">Item</th>
+      <th class="p-3 text-right">Qty</th>
+      <th class="p-3 text-right">Harga Satuan</th>
+      <th class="p-3 text-right">Subtotal</th>
+    </tr></thead>
+    <tbody>
+      <% var grandTotal = 0; %>
+      <% po.items.forEach(i => { %>
+      <tr class="border-t">
+        <td class="p-3"><%= i.material_nama %></td>
+        <td class="p-3 text-right"><%= Number(i.qty).toLocaleString('id-ID') %> <%= i.satuan %></td>
+        <td class="p-3 text-right">Rp <%= Number(i.harga_satuan).toLocaleString('id-ID') %></td>
+        <td class="p-3 text-right">Rp <%= Number(i.subtotal).toLocaleString('id-ID') %></td>
+      </tr>
+      <% grandTotal += i.subtotal; %>
+      <% }) %>
+      <tr class="border-t font-bold">
+        <td colspan="3" class="p-3 text-right">Total</td>
+        <td class="p-3 text-right">Rp <%= Number(grandTotal).toLocaleString('id-ID') %></td>
+      </tr>
+    </tbody>
+  </table>
+</div>
+
+<% if (po.status === 'rejected' && po.catatan_reject) { %>
+<div class="bg-red-50 border border-red-200 p-4 mt-4 rounded">
+  <strong>Alasan ditolak:</strong> <%= po.catatan_reject %>
+</div>
+<% } %>

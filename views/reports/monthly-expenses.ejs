@@ -1,0 +1,54 @@
+<h1 class="text-2xl font-bold mb-4">📉 Pengeluaran Bulanan</h1>
+
+<form method="GET" class="mb-4 bg-white shadow rounded p-4 flex gap-2">
+  <select name="bulan" class="border rounded p-2">
+    <% ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'].forEach((n, i) => { %>
+    <option value="<%= i+1 %>" <%= (bulan || '') == i+1 ? 'selected' : '' %>><%= n %></option>
+    <% }) %>
+  </select>
+  <select name="tahun" class="border rounded p-2">
+    <% for (let t = 2024; t <= new Date().getFullYear(); t++) { %>
+    <option value="<%= t %>" <%= (tahun || '') == t ? 'selected' : '' %>><%= t %></option>
+    <% } %>
+  </select>
+  <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">Tampilkan</button>
+</form>
+
+<div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+  <div class="bg-white shadow rounded p-4">
+    <p class="text-sm text-gray-500">PO Bahan Baku</p>
+    <p class="text-xl font-bold">Rp <%= Number(poExpense).toLocaleString('id-ID') %></p>
+  </div>
+  <div class="bg-white shadow rounded p-4">
+    <p class="text-sm text-gray-500">Biaya Produksi</p>
+    <p class="text-xl font-bold">Rp <%= Number(prodExpense).toLocaleString('id-ID') %></p>
+  </div>
+  <div class="bg-white shadow rounded p-4">
+    <p class="text-sm text-gray-500">Pembelian Import</p>
+    <p class="text-xl font-bold">Rp <%= Number(importExpense).toLocaleString('id-ID') %></p>
+  </div>
+</div>
+
+<% if (komponen.length > 0) { %>
+<div class="bg-white shadow rounded p-4 mb-6">
+  <h3 class="font-bold mb-3">Breakdown Biaya Produksi</h3>
+  <div class="space-y-3">
+    <% var maxKomponen = Math.max(...komponen.map(k => k.total), 1); %>
+    <% komponen.forEach(k => { %>
+    <div>
+      <div class="flex justify-between text-sm mb-1">
+        <span><%= k.tipe_biaya === 'kirim_aksesoris' ? 'Kirim Aksesoris' : k.tipe_biaya.charAt(0).toUpperCase() + k.tipe_biaya.slice(1) %></span>
+        <span class="font-semibold">Rp <%= Number(k.total).toLocaleString('id-ID') %></span>
+      </div>
+      <div class="bg-gray-200 rounded h-4 w-full">
+        <div class="bg-green-500 h-4 rounded" style="width: <%= (k.total / maxKomponen * 100) %>%"></div>
+      </div>
+    </div>
+    <% }) %>
+  </div>
+</div>
+<% } %>
+
+<div class="bg-white shadow rounded p-4">
+  <p class="text-lg font-bold">Total: Rp <%= Number(poExpense + prodExpense + importExpense).toLocaleString('id-ID') %></p>
+</div>

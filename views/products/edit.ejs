@@ -1,0 +1,60 @@
+<h1 class="text-2xl font-bold mb-4">Edit Produk</h1>
+<form method="POST" action="/products/<%= product.id %>?_method=PUT" class="bg-white shadow rounded p-6 max-w-2xl">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Nama Produk</label>
+    <input type="text" name="nama_produk" value="<%= product.nama_produk %>" class="w-full border rounded p-2" required>
+  </div>
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Kategori</label>
+    <input type="text" name="kategori" value="<%= product.kategori %>" class="w-full border rounded p-2">
+  </div>
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Tipe Produksi</label>
+    <select name="tipe_produksi" class="w-full border rounded p-2">
+      <option value="sendiri" <%= product.tipe_produksi === 'sendiri' ? 'selected' : '' %>>Produksi Sendiri</option>
+      <option value="beli_jadi" <%= product.tipe_produksi === 'beli_jadi' ? 'selected' : '' %>>Beli Jadi</option>
+    </select>
+  </div>
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Varian</label>
+    <div id="variants-container">
+      <% var vi = 0; %>
+      <% (product.variants || []).forEach(v => { %>
+      <div class="variant-row flex gap-2 mb-2">
+        <input name="variants[<%= vi %>][warna]" value="<%= v.warna %>" placeholder="Warna" class="border p-2 rounded flex-1">
+        <input name="variants[<%= vi %>][size]" value="<%= v.size %>" placeholder="Size" class="border p-2 rounded w-20">
+        <input name="variants[<%= vi %>][sku]" value="<%= v.sku %>" placeholder="SKU" class="border p-2 rounded flex-1">
+        <button type="button" class="remove-variant text-red-500 px-2 font-bold">✕</button>
+      </div>
+      <% vi++; }) %>
+      <% if (!product.variants || product.variants.length === 0) { %>
+      <div class="variant-row flex gap-2 mb-2">
+        <input name="variants[0][warna]" placeholder="Warna" class="border p-2 rounded flex-1">
+        <input name="variants[0][size]" placeholder="Size" class="border p-2 rounded w-20">
+        <input name="variants[0][sku]" placeholder="SKU" class="border p-2 rounded flex-1">
+        <button type="button" class="remove-variant text-red-500 px-2 font-bold">✕</button>
+      </div>
+      <% vi = 1; } %>
+    </div>
+    <button type="button" id="add-variant" class="text-blue-600 text-sm hover:underline mt-1">+ Tambah Varian</button>
+  </div>
+  <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Simpan Perubahan</button>
+  <a href="/products" class="ml-2 text-gray-500 hover:underline">Batal</a>
+</form>
+<script>
+let vi = <%= vi %>;
+document.getElementById('add-variant')?.addEventListener('click', () => {
+  const html = `<div class="variant-row flex gap-2 mb-2">
+    <input name="variants[\${vi}][warna]" placeholder="Warna" class="border p-2 rounded flex-1">
+    <input name="variants[\${vi}][size]" placeholder="Size" class="border p-2 rounded w-20">
+    <input name="variants[\${vi}][sku]" placeholder="SKU" class="border p-2 rounded flex-1">
+    <button type="button" class="remove-variant text-red-500 px-2 font-bold">✕</button>
+  </div>`;
+  document.getElementById('variants-container').insertAdjacentHTML('beforeend', html);
+  vi++;
+});
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('remove-variant')) e.target.closest('.variant-row').remove();
+});
+</script>

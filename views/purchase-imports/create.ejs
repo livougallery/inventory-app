@@ -1,0 +1,49 @@
+<h1 class="text-2xl font-bold mb-4">Input Pembelian Barang Jadi</h1>
+<form method="POST" class="bg-white shadow rounded p-6 max-w-xl">
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Produk & Varian</label>
+    <select name="variant_id" class="w-full border rounded p-2" required>
+      <option value="">Pilih Produk & Varian</option>
+      <% products.forEach(p => { %>
+        <optgroup label="<%= p.nama_produk %>">
+          <% p.variants.forEach(v => { %>
+          <option value="<%= v.id %>"><%= v.warna %> - <%= v.size %> (SKU: <%= v.sku %>)</option>
+          <% }) %>
+        </optgroup>
+      <% }) %>
+    </select>
+  </div>
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Vendor (Importir)</label>
+    <select name="vendor_id" class="w-full border rounded p-2" required>
+      <option value="">Pilih Vendor</option>
+      <% vendors.forEach(v => { %>
+      <option value="<%= v.id %>"><%= v.nama %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Tanggal Beli</label>
+    <input type="date" name="tgl_beli" value="<%= new Date().toISOString().split('T')[0] %>" class="w-full border rounded p-2" required>
+  </div>
+  <div class="grid grid-cols-2 gap-4 mb-4">
+    <div>
+      <label class="block mb-1 text-sm font-medium">Qty</label>
+      <input type="number" name="qty" class="w-full border rounded p-2" required min="1">
+    </div>
+    <div>
+      <label class="block mb-1 text-sm font-medium">Harga Produk (USD)</label>
+      <input type="number" name="harga_produk" step="0.01" class="w-full border rounded p-2" required>
+    </div>
+    <div>
+      <label class="block mb-1 text-sm font-medium">Kurs (1 USD = ... IDR)</label>
+      <input type="number" name="kurs" step="0.0001" value="1" class="w-full border rounded p-2">
+    </div>
+    <div>
+      <label class="block mb-1 text-sm font-medium">Logistik (IDR)</label>
+      <input type="number" name="logistik" step="any" value="0" class="w-full border rounded p-2">
+    </div>
+  </div>
+  <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Simpan</button>
+  <a href="/purchase-imports" class="ml-2 text-gray-500 hover:underline">Batal</a>
+</form>

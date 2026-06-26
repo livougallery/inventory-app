@@ -1,0 +1,40 @@
+<div class="flex justify-between items-center mb-4">
+  <h1 class="text-2xl font-bold">Pembelian Barang Jadi (Import)</h1>
+  <% if (user.role === 'admin') { %>
+    <a href="/purchase-imports/create" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">+ Input Pembelian</a>
+  <% } %>
+</div>
+<div class="bg-white shadow rounded overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead><tr class="bg-gray-100">
+      <th class="p-3 text-left">Produk</th>
+      <th class="p-3 text-left">Vendor</th>
+      <th class="p-3 text-left">Tanggal</th>
+      <th class="p-3 text-right">Qty</th>
+      <th class="p-3 text-right">HPP/Item</th>
+      <th class="p-3 text-left">Status</th>
+      <th class="p-3 text-left">Aksi</th>
+    </tr></thead>
+    <tbody>
+      <% imports.forEach(i => { %>
+      <tr class="border-t hover:bg-gray-50">
+        <td class="p-3"><%= i.nama_produk %> (<%= i.warna %> - <%= i.size %>)</td>
+        <td class="p-3"><%= i.vendor_nama %></td>
+        <td class="p-3"><%= i.tgl_beli %></td>
+        <td class="p-3 text-right"><%= i.qty %></td>
+        <td class="p-3 text-right">Rp <%= Number(i.hpp_per_item).toLocaleString('id-ID') %></td>
+        <td class="p-3">
+          <span class="px-2 py-0.5 text-xs rounded-full
+            <%= i.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : '' %>
+            <%= i.status === 'validated' ? 'bg-green-100 text-green-700' : '' %>
+            <%= i.status === 'rejected' ? 'bg-red-100 text-red-700' : '' %>">
+            <%= i.status === 'pending' ? 'Pending' : i.status === 'validated' ? 'Valid' : 'Ditolak' %>
+          </span>
+        </td>
+        <td class="p-3"><a href="/purchase-imports/<%= i.id %>" class="text-blue-600 hover:underline">Detail</a></td>
+      </tr>
+      <% }) %>
+      <% if (imports.length === 0) { %><tr><td colspan="7" class="p-3 text-center text-gray-400">Belum ada pembelian</td></tr><% } %>
+    </tbody>
+  </table>
+</div>

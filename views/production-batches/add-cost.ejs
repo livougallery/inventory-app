@@ -1,0 +1,49 @@
+<h1 class="text-2xl font-bold mb-4">Tambah Biaya Produksi</h1>
+<p class="text-gray-500 mb-4">Batch: <strong><%= batch.nama_batch %></strong></p>
+<form method="POST" action="/production-batches/<%= batch.id %>/costs" class="bg-white shadow rounded p-6 max-w-xl">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Varian (kosongkan jika untuk semua varian)</label>
+    <select name="variant_id" class="w-full border rounded p-2">
+      <option value="">Semua Varian</option>
+      <% variants.forEach(v => { %>
+      <option value="<%= v.id %>"><%= v.warna %> - <%= v.size %></option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Tipe Biaya</label>
+    <select name="tipe_biaya" class="w-full border rounded p-2" required>
+      <option value="kain">Kain</option>
+      <option value="aksesoris">Aksesoris</option>
+      <option value="jahit">Ongkos Jahit</option>
+      <option value="kirim_aksesoris">Kirim Aksesoris</option>
+      <option value="others">Lainnya</option>
+    </select>
+  </div>
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Material (jika dari stok gudang)</label>
+    <select name="raw_material_id" class="w-full border rounded p-2">
+      <option value="">- Tidak Ambil Stok -</option>
+      <% materials.forEach(m => { %>
+      <option value="<%= m.id %>"><%= m.nama %> (Stok: <%= m.stok %> <%= m.satuan %>)</option>
+      <% }) %>
+    </select>
+  </div>
+  <div class="grid grid-cols-2 gap-4 mb-4">
+    <div>
+      <label class="block mb-1 text-sm font-medium">Qty Terpakai</label>
+      <input type="number" name="qty_terpakai" step="any" class="w-full border rounded p-2">
+    </div>
+    <div>
+      <label class="block mb-1 text-sm font-medium">Biaya (Rp)</label>
+      <input type="number" name="biaya" step="any" class="w-full border rounded p-2" required>
+    </div>
+  </div>
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Keterangan</label>
+    <input type="text" name="keterangan" class="w-full border rounded p-2">
+  </div>
+  <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Simpan</button>
+  <a href="/production-batches/<%= batch.id %>" class="ml-2 text-gray-500 hover:underline">Batal</a>
+</form>

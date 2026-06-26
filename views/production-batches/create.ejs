@@ -1,0 +1,49 @@
+<h1 class="text-2xl font-bold mb-4">Buat Batch Produksi</h1>
+<form method="POST" class="bg-white shadow rounded p-6 max-w-2xl">
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+    <div>
+      <label class="block mb-1 text-sm font-medium">Produk</label>
+      <select name="product_id" class="w-full border rounded p-2" required>
+        <option value="">Pilih Produk</option>
+        <% products.forEach(p => { %>
+        <option value="<%= p.id %>"><%= p.nama_produk %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div>
+      <label class="block mb-1 text-sm font-medium">Nama Batch</label>
+      <input type="text" name="nama_batch" placeholder="Contoh: Batch #1 Kemeja Merah" class="w-full border rounded p-2" required>
+    </div>
+    <div>
+      <label class="block mb-1 text-sm font-medium">Tanggal Mulai</label>
+      <input type="date" name="tgl_mulai" value="<%= new Date().toISOString().split('T')[0] %>" class="w-full border rounded p-2" required>
+    </div>
+    <div>
+      <label class="block mb-1 text-sm font-medium">Estimasi Selesai</label>
+      <input type="date" name="tgl_selesai_est" class="w-full border rounded p-2">
+    </div>
+    <div>
+      <label class="block mb-1 text-sm font-medium">Jenis Produksi</label>
+      <select name="jenis_produksi" class="w-full border rounded p-2" required>
+        <option value="in_house">In House (Jahit Sendiri)</option>
+        <option value="konveksi">Konveksi</option>
+        <option value="garment">Garment</option>
+      </select>
+    </div>
+    <div>
+      <label class="block mb-1 text-sm font-medium">Vendor (jika luar)</label>
+      <select name="vendor_id" class="w-full border rounded p-2">
+        <option value="">- Tidak Ada -</option>
+        <% vendors.forEach(v => { %>
+        <option value="<%= v.id %>"><%= v.nama %></option>
+        <% }) %>
+      </select>
+    </div>
+  </div>
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Jumlah Dipesan (pcs)</label>
+    <input type="number" name="jumlah_dipesan" class="w-full border rounded p-2" required min="1">
+  </div>
+  <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Buat Batch</button>
+  <a href="/production-batches" class="ml-2 text-gray-500 hover:underline">Batal</a>
+</form>

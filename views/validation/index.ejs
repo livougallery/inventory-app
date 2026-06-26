@@ -1,0 +1,114 @@
+<h1 class="text-2xl font-bold mb-4">✅ Validasi Finance</h1>
+
+<% if (pendingPOs.length > 0) { %>
+<h2 class="font-bold text-lg mb-2">🛒 PO Bahan Baku</h2>
+<div class="bg-white shadow rounded overflow-x-auto mb-6">
+  <table class="w-full text-sm">
+    <thead><tr class="bg-gray-100">
+      <th class="p-3 text-left">No. PO</th>
+      <th class="p-3 text-left">Vendor</th>
+      <th class="p-3 text-left">Tgl</th>
+      <th class="p-3 text-left">Dibuat</th>
+      <th class="p-3 text-center">Aksi</th>
+    </tr></thead>
+    <tbody>
+      <% pendingPOs.forEach(po => { %>
+      <tr class="border-t">
+        <td class="p-3"><a href="/purchase-orders/<%= po.id %>" class="text-blue-600 hover:underline"><%= po.no_po %></a></td>
+        <td class="p-3"><%= po.vendor_nama %></td>
+        <td class="p-3"><%= po.tgl_beli %></td>
+        <td class="p-3"><%= po.creator_name %></td>
+        <td class="p-3 text-center">
+          <form method="POST" action="/validation/po/<%= po.id %>/approve" style="display:inline">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button type="submit" class="bg-green-500 text-white px-3 py-1 rounded text-xs hover:bg-green-600">Approve</button>
+          </form>
+          <form method="POST" action="/validation/po/<%= po.id %>/reject" style="display:inline"
+                onsubmit="return prompt('Alasan ditolak:') ? (this.catatan.value=promptResult, true) : false">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="hidden" name="catatan" value="">
+            <button type="submit" class="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600">Reject</button>
+          </form>
+        </td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+
+<% if (pendingCosts.length > 0) { %>
+<h2 class="font-bold text-lg mb-2">💰 Biaya Produksi</h2>
+<div class="bg-white shadow rounded overflow-x-auto mb-6">
+  <table class="w-full text-sm">
+    <thead><tr class="bg-gray-100">
+      <th class="p-3 text-left">Batch</th>
+      <th class="p-3 text-left">Tipe</th>
+      <th class="p-3 text-right">Nominal</th>
+      <th class="p-3 text-center">Aksi</th>
+    </tr></thead>
+    <tbody>
+      <% pendingCosts.forEach(c => { %>
+      <tr class="border-t">
+        <td class="p-3"><%= c.nama_batch %></td>
+        <td class="p-3"><%= c.tipe_biaya %></td>
+        <td class="p-3 text-right">Rp <%= Number(c.biaya).toLocaleString('id-ID') %></td>
+        <td class="p-3 text-center">
+          <form method="POST" action="/validation/cost/<%= c.id %>/approve" style="display:inline">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button type="submit" class="bg-green-500 text-white px-3 py-1 rounded text-xs hover:bg-green-600">Approve</button>
+          </form>
+          <form method="POST" action="/validation/cost/<%= c.id %>/reject" style="display:inline">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="text" name="catatan" placeholder="Alasan" class="border text-xs p-1 w-24">
+            <button type="submit" class="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600">Reject</button>
+          </form>
+        </td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+
+<% if (pendingImports.length > 0) { %>
+<h2 class="font-bold text-lg mb-2">📥 Pembelian Import</h2>
+<div class="bg-white shadow rounded overflow-x-auto mb-6">
+  <table class="w-full text-sm">
+    <thead><tr class="bg-gray-100">
+      <th class="p-3 text-left">Produk</th>
+      <th class="p-3 text-left">Vendor</th>
+      <th class="p-3 text-right">Qty</th>
+      <th class="p-3 text-right">Total</th>
+      <th class="p-3 text-center">Aksi</th>
+    </tr></thead>
+    <tbody>
+      <% pendingImports.forEach(i => { %>
+      <tr class="border-t">
+        <td class="p-3"><%= i.nama_produk %> (<%= i.warna %> - <%= i.size %>)</td>
+        <td class="p-3"><%= i.vendor_nama %></td>
+        <td class="p-3 text-right"><%= i.qty %></td>
+        <td class="p-3 text-right">Rp <%= Number(i.hpp_per_item * i.qty).toLocaleString('id-ID') %></td>
+        <td class="p-3 text-center">
+          <form method="POST" action="/validation/import/<%= i.id %>/approve" style="display:inline">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button type="submit" class="bg-green-500 text-white px-3 py-1 rounded text-xs hover:bg-green-600">Approve</button>
+          </form>
+          <form method="POST" action="/validation/import/<%= i.id %>/reject" style="display:inline">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="text" name="catatan" placeholder="Alasan" class="border text-xs p-1 w-24">
+            <button type="submit" class="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600">Reject</button>
+          </form>
+        </td>
+      </tr>
+      <% }) %>
+    </tbody>
+  </table>
+</div>
+<% } %>
+
+<% if (pendingPOs.length === 0 && pendingCosts.length === 0 && pendingImports.length === 0) { %>
+<div class="bg-gray-50 border p-6 rounded text-center text-gray-500">
+  ✅ Tidak ada transaksi yang menunggu validasi
+</div>
+<% } %>

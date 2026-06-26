@@ -1,0 +1,62 @@
+<h1 class="text-2xl font-bold mb-4">Buat Purchase Order</h1>
+<form method="POST" class="bg-white shadow rounded p-6 max-w-3xl">
+  <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+    <div>
+      <label class="block mb-1 text-sm font-medium">Vendor</label>
+      <select name="vendor_id" class="w-full border rounded p-2" required>
+        <option value="">Pilih Vendor</option>
+        <% vendors.forEach(v => { %>
+        <option value="<%= v.id %>"><%= v.nama %></option>
+        <% }) %>
+      </select>
+    </div>
+    <div>
+      <label class="block mb-1 text-sm font-medium">No. PO</label>
+      <input type="text" name="no_po" class="w-full border rounded p-2" required>
+    </div>
+    <div>
+      <label class="block mb-1 text-sm font-medium">Tanggal</label>
+      <input type="date" name="tgl_beli" value="<%= new Date().toISOString().split('T')[0] %>" class="w-full border rounded p-2" required>
+    </div>
+  </div>
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Item</label>
+    <div id="items-container">
+      <div class="item-row flex gap-2 mb-2">
+        <select name="items[0][raw_material_id]" class="border rounded p-2 flex-1" required>
+          <option value="">Pilih Bahan</option>
+          <% materials.forEach(m => { %>
+          <option value="<%= m.id %>"><%= m.nama %> (Stok: <%= m.stok %> <%= m.satuan %>)</option>
+          <% }) %>
+        </select>
+        <input name="items[0][qty]" placeholder="Qty" step="any" class="border rounded p-2 w-20" required>
+        <input name="items[0][harga_satuan]" placeholder="Harga" step="any" class="border rounded p-2 w-32" required>
+        <button type="button" class="remove-item text-red-500 px-2 font-bold">✕</button>
+      </div>
+    </div>
+    <button type="button" id="add-item" class="text-blue-600 text-sm hover:underline mt-1">+ Tambah Item</button>
+  </div>
+  <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Buat PO</button>
+  <a href="/purchase-orders" class="ml-2 text-gray-500 hover:underline">Batal</a>
+</form>
+<script>
+let ii = 1;
+document.getElementById('add-item')?.addEventListener('click', () => {
+  const html = `<div class="item-row flex gap-2 mb-2">
+    <select name="items[\${ii}][raw_material_id]" class="border rounded p-2 flex-1" required>
+      <option value="">Pilih Bahan</option>
+      <% materials.forEach(m => { %>
+      <option value="<%= m.id %>"><%= m.nama %></option>
+      <% }) %>
+    </select>
+    <input name="items[\${ii}][qty]" placeholder="Qty" step="any" class="border rounded p-2 w-20" required>
+    <input name="items[\${ii}][harga_satuan]" placeholder="Harga" step="any" class="border rounded p-2 w-32" required>
+    <button type="button" class="remove-item text-red-500 px-2 font-bold">✕</button>
+  </div>`;
+  document.getElementById('items-container').insertAdjacentHTML('beforeend', html);
+  ii++;
+});
+document.addEventListener('click', (e) => {
+  if (e.target.classList.contains('remove-item')) e.target.closest('.item-row').remove();
+});
+</script>

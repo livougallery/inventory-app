@@ -1,0 +1,26 @@
+<h1 class="text-2xl font-bold mb-4">Edit Vendor</h1>
+<form method="POST" action="/vendors/<%= vendor.id %>?_method=PUT" class="bg-white shadow rounded p-6 max-w-xl">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Nama Vendor</label>
+    <input type="text" name="nama" value="<%= vendor.nama %>" class="w-full border rounded p-2" required>
+  </div>
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Tipe</label>
+    <select name="tipe" class="w-full border rounded p-2">
+      <option value="bahan_baku" <%= vendor.tipe === 'bahan_baku' ? 'selected' : '' %>>Bahan Baku</option>
+      <option value="produksi" <%= vendor.tipe === 'produksi' ? 'selected' : '' %>>Produksi (Konveksi/Garment)</option>
+      <option value="import" <%= vendor.tipe === 'import' ? 'selected' : '' %>>Import</option>
+    </select>
+  </div>
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Kontak</label>
+    <input type="text" name="kontak" value="<%= vendor.kontak %>" class="w-full border rounded p-2">
+  </div>
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Alamat</label>
+    <textarea name="alamat" rows="3" class="w-full border rounded p-2"><%= vendor.alamat %></textarea>
+  </div>
+  <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Simpan Perubahan</button>
+  <a href="/vendors" class="ml-2 text-gray-500 hover:underline">Batal</a>
+</form>

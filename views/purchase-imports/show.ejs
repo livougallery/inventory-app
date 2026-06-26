@@ -1,0 +1,28 @@
+<div class="mb-4">
+  <a href="/purchase-imports" class="text-blue-600 hover:underline text-sm">← Kembali</a>
+</div>
+<h1 class="text-2xl font-bold mb-4">Detail Pembelian</h1>
+<div class="bg-white shadow rounded p-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+  <div><span class="text-gray-500">Produk:</span> <strong><%= imp.nama_produk %> (<%= imp.warna %> - <%= imp.size %>)</strong></div>
+  <div><span class="text-gray-500">Vendor:</span> <strong><%= imp.vendor_nama %></strong></div>
+  <div><span class="text-gray-500">Tanggal:</span> <strong><%= imp.tgl_beli %></strong></div>
+  <div>
+    <span class="text-gray-500">Status:</span>
+    <span class="px-2 py-0.5 text-xs rounded-full
+      <%= imp.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : '' %>
+      <%= imp.status === 'validated' ? 'bg-green-100 text-green-700' : '' %>">
+      <%= imp.status %>
+    </span>
+  </div>
+  <div><span class="text-gray-500">Qty:</span> <strong><%= imp.qty %></strong></div>
+  <div><span class="text-gray-500">Harga Produk:</span> <strong>USD <%= Number(imp.harga_produk).toLocaleString('id-ID') %></strong></div>
+  <div><span class="text-gray-500">Kurs:</span> <strong>Rp <%= Number(imp.kurs).toLocaleString('id-ID') %>/USD</strong></div>
+  <div><span class="text-gray-500">Logistik:</span> <strong>Rp <%= Number(imp.logistik).toLocaleString('id-ID') %></strong></div>
+  <div><span class="text-gray-500">HPP per Item:</span> <strong>Rp <%= Number(imp.hpp_per_item).toLocaleString('id-ID') %></strong></div>
+  <div><span class="text-gray-500">Total HPP:</span> <strong>Rp <%= Number(imp.hpp_per_item * imp.qty).toLocaleString('id-ID') %></strong></div>
+</div>
+<% if (imp.status === 'rejected' && imp.catatan_reject) { %>
+<div class="bg-red-50 border border-red-200 p-4 mt-4 rounded">
+  <strong>Alasan ditolak:</strong> <%= imp.catatan_reject %>
+</div>
+<% } %>
