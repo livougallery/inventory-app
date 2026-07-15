@@ -17,7 +17,11 @@
     </tr></thead>
     <tbody>
       <% orders.forEach(o => { %>
-      <tr class="border-t hover:bg-gray-50">
+      <%
+        const threeDaysMs = 3 * 24 * 60 * 60 * 1000;
+        const isUrgent = o.status === 'pending' && (Date.now() - new Date(o.created_at).getTime() > threeDaysMs);
+      %>
+      <tr class="border-t hover:bg-gray-50 <%= isUrgent ? 'urgent-row' : '' %>">
         <td class="p-3 font-mono"><%= o.no_po %></td>
         <td class="p-3"><%= o.vendor_nama %></td>
         <td class="p-3"><%= o.tgl_beli %></td>

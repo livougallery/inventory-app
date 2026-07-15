@@ -19,11 +19,30 @@ router.get('/', isAuthenticated, (req, res) => {
     WHERE pv.hpp_saat_ini > 0 GROUP BY p.id
   `).all();
 
+  const now = new Date();
+  const threeDaysAgo = new Date(now.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString();
+  const urgentPOs = db.prepare(`
+    SELECT po.id, po.no_po, po.created_at, v.nama as vendor_nama
+    FROM purchase_orders po
+    LEFT JOIN vendors v ON po.vendor_id = v.id
+    WHERE po.status = 'pending' AND po.created_at < ?
+    ORDER BY po.created_at ASC LIMIT 5
+  `).all(threeDaysAgo);
+
+  const lowStock = db.prepare(`
+    SELECT id, nama, satuan, stok, stok_minimum FROM raw_materials
+    WHERE stok_minimum IS NOT NULL AND stok < stok_minimum
+    ORDER BY (stok_minimum - stok) DESC LIMIT 5
+  `).all();
+
+  const hasUrgent = urgentPOs.length > 0 || lowStock.length > 0;
+
   res.render('dashboard/index', {
     title: 'Dashboard',
     totalBahan: totalBahan.c, stokBahan: stokBahan.s || 0,
     bahanMenipis, produksiBerjalan: produksiBerjalan.c,
-    totalPending, products
+    totalPending, products,
+    hasUrgent, urgentPOs, lowStock
   });
 });
 

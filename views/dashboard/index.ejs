@@ -1,6 +1,22 @@
 <h1 class="text-2xl font-bold mb-4">Dashboard</h1>
 <p class="text-gray-600 mb-6">Selamat datang, <strong><%= user.nama_lengkap %></strong>!</p>
 
+<% if (hasUrgent) { %>
+<div class="alert-warning mb-6" id="urgent-banner">
+  <i class="fas fa-exclamation-triangle mt-0.5"></i>
+  <div class="flex-1">
+    <p class="font-semibold mb-1">Perhatian: ada kondisi urgent</p>
+    <% if (urgentPOs.length > 0) { %>
+      <p class="mb-1">📦 <%= urgentPOs.length %> PO pending lebih dari 3 hari.</p>
+    <% } %>
+    <% if (lowStock.length > 0) { %>
+      <p>⚠️ <%= lowStock.length %> bahan baku di bawah stok minimum.</p>
+    <% } %>
+  </div>
+  <button type="button" class="dismiss-banner" onclick="this.closest('#urgent-banner').style.display='none'" aria-label="Tutup">×</button>
+</div>
+<% } %>
+
 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
   <div class="bg-white shadow rounded p-4">
     <p class="text-sm text-gray-500">🧵 Stok Bahan Baku</p>
