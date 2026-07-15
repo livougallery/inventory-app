@@ -1,0 +1,81 @@
+<div class="flex justify-between items-center mb-4">
+  <h1 class="text-2xl font-bold">Manajemen Currency</h1>
+  <a href="#" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700"
+     onclick="document.getElementById('add-currency').classList.remove('hidden');return false;">
+    + Tambah Currency
+  </a>
+</div>
+
+<div id="add-currency" class="bg-white shadow rounded mb-4 hidden">
+  <div class="p-3 border-b font-medium">Tambah Currency Baru</div>
+  <div class="p-4">
+    <form method="POST" action="/admin/currencies" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Kode (ISO 4217)</label>
+        <input class="w-full border rounded px-3 py-2 text-sm" name="kode" placeholder="USD" maxlength="3" required>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Nama</label>
+        <input class="w-full border rounded px-3 py-2 text-sm" name="nama" placeholder="US Dollar" required>
+      </div>
+      <div>
+        <label class="block text-sm font-medium text-gray-700 mb-1">Simbol</label>
+        <input class="w-full border rounded px-3 py-2 text-sm" name="simbol" placeholder="$" maxlength="5">
+      </div>
+      <div class="flex items-end">
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="is_active" value="1" checked>
+          <span>Active</span>
+        </label>
+      </div>
+      <div class="md:col-span-2 flex gap-2">
+        <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">Simpan</button>
+        <button type="button" class="bg-gray-100 text-gray-700 px-4 py-2 rounded text-sm hover:bg-gray-200"
+                onclick="this.closest('.bg-white').classList.add('hidden')">Batal</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="bg-white shadow rounded overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead><tr class="bg-gray-100">
+      <th class="p-3 text-left">Kode</th>
+      <th class="p-3 text-left">Nama</th>
+      <th class="p-3 text-left">Simbol</th>
+      <th class="p-3 text-left">Status</th>
+      <th class="p-3 text-left">Aksi</th>
+    </tr></thead>
+    <tbody>
+      <% currencies.forEach(c => { %>
+      <tr class="border-t hover:bg-gray-50">
+        <td class="p-3 font-semibold"><%= c.kode %></td>
+        <td class="p-3"><%= c.nama %></td>
+        <td class="p-3"><%= c.simbol %></td>
+        <td class="p-3">
+          <span class="px-2 py-0.5 text-xs rounded-full <%= c.is_active ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700' %>">
+            <%= c.is_active ? 'Active' : 'Inactive' %>
+          </span>
+        </td>
+        <td class="p-3">
+          <form method="POST" action="/admin/currencies/<%= c.id %>?_method=PUT" style="display:inline">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <input type="hidden" name="kode" value="<%= c.kode %>">
+            <input type="hidden" name="nama" value="<%= c.nama %>">
+            <input type="hidden" name="simbol" value="<%= c.simbol %>">
+            <input type="hidden" name="is_active" value="<%= c.is_active ? 0 : 1 %>">
+            <button class="text-blue-600 hover:underline mr-2" type="submit"><%= c.is_active ? 'Nonaktifkan' : 'Aktifkan' %></button>
+          </form>
+          <form method="POST" action="/admin/currencies/<%= c.id %>?_method=DELETE" style="display:inline"
+                onsubmit="return confirm('Hapus currency <%= c.kode %>?')">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <button class="text-red-600 hover:underline" type="submit">Hapus</button>
+          </form>
+        </td>
+      </tr>
+      <% }); %>
+      <% if (currencies.length === 0) { %><tr><td colspan="5" class="p-3 text-center text-gray-400">Belum ada currency</td></tr><% } %>
+    </tbody>
+  </table>
+</div>

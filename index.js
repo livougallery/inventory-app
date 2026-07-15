@@ -54,6 +54,7 @@ app.use('/purchase-imports', require('./routes/purchase-imports'));
 app.use('/hpp', require('./routes/hpp'));
 app.use('/validation', require('./routes/validation'));
 app.use('/reports', require('./routes/reports'));
+app.use('/admin/currencies', require('./routes/currencies'));
 
 // Error handler
 app.use((err, req, res, next) => {
