@@ -4,6 +4,68 @@
 <h1 class="text-2xl font-bold mb-1"><%= product.nama_produk %></h1>
 <p class="text-gray-500 mb-4">Kategori: <%= product.kategori || '-' %> | Tipe: <%= product.tipe_produksi === 'sendiri' ? 'Produksi Sendiri' : 'Beli Jadi' %></p>
 
+<%
+  const allPhotos = typeof photos !== 'undefined' && photos ? photos : [];
+  const productLevel = allPhotos.filter(p => !p.variant_id);
+  const variantPhotos = allPhotos.filter(p => p.variant_id);
+  const primary = productLevel.find(p => p.is_primary) || productLevel[0] || variantPhotos.find(p => p.is_primary) || variantPhotos[0];
+%>
+
+<div class="card mb-4">
+  <div class="card-header">Foto Utama</div>
+  <div class="card-body flex items-center justify-center bg-gray-100" style="min-height:12rem;">
+    <% if (primary) { %>
+      <img src="/uploads/<%= primary.file_path %>" alt="Foto produk" style="max-width:100%;max-height:16rem;">
+    <% } else { %>
+      <span class="text-gray-400">Belum ada foto</span>
+    <% } %>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header">Upload Foto Baru</div>
+  <div class="card-body">
+    <form method="POST" action="/products/<%= product.id %>/photos" enctype="multipart/form-data" class="form-grid">
+      <div>
+        <label class="input-label">Varian (kosongkan untuk foto produk-level)</label>
+        <select name="variant_id" class="input-field">
+          <option value="">-- Produk (default) --</option>
+          <% (product.variants || []).forEach(v => { %>
+            <option value="<%= v.id %>"><%= v.warna %> <%= v.size %></option>
+          <% }); %>
+        </select>
+      </div>
+      <div>
+        <label class="input-label">File</label>
+        <input type="file" name="foto" accept="image/*" class="input-field" required>
+      </div>
+      <div class="flex items-end gap-2">
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="is_primary" value="1">
+          <span>Set primary</span>
+        </label>
+        <button type="submit" class="btn btn-primary">Upload</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card mb-4">
+  <div class="card-header">Semua Foto</div>
+  <div class="card-body grid grid-cols-4 gap-2">
+    <% allPhotos.forEach(p => { %>
+      <div class="relative border rounded overflow-hidden">
+        <img src="/uploads/<%= p.file_path %>" style="height:6rem;width:100%;object-fit:cover;">
+        <form method="POST" action="/products/<%= product.id %>/photos/<%= p.id %>/delete" class="absolute top-1 right-1">
+          <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Hapus foto ini?')">×</button>
+        </form>
+        <% if (p.is_primary) { %><span class="absolute top-1 left-1 badge alert-success">Primary</span><% } %>
+      </div>
+    <% }); %>
+    <% if (!allPhotos.length) { %><span class="text-gray-400 col-span-4 text-center">Belum ada foto</span><% } %>
+  </div>
+</div>
+
 <h2 class="font-bold text-lg mb-2">Varian</h2>
 <div class="bg-white shadow rounded overflow-x-auto">
   <table class="w-full text-sm">
