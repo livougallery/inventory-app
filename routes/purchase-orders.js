@@ -65,4 +65,17 @@ router.get('/:id', isAuthenticated, (req, res) => {
   res.render('purchase-orders/show', { title: 'Detail PO', po, error: null });
 });
 
+router.post('/:id/quick-edit', isAuthenticated, role('admin'), (req, res) => {
+  const { no_po, catatan } = req.body;
+  try {
+    const po = db.prepare("SELECT * FROM purchase_orders WHERE id = ?").get(req.params.id);
+    if (!po) return res.status(404).json({ ok: false, error: 'PO tidak ditemukan' });
+    db.prepare("UPDATE purchase_orders SET no_po = ?, catatan_reject = ? WHERE id = ?")
+      .run(no_po || po.no_po, catatan || '', req.params.id);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
+});
+
 module.exports = router;
