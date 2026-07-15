@@ -5,6 +5,7 @@ const { isAuthenticated } = require('../middleware/auth');
 const role = require('../middleware/role');
 const StockService = require('../services/stockService');
 const FifoService = require('../services/fifoService');
+const HppFormula = require('../services/hppFormulaService');
 const { validateToken } = require('../middleware/csrf');
 
 router.get('/', isAuthenticated, (req, res) => {
@@ -57,6 +58,7 @@ router.get('/:id', isAuthenticated, (req, res) => {
     WHERE pd.batch_id = ? ORDER BY pd.tgl_datang DESC
   `).all(req.params.id);
   batch.variants = db.prepare('SELECT * FROM product_variants WHERE product_id = ? ORDER BY warna, size').all(batch.product_id);
+  batch.formula_json = (db.prepare('SELECT formula_json FROM hpp_batch_config WHERE batch_id = ?').get(req.params.id) || {}).formula_json || '';
   res.render('production-batches/show', { title: batch.nama_batch, batch, error: null });
 });
 
@@ -101,6 +103,47 @@ router.post('/:id/deliveries', isAuthenticated, role('admin'), (req, res) => {
   // Add stock
   StockService.addFinishedGoodFromDelivery(variant_id, parseInt(qty_datang));
   res.redirect(`/production-batches/${req.params.id}?success=${qty_datang} pcs datang pada ${tgl_datang}`);
+});
+
+router.post('/:id/formula', isAuthenticated, role('admin'), (req, res) => {
+  const { formula_json } = req.body;
+  try {
+    JSON.parse(formula_json);  // validate JSON
+    db.prepare(`INSERT INTO hpp_batch_config (batch_id, formula_json, updated_by)
+                VALUES (?, ?, ?)
+                ON CONFLICT(batch_id) DO UPDATE SET formula_json=excluded.formula_json, updated_by=excluded.updated_by, updated_at=CURRENT_TIMESTAMP`)
+      .run(req.params.id, formula_json, req.session.userId);
+    res.redirect(`/production-batches/${req.params.id}?success=Formula disimpan`);
+  } catch (e) {
+    res.redirect(`/production-batches/${req.params.id}?error=Formula JSON invalid: ${e.message}`);
+  }
+});
+
+router.get('/:id/hpp-preview', isAuthenticated, (req, res) => {
+  const batch = db.prepare('SELECT * FROM production_batches WHERE id = ?').get(req.params.id);
+  if (!batch) return res.status(404).json({ ok:false, error:'Batch tidak ditemukan' });
+  const costs = db.prepare("SELECT * FROM production_costs WHERE batch_id = ? AND status_validasi = 'validated'").all(req.params.id);
+
+  const cfg = db.prepare('SELECT * FROM hpp_batch_config WHERE batch_id = ?').get(req.params.id);
+  let formulaJson = null;
+  let fallbackUsed = false;
+  if (cfg) {
+    formulaJson = cfg.formula_json;
+    const evalResult = HppFormula.evaluate(formulaJson, costs);
+    if (!evalResult.ok) { fallbackUsed = true; formulaJson = null; }
+  }
+
+  if (!formulaJson) {
+    fallbackUsed = true;
+    const defTipe = (costs[0] && costs[0].tipe_biaya) || 'kain';
+    const def = db.prepare('SELECT * FROM hpp_formula_templates WHERE tipe_biaya = ? AND is_default = 1').get(defTipe);
+    formulaJson = def ? def.formula_json : '{"mode":"weighted_avg","fields":["biaya"]}';
+  }
+
+  const result = HppFormula.evaluate(formulaJson, costs);
+  result.fallback = fallbackUsed;
+  result.batch = { id: batch.id, nama: batch.nama_batch };
+  res.json(result);
 });
 
 module.exports = router;

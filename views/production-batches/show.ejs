@@ -102,3 +102,40 @@
     </tbody>
   </table>
 </div>
+
+<div class="card mt-6">
+  <div class="card-header flex justify-between items-center">
+    <span><i class="fas fa-calculator"></i> Kalkulator HPP</span>
+    <span id="fallback-warn" class="alert-warning text-xs px-2 py-1 rounded hidden">Formula custom invalid — pakai default</span>
+  </div>
+  <div class="card-body">
+    <label class="input-label">Formula Config (JSON)</label>
+    <textarea id="formula-json" class="input-field font-mono text-xs" rows="6" placeholder='{"mode":"weighted_avg","fields":["biaya"]}'><%- batch.formula_json || '{"mode":"weighted_avg","fields":["biaya"]}' %></textarea>
+    <div class="flex gap-2 mt-2">
+      <button type="button" class="btn btn-primary btn-sm" onclick="previewHpp()"><i class="fas fa-play"></i> Preview</button>
+      <button type="button" class="btn btn-success btn-sm" onclick="applyFormula()"><i class="fas fa-save"></i> Apply Formula</button>
+    </div>
+
+    <div id="hpp-preview" class="alert-info mt-4" style="display:none">
+      <p class="font-semibold mb-2">Preview HPP</p>
+      <pre id="hpp-preview-content" class="text-xs"></pre>
+    </div>
+  </div>
+</div>
+
+<script>
+async function previewHpp() {
+  const r = await fetch('/production-batches/<%= batch.id %>/hpp-preview');
+  const j = await r.json();
+  document.getElementById('hpp-preview').style.display='block';
+  document.getElementById('hpp-preview-content').textContent = JSON.stringify(j, null, 2);
+  document.getElementById('fallback-warn').classList.toggle('hidden', !j.fallback);
+}
+async function applyFormula() {
+  const json = document.getElementById('formula-json').value;
+  const fd = new FormData(); fd.append('formula_json', json);
+  const r = await fetch('/production-batches/<%= batch.id %>/formula', { method:'POST', body: fd });
+  if (r.ok || r.redirected) location.reload();
+  else alert('Gagal menyimpan formula');
+}
+</script>
