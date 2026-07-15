@@ -75,17 +75,50 @@
       <th class="p-3 text-left">SKU</th>
       <th class="p-3 text-right">Stok</th>
       <th class="p-3 text-right">HPP</th>
+      <th class="p-3 text-right">Harga Jual</th>
     </tr></thead>
     <tbody>
+      <%
+        const _vpList = typeof variantPrices !== 'undefined' && variantPrices ? variantPrices : [];
+        const _priceByVariant = {};
+        _vpList.forEach(function(vp) { _priceByVariant[vp.variant_id] = vp; });
+      %>
       <% product.variants.forEach(v => { %>
+      <%
+        const _priceRow = _priceByVariant[v.id];
+        const _hargaJual = (_priceRow && _priceRow.harga_jual != null) ? _priceRow.harga_jual : (product.harga_jual_default || 0);
+      %>
       <tr class="border-t">
         <td class="p-3"><%= v.warna %></td>
         <td class="p-3"><%= v.size %></td>
         <td class="p-3 font-mono text-xs"><%= v.sku %></td>
         <td class="p-3 text-right"><%= v.stok %></td>
         <td class="p-3 text-right">Rp <%= Number(v.hpp_saat_ini).toLocaleString('id-ID') %></td>
+        <td class="p-3 text-right">
+          <div class="flex items-center justify-end gap-2">
+            <span class="font-mono">Rp <%= Number(_hargaJual).toLocaleString('id-ID') %></span>
+            <form method="POST" action="/products/variants/<%= v.id %>/price" class="flex gap-1 items-center">
+              <input class="input-field" type="number" name="harga_jual" value="<%= _hargaJual || 0 %>" step="100" style="width:8rem">
+              <input type="hidden" name="berlaku_at" value="<%= new Date().toISOString().slice(0,10) %>">
+              <button type="submit" class="btn btn-sm btn-primary" title="Simpan harga"><i class="fas fa-save"></i></button>
+            </form>
+          </div>
+        </td>
       </tr>
       <% }) %>
     </tbody>
   </table>
+</div>
+
+<div class="card mb-4 mt-4">
+  <div class="card-header">Harga Jual Default (untuk varian tanpa override)</div>
+  <div class="card-body">
+    <form method="POST" action="/products/<%= product.id %>/default-price" class="flex gap-2 items-end">
+      <div>
+        <label class="input-label">Nominal (Rp)</label>
+        <input class="input-field" type="number" name="harga_jual_default" value="<%= product.harga_jual_default || 0 %>" step="100">
+      </div>
+      <button type="submit" class="btn btn-primary">Simpan Default</button>
+    </form>
+  </div>
 </div>

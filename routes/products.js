@@ -54,7 +54,12 @@ router.get('/:id', isAuthenticated, (req, res) => {
   if (!product) return res.status(404).send('Produk tidak ditemukan');
   product.variants = db.prepare('SELECT * FROM product_variants WHERE product_id = ? ORDER BY warna, size').all(req.params.id);
   const photos = db.prepare('SELECT * FROM product_photos WHERE product_id = ? ORDER BY is_primary DESC, id ASC').all(req.params.id);
-  res.render('products/show', { title: product.nama_produk, product, photos, error: null });
+  const variantPrices = db.prepare(`
+    SELECT vp.* FROM variant_prices vp
+    JOIN product_variants pv ON pv.id = vp.variant_id
+    WHERE pv.product_id = ?
+  `).all(req.params.id);
+  res.render('products/show', { title: product.nama_produk, product, photos, variantPrices, error: null });
 });
 
 router.get('/:id/edit', isAuthenticated, role('admin'), (req, res) => {
@@ -109,6 +114,35 @@ router.post('/:id/photos/:photoId/delete', isAuthenticated, role('admin'), (req,
   db.prepare('DELETE FROM product_photos WHERE id=?').run(req.params.photoId);
   fs.promises.unlink(path.join(__dirname, '..', 'uploads', photo.file_path)).catch(() => {});
   res.redirect(`/products/${productId}?success=` + encodeURIComponent('Foto dihapus'));
+});
+
+// Set harga jual per-varian (#4 harga) — upsert
+router.post('/variants/:variantId/price', isAuthenticated, role('admin'), (req, res) => {
+  const variantId = req.params.variantId;
+  const { harga_jual, berlaku_at } = req.body;
+  const hj = parseFloat(harga_jual);
+  const variantRow = db.prepare('SELECT product_id FROM product_variants WHERE id = ?').get(variantId);
+  if (!variantRow) return res.status(404).send('Variant tidak ditemukan');
+  if (isNaN(hj) || hj < 0) {
+    return res.redirect(`/products/${variantRow.product_id}?error=` + encodeURIComponent('Harga tidak valid'));
+  }
+  try {
+    db.prepare(`INSERT INTO variant_prices (variant_id, harga_jual, berlaku_at, updated_by)
+                VALUES (?, ?, ?, ?)
+                ON CONFLICT(variant_id) DO UPDATE SET harga_jual=excluded.harga_jual, berlaku_at=excluded.berlaku_at, updated_by=excluded.updated_by`)
+      .run(variantId, hj, berlaku_at || new Date().toISOString().slice(0,10), req.session.userId);
+    res.redirect(`/products/${variantRow.product_id}?success=` + encodeURIComponent('Harga jual disimpan'));
+  } catch (e) {
+    res.redirect(`/products/${variantRow.product_id}?error=` + encodeURIComponent(e.message));
+  }
+});
+
+// Set harga jual default produk (#4 harga)
+router.post('/:id/default-price', isAuthenticated, role('admin'), (req, res) => {
+  const productId = req.params.id;
+  const hj = parseFloat(req.body.harga_jual_default) || 0;
+  db.prepare('UPDATE products SET harga_jual_default = ? WHERE id = ?').run(hj, productId);
+  res.redirect(`/products/${productId}?success=` + encodeURIComponent('Harga default disimpan'));
 });
 
 module.exports = router;
