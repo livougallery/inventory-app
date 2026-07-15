@@ -209,6 +209,24 @@ CREATE TABLE IF NOT EXISTS stock_movements (
   created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
   created_by INTEGER REFERENCES users(id)
 );
+
+-- HPP formula (#3) --
+CREATE TABLE IF NOT EXISTS hpp_formula_templates (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  tipe_biaya TEXT NOT NULL,
+  nama_template TEXT NOT NULL,
+  formula_json TEXT NOT NULL,
+  is_default INTEGER NOT NULL DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS hpp_batch_config (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  batch_id INTEGER UNIQUE NOT NULL REFERENCES production_batches(id) ON DELETE CASCADE,
+  formula_json TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 `);
 
 // Migrations batch 2026-07-15 (#2, #3, #4, #8)
@@ -227,6 +245,21 @@ try {
     ins.run('IDR', 'Indonesian Rupiah', 'Rp');
     ins.run('THB', 'Thai Baht', '฿');
     ins.run('CNY', 'Chinese Yuan', '¥');
+  }
+} catch(e) {}
+
+// Seed HPP formula templates — 1 default per tipe_biaya
+try {
+  const cnt = db.prepare('SELECT COUNT(*) AS c FROM hpp_formula_templates').get().c;
+  if (cnt === 0) {
+    const ins = db.prepare('INSERT INTO hpp_formula_templates (tipe_biaya, nama_template, formula_json, is_default) VALUES (?,?,?,1)');
+    // formula_json: simple weighted average per tipe_biaya
+    const fjson = '{"mode":"weighted_avg","fields":["biaya","qty_produksi"]}';
+    ins.run('kain', 'Default Kain (Weighted Average)', fjson);
+    ins.run('aksesoris', 'Default Aksesoris (Weighted Average)', fjson);
+    ins.run('jahit', 'Default Jahit (Weighted Average)', fjson);
+    ins.run('kirim_aksesoris', 'Default Kirim Aksesoris (Weighted Average)', fjson);
+    ins.run('others', 'Default Lainnya (Weighted Average)', fjson);
   }
 } catch(e) {}
 
