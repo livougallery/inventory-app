@@ -5,37 +5,43 @@ const { isAuthenticated } = require('../middleware/auth');
 
 router.get('/stock-card', isAuthenticated, (req, res) => {
   const materials = db.prepare('SELECT * FROM raw_materials ORDER BY nama').all();
-  let selectedMaterial = null;
+  const materialId = req.query.raw_material_id ? parseInt(req.query.raw_material_id) : (materials[0] ? materials[0].id : null);
+  const dateFrom = req.query.date_from || null;
+  const dateTo = req.query.date_to || null;
+
   let movements = [];
+  let summary = null;
+  let selectedMaterial = null;
 
-  if (req.query.raw_material_id) {
-    const matId = req.query.raw_material_id;
-    selectedMaterial = db.prepare('SELECT * FROM raw_materials WHERE id = ?').get(matId);
+  if (materialId) {
+    selectedMaterial = db.prepare('SELECT * FROM raw_materials WHERE id = ?').get(materialId);
 
-    const poEntries = db.prepare(`
-      SELECT poi.qty as masuk, 0 as keluar, po.tgl_beli as tanggal, po.no_po as ref, 'PO Masuk' as tipe
-      FROM purchase_order_items poi
-      JOIN purchase_orders po ON poi.purchase_order_id = po.id
-      WHERE poi.raw_material_id = ? AND po.status IN ('validated','received')
-    `).all(matId);
+    let sql = `
+      SELECT sm.*, mb.tgl_masuk AS batch_tgl, mb.harga_satuan AS batch_harga
+      FROM stock_movements sm
+      LEFT JOIN material_batches mb ON sm.batch_id = mb.id
+      WHERE sm.raw_material_id = ?
+    `;
+    const params = [materialId];
+    if (dateFrom) { sql += ' AND sm.tgl >= ?'; params.push(dateFrom); }
+    if (dateTo) { sql += ' AND sm.tgl <= ?'; params.push(dateTo); }
+    sql += ' ORDER BY sm.tgl ASC, sm.id ASC';
+    movements = db.prepare(sql).all(...params);
 
-    const usage = db.prepare(`
-      SELECT 0 as masuk, pc.qty_terpakai as keluar, pb.tgl_mulai as tanggal, pb.nama_batch as ref, 'Pemakaian Produksi' as tipe
-      FROM production_costs pc
-      JOIN production_batches pb ON pc.batch_id = pb.id
-      WHERE pc.raw_material_id = ? AND pc.status_validasi = 'validated'
-    `).all(matId);
-
-    movements = [...poEntries, ...usage].sort((a, b) => a.tanggal.localeCompare(b.tanggal));
-
-    let saldo = 0;
-    movements = movements.map(m => {
-      saldo += parseFloat(m.masuk || 0) - parseFloat(m.keluar || 0);
-      return { ...m, saldo };
+    let bal = 0;
+    movements.forEach(m => {
+      if (m.movement_type === 'masuk') bal += m.qty;
+      else bal -= m.qty;
+      m.running_balance = bal;
     });
-  }
 
-  res.render('reports/stock-card', { title: 'Kartu Stok', materials, selectedMaterial, movements, error: null });
+    summary = {
+      total_masuk: movements.filter(m => m.movement_type === 'masuk').reduce((s, m) => s + m.qty, 0),
+      total_keluar: movements.filter(m => m.movement_type === 'keluar').reduce((s, m) => s + m.qty, 0),
+      current_balance: bal
+    };
+  }
+  res.render('reports/stock-card', { title: 'Kartu Stok', materials, selectedMaterial, materialId, dateFrom, dateTo, movements, summary });
 });
 
 router.get('/monthly-expenses', isAuthenticated, (req, res) => {

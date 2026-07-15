@@ -1,41 +1,94 @@
 <h1 class="text-2xl font-bold mb-4">📋 Kartu Stok Bahan Baku</h1>
 
-<form method="GET" class="mb-4 bg-white shadow rounded p-4 flex gap-2">
-  <select name="raw_material_id" class="border rounded p-2 flex-1" onchange="this.form.submit()">
-    <option value="">-- Pilih Bahan --</option>
-    <% materials.forEach(m => { %>
-    <option value="<%= m.id %>" <%= selectedMaterial && selectedMaterial.id === m.id ? 'selected' : '' %>>
-      <%= m.nama %> (<%= m.tipe === 'kain_roll' ? 'Roll' : m.tipe === 'kain_ecer' ? 'Ecer' : 'Aksesoris' %>) — Stok: <%= Number(m.stok).toLocaleString('id-ID') %> <%= m.satuan %>
-    </option>
-    <% }) %>
-  </select>
+<form method="GET" class="mb-4 card p-4 flex flex-wrap gap-3 items-end">
+  <div class="flex-1 min-w-[14rem]">
+    <label class="input-label">Bahan</label>
+    <select name="raw_material_id" class="input-field" onchange="this.form.submit()">
+      <option value="">-- Pilih Bahan --</option>
+      <% materials.forEach(m => { %>
+      <option value="<%= m.id %>" <%= materialId === m.id ? 'selected' : '' %>>
+        <%= m.nama %> (<%= m.tipe === 'kain_roll' ? 'Roll' : m.tipe === 'kain_ecer' ? 'Ecer' : 'Aksesoris' %>) — Stok: <%= Number(m.stok).toLocaleString('id-ID') %> <%= m.satuan %>
+      </option>
+      <% }) %>
+    </select>
+  </div>
+  <div>
+    <label class="input-label">Dari Tanggal</label>
+    <input type="date" name="date_from" value="<%= dateFrom || '' %>" class="input-field" onchange="this.form.submit()" />
+  </div>
+  <div>
+    <label class="input-label">Sampai Tanggal</label>
+    <input type="date" name="date_to" value="<%= dateTo || '' %>" class="input-field" onchange="this.form.submit()" />
+  </div>
+  <% if (dateFrom || dateTo) { %>
+  <a href="?raw_material_id=<%= materialId || '' %>" class="btn btn-ghost btn-sm">Reset</a>
+  <% } %>
 </form>
 
+<% if (summary) { %>
+<div class="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-4">
+  <div class="stat-card">
+    <div class="text-xs text-gray-500 uppercase tracking-wide">Total Masuk</div>
+    <div class="text-2xl font-bold text-green-600 mt-1">+<%= Number(summary.total_masuk).toLocaleString('id-ID') %></div>
+  </div>
+  <div class="stat-card">
+    <div class="text-xs text-gray-500 uppercase tracking-wide">Total Keluar</div>
+    <div class="text-2xl font-bold text-red-600 mt-1">-<%= Number(summary.total_keluar).toLocaleString('id-ID') %></div>
+  </div>
+  <div class="stat-card">
+    <div class="text-xs text-gray-500 uppercase tracking-wide">Saldo Saat Ini</div>
+    <div class="text-2xl font-bold text-gray-900 mt-1"><%= Number(summary.current_balance).toLocaleString('id-ID') %></div>
+  </div>
+</div>
+<% } %>
+
 <% if (selectedMaterial) { %>
-<h2 class="font-bold mb-2"><%= selectedMaterial.nama %></h2>
-<div class="bg-white shadow rounded overflow-x-auto">
-  <table class="w-full text-sm">
-    <thead><tr class="bg-gray-100">
-      <th class="p-3 text-left">Tanggal</th>
-      <th class="p-3 text-left">Tipe</th>
-      <th class="p-3 text-right">Masuk</th>
-      <th class="p-3 text-right">Keluar</th>
-      <th class="p-3 text-right">Saldo</th>
-      <th class="p-3 text-left">Referensi</th>
-    </tr></thead>
+<h2 class="font-bold mb-2"><%= selectedMaterial.nama %> <span class="text-sm font-normal text-gray-500">(<%= selectedMaterial.satuan %>)</span></h2>
+<div class="table-container">
+  <table>
+    <thead>
+      <tr>
+        <th>Tanggal</th>
+        <th>Tipe</th>
+        <th class="text-right">Qty</th>
+        <th class="text-right">Saldo</th>
+        <th>Referensi</th>
+        <th>Keterangan</th>
+      </tr>
+    </thead>
     <tbody>
       <% movements.forEach(m => { %>
-      <tr class="border-t">
-        <td class="p-3"><%= m.tanggal %></td>
-        <td class="p-3"><%= m.tipe %></td>
-        <td class="p-3 text-right"><%= m.masuk > 0 ? Number(m.masuk).toLocaleString('id-ID') : '-' %></td>
-        <td class="p-3 text-right"><%= m.keluar > 0 ? Number(m.keluar).toLocaleString('id-ID') : '-' %></td>
-        <td class="p-3 text-right font-bold"><%= Number(m.saldo).toLocaleString('id-ID') %></td>
-        <td class="p-3"><%= m.ref %></td>
+      <tr>
+        <td><%= m.tgl %></td>
+        <td>
+          <% if (m.movement_type === 'masuk') { %>
+            <span class="badge" style="background:#dcfce7;color:#166534;">Masuk</span>
+          <% } else if (m.movement_type === 'keluar') { %>
+            <span class="badge" style="background:#fee2e2;color:#991b1b;">Keluar</span>
+          <% } else { %>
+            <span class="badge" style="background:#e0e7ff;color:#3730a3;">Adjustment</span>
+          <% } %>
+        </td>
+        <td class="text-right font-medium <%= m.movement_type === 'masuk' ? 'text-green-700' : m.movement_type === 'keluar' ? 'text-red-700' : 'text-indigo-700' %>">
+          <%= m.movement_type === 'masuk' ? '+' : m.movement_type === 'keluar' ? '-' : '±' %><%= Number(m.qty).toLocaleString('id-ID') %>
+        </td>
+        <td class="text-right font-bold"><%= Number(m.running_balance).toLocaleString('id-ID') %></td>
+        <td>
+          <% if (m.ref_type) { %>
+            <span class="text-xs text-gray-600"><%= m.ref_type %><%= m.ref_id ? ' #' + m.ref_id : '' %></span>
+          <% } else { %>
+            <span class="text-gray-400">-</span>
+          <% } %>
+        </td>
+        <td><%= m.keterangan || '-' %></td>
       </tr>
       <% }) %>
-      <% if (movements.length === 0) { %><tr><td colspan="6" class="p-3 text-center text-gray-400">Tidak ada pergerakan stok</td></tr><% } %>
+      <% if (movements.length === 0) { %>
+      <tr><td colspan="6" class="text-center text-gray-400 py-6">Tidak ada pergerakan stok untuk filter ini</td></tr>
+      <% } %>
     </tbody>
   </table>
 </div>
+<% } else { %>
+<div class="card p-6 text-center text-gray-500">Pilih bahan baku terlebih dahulu untuk melihat kartu stok.</div>
 <% } %>
