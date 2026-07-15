@@ -4,6 +4,7 @@ const db = require('../db');
 const { isAuthenticated } = require('../middleware/auth');
 const role = require('../middleware/role');
 const StockService = require('../services/stockService');
+const FifoService = require('../services/fifoService');
 const { validateToken } = require('../middleware/csrf');
 
 router.get('/', isAuthenticated, (req, res) => {
@@ -76,7 +77,11 @@ router.post('/:id/costs', isAuthenticated, role('admin'), (req, res) => {
     .run(req.params.id, variant_id || null, tipe_biaya, raw_material_id || null, qty_terpakai || null, biaya, keterangan || '');
   // Deduct stock if raw material is used
   if (raw_material_id && qty_terpakai) {
-    StockService.deductRawMaterial(raw_material_id, qty_terpakai);
+    try {
+      FifoService.deductFifo(raw_material_id, parseFloat(qty_terpakai), 'production', req.params.id);
+    } catch (err) {
+      return res.redirect(`/production-batches/${req.params.id}/add-cost?error=` + encodeURIComponent(err.message));
+    }
   }
   res.redirect(`/production-batches/${req.params.id}?success=Biaya berhasil dicatat, menunggu validasi Finance`);
 });
