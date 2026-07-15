@@ -227,6 +227,28 @@ CREATE TABLE IF NOT EXISTS hpp_batch_config (
   updated_by INTEGER REFERENCES users(id),
   updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Foto & harga jual (#4) --
+CREATE TABLE IF NOT EXISTS product_photos (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
+  variant_id INTEGER REFERENCES product_variants(id) ON DELETE CASCADE,
+  file_path TEXT NOT NULL,
+  is_primary INTEGER NOT NULL DEFAULT 0,
+  uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS variant_prices (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  variant_id INTEGER UNIQUE NOT NULL REFERENCES product_variants(id) ON DELETE CASCADE,
+  harga_jual REAL NOT NULL,
+  berlaku_at TEXT NOT NULL,
+  updated_by INTEGER REFERENCES users(id),
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_product_photos_product ON product_photos(product_id);
+CREATE INDEX IF NOT EXISTS idx_product_photos_variant ON product_photos(variant_id);
 `);
 
 // Migrations batch 2026-07-15 (#2, #3, #4, #8)
