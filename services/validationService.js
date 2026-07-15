@@ -1,12 +1,19 @@
 const db = require('../db');
 const StockService = require('./stockService');
+const FifoService = require('./fifoService');
 const HppService = require('./hppService');
 
 const ValidationService = {
   approvePurchaseOrder(id, userId) {
-    db.prepare("UPDATE purchase_orders SET status='validated', validated_by=?, validated_at=CURRENT_TIMESTAMP WHERE id=?")
-      .run(userId, id);
-    StockService.addFromPurchaseOrder(id);
+    const tx = db.transaction(() => {
+      db.prepare("UPDATE purchase_orders SET status='validated', validated_by=?, validated_at=CURRENT_TIMESTAMP WHERE id=?")
+        .run(userId, id);
+      // Existing legacy: bump raw_materials.stok (kept for backward compat with UI that reads it)
+      StockService.addFromPurchaseOrder(id);
+      // NEW: create FIFO batches + movement entries
+      FifoService.createBatchFromPO(id);
+    });
+    tx();
   },
   rejectPurchaseOrder(id, userId, catatan) {
     db.prepare("UPDATE purchase_orders SET status='rejected', validated_by=?, validated_at=CURRENT_TIMESTAMP, catatan_reject=? WHERE id=?")
