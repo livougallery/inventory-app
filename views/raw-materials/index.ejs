@@ -34,6 +34,7 @@
         <td class="p-3 text-right"><%= m.stok_minimum ? Number(m.stok_minimum).toLocaleString('id-ID') : '-' %></td>
         <% if (user.role === 'admin') { %>
         <td class="p-3">
+          <a href="/raw-materials/<%= m.id %>" class="text-indigo-600 hover:underline mr-2">Show</a>
           <a href="/raw-materials/<%= m.id %>/edit" class="text-blue-600 hover:underline mr-2">Edit</a>
           <form method="POST" action="/raw-materials/<%= m.id %>?_method=DELETE" style="display:inline"
                 onsubmit="return confirm('Hapus <%= m.nama %>?')">

@@ -21,6 +21,13 @@
     <label class="block mb-1 text-sm font-medium">Stok Minimum</label>
     <input type="number" name="stok_minimum" step="any" value="<%= material.stok_minimum || '' %>" class="w-full border rounded p-2">
   </div>
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Stok Saat Ini (read-only)</label>
+    <input type="number" name="stok_display" value="<%= material.stok %>" class="w-full border rounded p-2 bg-gray-100 cursor-not-allowed" disabled
+           title="Stok hanya bisa berubah via PO atau stock movement. Gunakan tombol 'Adjust Stok' di halaman show.">
+    <input type="hidden" name="stok" value="<%= material.stok %>">
+    <p class="text-xs text-gray-500 mt-1">Stok hanya berubah via PO atau stock_movements.</p>
+  </div>
   <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Simpan Perubahan</button>
   <a href="/raw-materials" class="ml-2 text-gray-500 hover:underline">Batal</a>
 </form>

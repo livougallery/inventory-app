@@ -1,0 +1,72 @@
+<% const tipeLabel = { kain_roll: 'Kain Roll', kain_ecer: 'Kain Ecer (Meteran)', aksesoris: 'Aksesoris' }; %>
+
+<div class="page-header">
+  <h1 class="page-title"><%= material.nama %></h1>
+  <div class="flex gap-2">
+    <a href="/raw-materials" class="btn btn-ghost"><i class="fas fa-arrow-left"></i> Kembali</a>
+    <% if (user.role === 'admin') { %>
+      <a href="/raw-materials/<%= material.id %>/edit" class="btn btn-primary"><i class="fas fa-edit"></i> Edit</a>
+    <% } %>
+  </div>
+</div>
+
+<% if (success) { %>
+  <div class="alert alert-success mb-4"><i class="fas fa-check-circle"></i> <%= success %></div>
+<% } %>
+<% if (error) { %>
+  <div class="alert alert-error mb-4"><i class="fas fa-exclamation-circle"></i> <%= error %></div>
+<% } %>
+
+<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+  <div class="card">
+    <div class="card-header">Informasi</div>
+    <div class="card-body">
+      <p class="mb-2"><span class="text-gray-500">Tipe:</span> <%= tipeLabel[material.tipe] || material.tipe %></p>
+      <p class="mb-2"><span class="text-gray-500">Satuan:</span> <%= material.satuan %></p>
+      <p class="mb-2"><span class="text-gray-500">Kode:</span> <%= material.kode_bahan || '-' %></p>
+      <p class="mb-2"><span class="text-gray-500">Stok Minimum:</span> <%= material.stok_minimum != null ? material.stok_minimum : '-' %></p>
+      <p class="text-lg font-bold mt-4">Stok Saat Ini: <%= Number(material.stok).toLocaleString('id-ID') %> <%= material.satuan %></p>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Adjust Stok</div>
+    <div class="card-body">
+      <% if (user.role === 'admin') { %>
+      <form method="POST" action="/raw-materials/<%= material.id %>/adjust-stok">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+        <label class="input-label">Qty (positif = tambah, negatif = kurang)</label>
+        <input type="number" step="0.01" name="qty_delta" class="input-field mb-3" placeholder="contoh: 5 atau -2" required>
+        <label class="input-label">Keterangan</label>
+        <input type="text" name="keterangan" class="input-field mb-3" placeholder="alasan adjustment">
+        <button type="submit" class="btn btn-primary w-full"><i class="fas fa-save"></i> Apply Adjustment</button>
+      </form>
+      <% } else { %>
+      <p class="text-sm text-gray-500">Hanya admin yang dapat melakukan adjustment stok.</p>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">Stock Movements (terbaru)</div>
+  <div class="card-body">
+    <div class="table-container">
+      <table>
+        <thead><tr><th>Tanggal</th><th>Tipe</th><th>Qty</th><th>Ref</th><th>Keterangan</th></tr></thead>
+        <tbody>
+          <% movements.forEach(m => { %>
+          <tr>
+            <td><%= m.tgl %></td>
+            <td><span class="badge <%= m.movement_type==='masuk'?'alert-success':'alert-error' %>"><%= m.movement_type %></span></td>
+            <td class="font-mono"><%= m.movement_type==='masuk'?'+':'-' %><%= m.qty %></td>
+            <td><%= m.ref_type || '-' %><%= m.ref_id ? ' #' + m.ref_id : '' %></td>
+            <td><%= m.keterangan %></td>
+          </tr>
+          <% }); %>
+          <% if (!movements.length) { %><tr><td colspan="5" class="text-center text-gray-400 py-4">Belum ada movement.</td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
