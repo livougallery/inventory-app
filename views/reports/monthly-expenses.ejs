@@ -35,7 +35,8 @@
   <div class="space-y-3">
     <% var maxKomponen = Math.max(...komponen.map(k => k.total), 1); %>
     <% komponen.forEach(k => { %>
-    <div>
+    <a href="?bulan=<%= bulan %>&tahun=<%= tahun %>&tipe_biaya=<%= k.tipe_biaya %>"
+       class="block py-2 px-3 rounded cursor-pointer <%= filterTipe === k.tipe_biaya ? 'bg-amber-100' : 'hover:bg-gray-50' %>">
       <div class="flex justify-between text-sm mb-1">
         <span><%= k.tipe_biaya === 'kirim_aksesoris' ? 'Kirim Aksesoris' : k.tipe_biaya.charAt(0).toUpperCase() + k.tipe_biaya.slice(1) %></span>
         <span class="font-semibold">Rp <%= Number(k.total).toLocaleString('id-ID') %></span>
@@ -43,9 +44,29 @@
       <div class="bg-gray-200 rounded h-4 w-full">
         <div class="bg-green-500 h-4 rounded" style="width: <%= (k.total / maxKomponen * 100) %>%"></div>
       </div>
-    </div>
+    </a>
     <% }) %>
   </div>
+  <% if (filterTipe) { %>
+  <div class="mt-3">
+    <a href="?bulan=<%= bulan %>&tahun=<%= tahun %>" class="btn btn-ghost btn-sm">
+      <i class="fas fa-times"></i> Reset Filter
+    </a>
+  </div>
+  <table class="table-container mt-3">
+    <thead><tr><th>Tanggal</th><th>Batch</th><th>Tipe</th><th>Nominal</th></tr></thead>
+    <tbody>
+      <% detailCosts.forEach(d => { %>
+      <tr>
+        <td><%= d.created_at %></td>
+        <td><%= d.nama_batch || '-' %></td>
+        <td><%= d.tipe_biaya %></td>
+        <td class="font-mono">Rp <%= Number(d.biaya || 0).toLocaleString('id-ID') %></td>
+      </tr>
+      <% }); %>
+    </tbody>
+  </table>
+  <% } %>
 </div>
 <% } %>
 

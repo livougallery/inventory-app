@@ -68,10 +68,24 @@ router.get('/monthly-expenses', isAuthenticated, (req, res) => {
     GROUP BY tipe_biaya
   `).all(bulan.padStart(2, '0'), tahun);
 
+  const filterTipe = req.query.tipe_biaya || null;
+  let detailCosts = [];
+  if (filterTipe) {
+    detailCosts = db.prepare(`
+      SELECT pc.id, pc.biaya, pc.tipe_biaya, pc.created_at, pb.nama_batch
+      FROM production_costs pc
+      LEFT JOIN production_batches pb ON pc.batch_id = pb.id
+      WHERE pc.status_validasi = 'validated' AND pc.tipe_biaya = ?
+        AND strftime('%m', pc.created_at) = ? AND strftime('%Y', pc.created_at) = ?
+      ORDER BY pc.created_at DESC
+    `).all(filterTipe, bulan.padStart(2, '0'), tahun);
+  }
+
   res.render('reports/monthly-expenses', {
     title: 'Pengeluaran Bulanan', bulan, tahun,
     poExpense: poExpense.total || 0, prodExpense: prodExpense.total || 0,
-    importExpense: importExpense.total || 0, komponen, error: null
+    importExpense: importExpense.total || 0, komponen,
+    detailCosts, filterTipe, error: null
   });
 });
 
