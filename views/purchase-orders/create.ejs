@@ -1,5 +1,6 @@
 <h1 class="text-2xl font-bold mb-4">Buat Purchase Order</h1>
 <form method="POST" class="bg-white shadow rounded p-6 max-w-3xl">
+  <input type="hidden" name="_csrf" value="<%= csrfToken %>">
   <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
     <div>
       <label class="block mb-1 text-sm font-medium">Vendor</label>
@@ -17,6 +18,22 @@
     <div>
       <label class="block mb-1 text-sm font-medium">Tanggal</label>
       <input type="date" name="tgl_beli" value="<%= new Date().toISOString().split('T')[0] %>" class="w-full border rounded p-2" required>
+    </div>
+  </div>
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+    <div>
+      <label class="block mb-1 text-sm font-medium">Currency</label>
+      <select name="currency_id" id="currency-select" class="w-full border rounded p-2"
+              onchange="document.getElementById('kurs-row').classList.toggle('hidden', this.value === '1' || !this.value);">
+        <% currencies.forEach(cur => { %>
+        <option value="<%= cur.id %>" <%= cur.kode === 'IDR' ? 'selected' : '' %>><%= cur.kode %> - <%= cur.nama %></option>
+        <% }); %>
+      </select>
+    </div>
+    <div id="kurs-row" class="hidden">
+      <label class="block mb-1 text-sm font-medium">Kurs (untuk currency non-IDR)</label>
+      <input type="number" step="0.0001" name="kurs_amount" value="1" class="w-full border rounded p-2">
+      <p class="text-xs text-gray-500 mt-1">Untuk IDR selalu 1. Untuk THB/CNY/USD input manual kurs jual hari ini.</p>
     </div>
   </div>
   <div class="mb-4">

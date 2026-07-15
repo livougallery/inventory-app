@@ -19,7 +19,8 @@ router.get('/', isAuthenticated, (req, res) => {
 router.get('/create', isAuthenticated, role('admin'), (req, res) => {
   const vendors = db.prepare("SELECT * FROM vendors WHERE tipe IN ('bahan_baku','import') ORDER BY nama").all();
   const materials = db.prepare('SELECT * FROM raw_materials ORDER BY nama').all();
-  res.render('purchase-orders/create', { title: 'Buat Purchase Order', vendors, materials, error: null });
+  const currencies = db.prepare('SELECT * FROM currencies WHERE is_active = 1 ORDER BY kode').all();
+  res.render('purchase-orders/create', { title: 'Buat Purchase Order', vendors, materials, currencies, error: null });
 });
 
 router.post('/', isAuthenticated, role('admin'), (req, res) => {
@@ -28,8 +29,10 @@ router.post('/', isAuthenticated, role('admin'), (req, res) => {
     return res.redirect('/purchase-orders/create?error=Data tidak lengkap');
   }
   const itemsArr = Array.isArray(items) ? items : [items];
-  const result = db.prepare('INSERT INTO purchase_orders (vendor_id, no_po, tgl_beli, created_by) VALUES (?, ?, ?, ?)')
-    .run(vendor_id, no_po, tgl_beli, req.session.userId);
+  const currencyId = req.body.currency_id ? parseInt(req.body.currency_id) : null;
+  const kursAmount = parseFloat(req.body.kurs_amount) || 1;
+  const result = db.prepare('INSERT INTO purchase_orders (vendor_id, no_po, tgl_beli, currency_id, kurs_amount, created_by) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(vendor_id, no_po, tgl_beli, currencyId, kursAmount, req.session.userId);
   const poId = result.lastInsertRowid;
   const ins = db.prepare('INSERT INTO purchase_order_items (purchase_order_id, raw_material_id, qty, harga_satuan, subtotal) VALUES (?, ?, ?, ?, ?)');
   for (const item of itemsArr) {
