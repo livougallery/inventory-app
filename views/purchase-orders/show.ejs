@@ -66,6 +66,7 @@
     </div>
     <div class="card-body">
       <form id="quick-edit-form">
+        <input type="hidden" name="_csrf" value="<%= csrfToken %>">
         <label class="input-label">No. PO</label>
         <input class="input-field mb-3" name="no_po" value="<%= po.no_po %>" required style="margin-bottom:0.75rem;">
         <label class="input-label">Catatan</label>

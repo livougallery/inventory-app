@@ -105,7 +105,7 @@ router.post('/:id/deliveries', isAuthenticated, role('admin'), (req, res) => {
   res.redirect(`/production-batches/${req.params.id}?success=${qty_datang} pcs datang pada ${tgl_datang}`);
 });
 
-router.post('/:id/formula', isAuthenticated, role('admin'), (req, res) => {
+router.post('/:id/formula', isAuthenticated, role('admin'), validateToken, (req, res) => {
   const { formula_json } = req.body;
   try {
     JSON.parse(formula_json);  // validate JSON

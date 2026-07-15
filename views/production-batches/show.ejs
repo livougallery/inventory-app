@@ -133,7 +133,9 @@ async function previewHpp() {
 }
 async function applyFormula() {
   const json = document.getElementById('formula-json').value;
-  const fd = new FormData(); fd.append('formula_json', json);
+  const fd = new FormData();
+  fd.append('formula_json', json);
+  fd.append('_csrf', '<%= csrfToken %>');
   const r = await fetch('/production-batches/<%= batch.id %>/formula', { method:'POST', body: fd });
   if (r.ok || r.redirected) location.reload();
   else alert('Gagal menyimpan formula');

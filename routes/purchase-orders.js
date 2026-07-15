@@ -3,6 +3,7 @@ const router = express.Router();
 const db = require('../db');
 const { isAuthenticated } = require('../middleware/auth');
 const role = require('../middleware/role');
+const { validateToken } = require('../middleware/csrf');
 
 router.get('/', isAuthenticated, (req, res) => {
   const orders = db.prepare(`
@@ -65,7 +66,7 @@ router.get('/:id', isAuthenticated, (req, res) => {
   res.render('purchase-orders/show', { title: 'Detail PO', po, error: null });
 });
 
-router.post('/:id/quick-edit', isAuthenticated, role('admin'), (req, res) => {
+router.post('/:id/quick-edit', isAuthenticated, role('admin'), validateToken, (req, res) => {
   const { no_po, catatan } = req.body;
   try {
     const po = db.prepare("SELECT * FROM purchase_orders WHERE id = ?").get(req.params.id);
