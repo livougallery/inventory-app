@@ -219,6 +219,17 @@ try { db.exec("ALTER TABLE purchase_orders ADD COLUMN kurs_amount REAL NOT NULL 
 try { db.exec("ALTER TABLE production_costs ADD COLUMN batch_source TEXT NOT NULL DEFAULT 'inventory'"); } catch(e) {}
 try { db.exec("ALTER TABLE raw_materials ADD COLUMN stok_minimum_at TEXT"); } catch(e) {}
 
+// Seed currencies (IDR/THB/CNY) — idempotent via UNIQUE
+try {
+  const cnt = db.prepare('SELECT COUNT(*) AS c FROM currencies').get().c;
+  if (cnt === 0) {
+    const ins = db.prepare('INSERT INTO currencies (kode, nama, simbol, is_active) VALUES (?,?,?,1)');
+    ins.run('IDR', 'Indonesian Rupiah', 'Rp');
+    ins.run('THB', 'Thai Baht', '฿');
+    ins.run('CNY', 'Chinese Yuan', '¥');
+  }
+} catch(e) {}
+
 // Migrations for existing DBs
 try { db.exec("ALTER TABLE raw_materials ADD COLUMN kode_bahan TEXT DEFAULT ''"); } catch(e) {}
 try { db.exec("CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, nama TEXT UNIQUE NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"); } catch(e) {}
