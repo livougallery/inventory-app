@@ -53,8 +53,16 @@ db.exec(`
     updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
 
+
+  CREATE TABLE IF NOT EXISTS categories (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nama TEXT UNIQUE NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
   CREATE TABLE IF NOT EXISTS raw_materials (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kode_bahan TEXT DEFAULT '',
     nama TEXT NOT NULL,
     tipe TEXT NOT NULL CHECK(tipe IN ('kain_roll','kain_ecer','aksesoris')),
     satuan TEXT NOT NULL DEFAULT 'pcs',
@@ -155,6 +163,64 @@ db.exec(`
     hpp_total REAL NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+
+  CREATE TABLE IF NOT EXISTS purchase_order_photos (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    purchase_order_id INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+    file_path TEXT NOT NULL,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+  CREATE TABLE IF NOT EXISTS delivery_expenses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tgl TEXT NOT NULL,
+    kategori TEXT NOT NULL CHECK(kategori IN ('kain','aksesoris','sample','lainnya')),
+    keterangan TEXT DEFAULT '',
+    nominal REAL NOT NULL,
+    ref_type TEXT,
+    ref_id INTEGER,
+    created_by INTEGER REFERENCES users(id),
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+
+-- FIFO costing (#3) --
+CREATE TABLE IF NOT EXISTS material_batches (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  raw_material_id INTEGER NOT NULL REFERENCES raw_materials(id),
+  source_type TEXT NOT NULL,
+  source_id INTEGER,
+  qty_awal REAL NOT NULL,
+  qty_sisa REAL NOT NULL,
+  harga_satuan REAL NOT NULL,
+  tgl_masuk TEXT NOT NULL,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS stock_movements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  raw_material_id INTEGER NOT NULL REFERENCES raw_materials(id),
+  movement_type TEXT NOT NULL CHECK(movement_type IN ('masuk','keluar','adjustment')),
+  qty REAL NOT NULL,
+  batch_id INTEGER REFERENCES material_batches(id),
+  ref_type TEXT,
+  ref_id INTEGER,
+  tgl TEXT NOT NULL,
+  keterangan TEXT DEFAULT '',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  created_by INTEGER REFERENCES users(id)
+);
 `);
+
+// Migrations batch 2026-07-15 (#2, #3, #4, #8)
+try { db.exec("CREATE TABLE IF NOT EXISTS currencies (id INTEGER PRIMARY KEY AUTOINCREMENT, kode TEXT UNIQUE NOT NULL, nama TEXT NOT NULL, simbol TEXT NOT NULL DEFAULT '', is_active INTEGER NOT NULL DEFAULT 1, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"); } catch(e) {}
+try { db.exec("ALTER TABLE products ADD COLUMN harga_jual_default REAL NOT NULL DEFAULT 0"); } catch(e) {}
+try { db.exec("ALTER TABLE purchase_orders ADD COLUMN currency_id INTEGER REFERENCES currencies(id)"); } catch(e) {}
+try { db.exec("ALTER TABLE purchase_orders ADD COLUMN kurs_amount REAL NOT NULL DEFAULT 1"); } catch(e) {}
+try { db.exec("ALTER TABLE production_costs ADD COLUMN batch_source TEXT NOT NULL DEFAULT 'inventory'"); } catch(e) {}
+try { db.exec("ALTER TABLE raw_materials ADD COLUMN stok_minimum_at TEXT"); } catch(e) {}
+
+// Migrations for existing DBs
+try { db.exec("ALTER TABLE raw_materials ADD COLUMN kode_bahan TEXT DEFAULT ''"); } catch(e) {}
+try { db.exec("CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, nama TEXT UNIQUE NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"); } catch(e) {}
 
 module.exports = db;
