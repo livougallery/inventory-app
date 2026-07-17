@@ -21,7 +21,7 @@ const productPhotoUpload = multer({
 
 router.get('/', isAuthenticated, (req, res) => {
   const products = db.prepare(`
-    SELECT p.*, COUNT(pv.id) as varian_count
+    SELECT p.*, COUNT(pv.id) as varian_count, COALESCE(SUM(pv.stok), 0) as total_stok
     FROM products p LEFT JOIN product_variants pv ON p.id = pv.product_id
     GROUP BY p.id ORDER BY p.nama_produk
   `).all();

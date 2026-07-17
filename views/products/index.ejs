@@ -11,6 +11,7 @@
       <th class="p-3 text-left">Kategori</th>
       <th class="p-3 text-left">Tipe</th>
       <th class="p-3 text-center">Varian</th>
+      <th class="p-3 text-right">Stok</th>
       <th class="p-3 text-left">Aksi</th>
     </tr></thead>
     <tbody>
@@ -24,6 +25,7 @@
           </span>
         </td>
         <td class="p-3 text-center"><%= p.varian_count %></td>
+        <td class="p-3 text-right"><%= Number(p.total_stok).toLocaleString('id-ID') %></td>
         <td class="p-3">
           <a href="/products/<%= p.id %>" class="text-blue-600 hover:underline mr-2">Detail</a>
           <% if (user.role === 'admin') { %>
@@ -37,7 +39,7 @@
         </td>
       </tr>
       <% }) %>
-      <% if (products.length === 0) { %><tr><td colspan="5" class="p-3 text-center text-gray-400">Belum ada produk</td></tr><% } %>
+      <% if (products.length === 0) { %><tr><td colspan="6" class="p-3 text-center text-gray-400">Belum ada produk</td></tr><% } %>
     </tbody>
   </table>
 </div>

@@ -1,5 +1,5 @@
 <h1 class="text-2xl font-bold mb-4">Tambah Produk</h1>
-<form method="POST" class="bg-white shadow rounded p-6 max-w-2xl">
+<form method="POST" action="/products" class="bg-white shadow rounded p-6 max-w-2xl">
   <div class="mb-4">
     <label class="block mb-1 text-sm font-medium">Nama Produk</label>
     <input type="text" name="nama_produk" class="w-full border rounded p-2" required>
@@ -34,9 +34,9 @@
 let vi = 1;
 document.getElementById('add-variant')?.addEventListener('click', () => {
   const html = `<div class="variant-row flex gap-2 mb-2">
-    <input name="variants[\${vi}][warna]" placeholder="Warna" class="border p-2 rounded flex-1">
-    <input name="variants[\${vi}][size]" placeholder="Size" class="border p-2 rounded w-20">
-    <input name="variants[\${vi}][sku]" placeholder="SKU" class="border p-2 rounded flex-1">
+    <input name="variants[${vi}][warna]" placeholder="Warna" class="border p-2 rounded flex-1">
+    <input name="variants[${vi}][size]" placeholder="Size" class="border p-2 rounded w-20">
+    <input name="variants[${vi}][sku]" placeholder="SKU" class="border p-2 rounded flex-1">
     <button type="button" class="remove-variant text-red-500 px-2 font-bold">✕</button>
   </div>`;
   document.getElementById('variants-container').insertAdjacentHTML('beforeend', html);
