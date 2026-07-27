@@ -1,6 +1,6 @@
 const express = require('express');
 const session = require('express-session');
-const SQLiteStore = require('connect-sqlite3')(session);
+const PgSession = require('connect-pg-simple')(session);
 const methodOverride = require('method-override');
 const path = require('path');
 const bcrypt = require('bcryptjs');
@@ -17,7 +17,10 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 app.use(session({
-  store: new SQLiteStore({ db: 'sessions.sqlite', dir: path.join(__dirname, 'data') }),
+  store: new PgSession({
+    conString: process.env.DATABASE_URL,
+    tableName: 'session'
+  }),
   secret: 'inventory-secret-key-2026',
   resave: false,
   saveUninitialized: false,
