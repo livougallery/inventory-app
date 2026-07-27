@@ -1,292 +1,100 @@
-const Database = require('better-sqlite3');
-const path = require('path');
-const fs = require('fs');
+require('dotenv').config();
+const { Pool } = require('pg');
 
-const dbPath = process.env.DB_PATH || path.join(__dirname, 'data', 'database.sqlite');
-
-const dataDir = path.dirname(dbPath);
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
-
-const db = new Database(dbPath);
-
-db.pragma('journal_mode = WAL');
-db.pragma('foreign_keys = ON');
-
-db.exec(`
-  CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    username TEXT UNIQUE NOT NULL,
-    password TEXT NOT NULL,
-    role TEXT NOT NULL DEFAULT 'admin' CHECK(role IN ('admin','finance')),
-    nama_lengkap TEXT NOT NULL DEFAULT '',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS vendors (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nama TEXT NOT NULL,
-    alamat TEXT DEFAULT '',
-    kontak TEXT DEFAULT '',
-    tipe TEXT NOT NULL CHECK(tipe IN ('produksi','bahan_baku','import')),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS products (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nama_produk TEXT NOT NULL,
-    kategori TEXT DEFAULT '',
-    tipe_produksi TEXT NOT NULL CHECK(tipe_produksi IN ('sendiri','beli_jadi')),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS product_variants (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-    warna TEXT NOT NULL,
-    size TEXT NOT NULL,
-    sku TEXT UNIQUE NOT NULL,
-    stok INTEGER NOT NULL DEFAULT 0,
-    hpp_saat_ini REAL NOT NULL DEFAULT 0,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-
-  CREATE TABLE IF NOT EXISTS categories (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    nama TEXT UNIQUE NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS raw_materials (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    kode_bahan TEXT DEFAULT '',
-    nama TEXT NOT NULL,
-    tipe TEXT NOT NULL CHECK(tipe IN ('kain_roll','kain_ecer','aksesoris')),
-    satuan TEXT NOT NULL DEFAULT 'pcs',
-    stok REAL NOT NULL DEFAULT 0,
-    stok_minimum REAL DEFAULT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS purchase_orders (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    vendor_id INTEGER NOT NULL REFERENCES vendors(id),
-    no_po TEXT NOT NULL,
-    tgl_beli TEXT NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','validated','rejected','received')),
-    validated_by INTEGER REFERENCES users(id),
-    validated_at DATETIME,
-    catatan_reject TEXT,
-    created_by INTEGER NOT NULL REFERENCES users(id),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS purchase_order_items (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    purchase_order_id INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
-    raw_material_id INTEGER NOT NULL REFERENCES raw_materials(id),
-    qty REAL NOT NULL,
-    harga_satuan REAL NOT NULL,
-    subtotal REAL NOT NULL
-  );
-
-  CREATE TABLE IF NOT EXISTS production_batches (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    product_id INTEGER NOT NULL REFERENCES products(id),
-    nama_batch TEXT NOT NULL,
-    tgl_mulai TEXT NOT NULL,
-    tgl_selesai_est TEXT,
-    jenis_produksi TEXT NOT NULL CHECK(jenis_produksi IN ('in_house','konveksi','garment')),
-    vendor_id INTEGER REFERENCES vendors(id),
-    jumlah_dipesan INTEGER NOT NULL,
-    jumlah_selesai INTEGER NOT NULL DEFAULT 0,
-    status TEXT NOT NULL DEFAULT 'planned' CHECK(status IN ('planned','in_progress','completed')),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS production_costs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    batch_id INTEGER NOT NULL REFERENCES production_batches(id) ON DELETE CASCADE,
-    variant_id INTEGER REFERENCES product_variants(id),
-    tipe_biaya TEXT NOT NULL CHECK(tipe_biaya IN ('kain','aksesoris','jahit','kirim_aksesoris','others')),
-    raw_material_id INTEGER REFERENCES raw_materials(id),
-    qty_terpakai REAL,
-    biaya REAL NOT NULL,
-    keterangan TEXT DEFAULT '',
-    status_validasi TEXT NOT NULL DEFAULT 'pending' CHECK(status_validasi IN ('pending','validated','rejected')),
-    validated_by INTEGER REFERENCES users(id),
-    validated_at DATETIME,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS production_deliveries (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    batch_id INTEGER NOT NULL REFERENCES production_batches(id) ON DELETE CASCADE,
-    variant_id INTEGER NOT NULL REFERENCES product_variants(id),
-    tgl_datang TEXT NOT NULL,
-    qty_datang INTEGER NOT NULL,
-    keterangan TEXT DEFAULT '',
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS purchase_imports (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    variant_id INTEGER NOT NULL REFERENCES product_variants(id),
-    vendor_id INTEGER NOT NULL REFERENCES vendors(id),
-    tgl_beli TEXT NOT NULL,
-    qty INTEGER NOT NULL,
-    harga_produk REAL NOT NULL,
-    kurs REAL NOT NULL DEFAULT 1,
-    logistik REAL NOT NULL DEFAULT 0,
-    hpp_per_item REAL NOT NULL,
-    status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','validated','rejected','received')),
-    validated_by INTEGER REFERENCES users(id),
-    validated_at DATETIME,
-    catatan_reject TEXT,
-    created_by INTEGER NOT NULL REFERENCES users(id),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS hpp_history (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    variant_id INTEGER NOT NULL REFERENCES product_variants(id),
-    sumber TEXT NOT NULL CHECK(sumber IN ('produksi','beli_jadi')),
-    sumber_id INTEGER NOT NULL,
-    komponen_kain REAL NOT NULL DEFAULT 0,
-    komponen_aksesoris REAL NOT NULL DEFAULT 0,
-    komponen_jahit REAL NOT NULL DEFAULT 0,
-    komponen_lain REAL NOT NULL DEFAULT 0,
-    hpp_total REAL NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS purchase_order_photos (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    purchase_order_id INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
-    file_path TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
-  CREATE TABLE IF NOT EXISTS delivery_expenses (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    tgl TEXT NOT NULL,
-    kategori TEXT NOT NULL CHECK(kategori IN ('kain','aksesoris','sample','lainnya')),
-    keterangan TEXT DEFAULT '',
-    nominal REAL NOT NULL,
-    ref_type TEXT,
-    ref_id INTEGER,
-    created_by INTEGER REFERENCES users(id),
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-
--- FIFO costing (#3) --
-CREATE TABLE IF NOT EXISTS material_batches (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  raw_material_id INTEGER NOT NULL REFERENCES raw_materials(id),
-  source_type TEXT NOT NULL,
-  source_id INTEGER,
-  qty_awal REAL NOT NULL,
-  qty_sisa REAL NOT NULL,
-  harga_satuan REAL NOT NULL,
-  tgl_masuk TEXT NOT NULL,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS stock_movements (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  raw_material_id INTEGER NOT NULL REFERENCES raw_materials(id),
-  movement_type TEXT NOT NULL CHECK(movement_type IN ('masuk','keluar','adjustment')),
-  qty REAL NOT NULL,
-  batch_id INTEGER REFERENCES material_batches(id),
-  ref_type TEXT,
-  ref_id INTEGER,
-  tgl TEXT NOT NULL,
-  keterangan TEXT DEFAULT '',
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-  created_by INTEGER REFERENCES users(id)
-);
-
--- HPP formula (#3) --
-CREATE TABLE IF NOT EXISTS hpp_formula_templates (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  tipe_biaya TEXT NOT NULL,
-  nama_template TEXT NOT NULL,
-  formula_json TEXT NOT NULL,
-  is_default INTEGER NOT NULL DEFAULT 0,
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS hpp_batch_config (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  batch_id INTEGER UNIQUE NOT NULL REFERENCES production_batches(id) ON DELETE CASCADE,
-  formula_json TEXT NOT NULL,
-  updated_by INTEGER REFERENCES users(id),
-  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
--- Foto & harga jual (#4) --
-CREATE TABLE IF NOT EXISTS product_photos (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  product_id INTEGER NOT NULL REFERENCES products(id) ON DELETE CASCADE,
-  variant_id INTEGER REFERENCES product_variants(id) ON DELETE CASCADE,
-  file_path TEXT NOT NULL,
-  is_primary INTEGER NOT NULL DEFAULT 0,
-  uploaded_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS variant_prices (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  variant_id INTEGER UNIQUE NOT NULL REFERENCES product_variants(id) ON DELETE CASCADE,
-  harga_jual REAL NOT NULL,
-  berlaku_at TEXT NOT NULL,
-  updated_by INTEGER REFERENCES users(id),
-  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE INDEX IF NOT EXISTS idx_product_photos_product ON product_photos(product_id);
-CREATE INDEX IF NOT EXISTS idx_product_photos_variant ON product_photos(variant_id);
-`);
-
-// Migrations batch 2026-07-15 (#2, #3, #4, #8)
-try { db.exec("CREATE TABLE IF NOT EXISTS currencies (id INTEGER PRIMARY KEY AUTOINCREMENT, kode TEXT UNIQUE NOT NULL, nama TEXT NOT NULL, simbol TEXT NOT NULL DEFAULT '', is_active INTEGER NOT NULL DEFAULT 1, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"); } catch(e) {}
-try { db.exec("ALTER TABLE products ADD COLUMN harga_jual_default REAL NOT NULL DEFAULT 0"); } catch(e) {}
-try { db.exec("ALTER TABLE purchase_orders ADD COLUMN currency_id INTEGER REFERENCES currencies(id)"); } catch(e) {}
-try { db.exec("ALTER TABLE purchase_orders ADD COLUMN kurs_amount REAL NOT NULL DEFAULT 1"); } catch(e) {}
-try { db.exec("ALTER TABLE production_costs ADD COLUMN batch_source TEXT NOT NULL DEFAULT 'inventory'"); } catch(e) {}
-try { db.exec("ALTER TABLE raw_materials ADD COLUMN stok_minimum_at TEXT"); } catch(e) {}
-
-// Seed currencies (IDR/THB/CNY) — idempotent via UNIQUE
-try {
-  const cnt = db.prepare('SELECT COUNT(*) AS c FROM currencies').get().c;
-  if (cnt === 0) {
-    const ins = db.prepare('INSERT INTO currencies (kode, nama, simbol, is_active) VALUES (?,?,?,1)');
-    ins.run('IDR', 'Indonesian Rupiah', 'Rp');
-    ins.run('THB', 'Thai Baht', '฿');
-    ins.run('CNY', 'Chinese Yuan', '¥');
+class Db {
+  constructor() {
+    if (!process.env.DATABASE_URL) {
+      console.error('[FATAL] DATABASE_URL wajib di-set. Copy .env.example ke .env.');
+      process.exit(1);
+    }
+    // Validate no raw @ in password segment (URL encoding issue)
+    const match = process.env.DATABASE_URL.match(/\/\/([^:]+):([^@]+)@/);
+    if (match && match[2].includes('@')) {
+      console.error('[FATAL] Password di DATABASE_URL mengandung @ — harus URL-encoded (%40).');
+      process.exit(1);
+    }
+    this.pool = new Pool({
+      connectionString: process.env.DATABASE_URL,
+      max: 10,
+      idleTimeoutMillis: 30000,
+    });
+    this.pool.on('error', (err) => {
+      console.error('[pg] Unexpected pool error:', err.message);
+    });
   }
-} catch(e) {}
 
-// Seed HPP formula templates — 1 default per tipe_biaya
-try {
-  const cnt = db.prepare('SELECT COUNT(*) AS c FROM hpp_formula_templates').get().c;
-  if (cnt === 0) {
-    const ins = db.prepare('INSERT INTO hpp_formula_templates (tipe_biaya, nama_template, formula_json, is_default) VALUES (?,?,?,1)');
-    // formula_json: simple weighted average per tipe_biaya
-    const fjson = '{"mode":"weighted_avg","fields":["biaya","qty_produksi"]}';
-    ins.run('kain', 'Default Kain (Weighted Average)', fjson);
-    ins.run('aksesoris', 'Default Aksesoris (Weighted Average)', fjson);
-    ins.run('jahit', 'Default Jahit (Weighted Average)', fjson);
-    ins.run('kirim_aksesoris', 'Default Kirim Aksesoris (Weighted Average)', fjson);
-    ins.run('others', 'Default Lainnya (Weighted Average)', fjson);
+  async query(text, params) {
+    return this.pool.query(text, params);
   }
-} catch(e) {}
 
-// Migrations for existing DBs
-try { db.exec("ALTER TABLE raw_materials ADD COLUMN kode_bahan TEXT DEFAULT ''"); } catch(e) {}
-try { db.exec("CREATE TABLE IF NOT EXISTS categories (id INTEGER PRIMARY KEY AUTOINCREMENT, nama TEXT UNIQUE NOT NULL, created_at DATETIME DEFAULT CURRENT_TIMESTAMP)"); } catch(e) {}
+  async one(text, params) {
+    const r = await this.pool.query(text, params);
+    return r.rows.length ? r.rows[0] : null;
+  }
 
+  async run(text, params) {
+    const r = await this.pool.query(text, params);
+    return {
+      rowCount: r.rowCount,
+      returningId: r.rows.length ? r.rows[0].id : null,
+    };
+  }
+
+  // Run multiple statements separated by ; — only for bootstrap/migrations
+  async exec(statements) {
+    const lines = statements
+      .split(';')
+      .map(s => s.trim())
+      .filter(s => s.length > 0);
+    for (const sql of lines) {
+      await this.pool.query(sql);
+    }
+  }
+
+  async transaction(fn) {
+    const client = await this.pool.connect();
+    try {
+      await client.query('BEGIN');
+      const tx = new Tx(client);
+      const result = await fn(tx);
+      await client.query('COMMIT');
+      return result;
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }
+
+  now() {
+    return 'CURRENT_DATE';
+  }
+
+  async close() {
+    await this.pool.end();
+  }
+}
+
+class Tx {
+  constructor(client) {
+    this.client = client;
+  }
+  async query(text, params) {
+    return this.client.query(text, params);
+  }
+  async one(text, params) {
+    const r = await this.client.query(text, params);
+    return r.rows.length ? r.rows[0] : null;
+  }
+  async run(text, params) {
+    const r = await this.client.query(text, params);
+    return {
+      rowCount: r.rowCount,
+      returningId: r.rows.length ? r.rows[0].id : null,
+    };
+  }
+}
+
+const db = new Db();
 module.exports = db;
