@@ -6,9 +6,7 @@ const HppService = require('./hppService');
 const ValidationService = {
   async approvePurchaseOrder(id, userId) {
     await db.run("UPDATE purchase_orders SET status='validated', validated_by=$1, validated_at=CURRENT_TIMESTAMP WHERE id=$2", [userId, id]);
-    // Existing legacy: bump raw_materials.stok (kept for backward compat with UI that reads it)
-    await StockService.addFromPurchaseOrder(id);
-    // NEW: create FIFO batches + movement entries
+    // FIFO: create batches + movement entries (also handles stock increment)
     await FifoService.createBatchFromPO(id);
   },
   async rejectPurchaseOrder(id, userId, catatan) {

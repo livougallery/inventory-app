@@ -47,8 +47,7 @@ router.post('/register', isGuest, async (req, res) => {
 });
 
 router.get('/logout', isAuthenticated, async (req, res) => {
-  req.session.destroy();
-  res.redirect('/login');
+  req.session.destroy(() => res.redirect('/login'));
 });
 
 module.exports = router;
