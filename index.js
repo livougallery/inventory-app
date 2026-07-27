@@ -66,22 +66,53 @@ app.use((err, req, res, next) => {
   res.status(500).send('Terjadi kesalahan: ' + err.message);
 });
 
-// Seed default users
-const admin = db.prepare('SELECT id FROM users WHERE username = ?').get('admin');
-if (!admin) {
-  const hash = bcrypt.hashSync('admin123', 10);
-  db.prepare('INSERT INTO users (username, password, nama_lengkap, role) VALUES (?, ?, ?, ?)')
-    .run('admin', hash, 'Admin Utama', 'admin');
-  console.log('Default admin: admin / admin123');
-}
-const finance = db.prepare('SELECT id FROM users WHERE username = ?').get('finance');
-if (!finance) {
-  const hash = bcrypt.hashSync('finance123', 10);
-  db.prepare('INSERT INTO users (username, password, nama_lengkap, role) VALUES (?, ?, ?, ?)')
-    .run('finance', hash, 'Finance', 'finance');
-  console.log('Default finance: finance / finance123');
+// Seed default users, currencies, HPP templates
+async function seedDefaults() {
+  const admin = await db.one('SELECT id FROM users WHERE username = $1', ['admin']);
+  if (!admin) {
+    const hash = bcrypt.hashSync('admin123', 10);
+    await db.run('INSERT INTO users (username, password, nama_lengkap, role) VALUES ($1, $2, $3, $4) RETURNING id',
+      ['admin', hash, 'Admin Utama', 'admin']);
+    console.log('Default admin: admin / admin123');
+  }
+  const finance = await db.one('SELECT id FROM users WHERE username = $1', ['finance']);
+  if (!finance) {
+    const hash = bcrypt.hashSync('finance123', 10);
+    await db.run('INSERT INTO users (username, password, nama_lengkap, role) VALUES ($1, $2, $3, $4) RETURNING id',
+      ['finance', hash, 'Finance', 'finance']);
+    console.log('Default finance: finance / finance123');
+  }
+
+  // Seed currencies (idempotent via UNIQUE)
+  const curCnt = await db.one('SELECT COUNT(*)::int AS c FROM currencies');
+  if (curCnt.c === 0) {
+    await db.run("INSERT INTO currencies (kode, nama, simbol, is_active) VALUES ($1, $2, $3, 1) ON CONFLICT (kode) DO NOTHING", ['IDR', 'Indonesian Rupiah', 'Rp']);
+    await db.run("INSERT INTO currencies (kode, nama, simbol, is_active) VALUES ($1, $2, $3, 1) ON CONFLICT (kode) DO NOTHING", ['THB', 'Thai Baht', '฿']);
+    await db.run("INSERT INTO currencies (kode, nama, simbol, is_active) VALUES ($1, $2, $3, 1) ON CONFLICT (kode) DO NOTHING", ['CNY', 'Chinese Yuan', '¥']);
+  }
+
+  // Seed HPP formula templates
+  const hppCnt = await db.one('SELECT COUNT(*)::int AS c FROM hpp_formula_templates');
+  if (hppCnt.c === 0) {
+    const fjson = '{"mode":"weighted_avg","fields":["biaya","qty_produksi"]}';
+    for (const tipe of ['kain', 'aksesoris', 'jahit', 'kirim_aksesoris', 'others']) {
+      await db.run('INSERT INTO hpp_formula_templates (tipe_biaya, nama_template, formula_json, is_default) VALUES ($1, $2, $3, 1) ON CONFLICT DO NOTHING',
+        [tipe, `Default ${tipe} (Weighted Average)`, fjson]);
+    }
+  }
 }
 
-app.listen(PORT, () => {
-  console.log(`Server running at http://localhost:${PORT}`);
-});
+// Boot: create tables, seed defaults, then start server.
+// Do NOT start the server if schema bootstrap or seeding fails.
+(async () => {
+  try {
+    await db.bootstrapSchema();
+    await seedDefaults();
+    app.listen(PORT, () => {
+      console.log(`Server running at http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error('[FATAL] Boot failed:', err.message);
+    process.exit(1);
+  }
+})();
