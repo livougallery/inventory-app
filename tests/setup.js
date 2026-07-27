@@ -34,8 +34,8 @@ const TABLES = [
 // once per client (including clients acquired inside db.transaction via
 // pool.connect()), guaranteeing unqualified table names resolve to the test
 // schema regardless of which pooled connection a query lands on.
-db.pool.on('connect', (client) => {
-  client.query('SET search_path TO test');
+db.pool.on('connect', async (client) => {
+  await client.query('SET search_path TO test');
 });
 
 beforeAll(async () => {

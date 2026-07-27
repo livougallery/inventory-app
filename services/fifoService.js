@@ -1,9 +1,11 @@
 const db = require('../db');
 
 const FIFO = {
-  // Called when PO is validated: create batch + 'masuk' movement per item
-  async createBatchFromPO(purchaseOrderId) {
+  // Called when PO is validated: update status + create batch + 'masuk' movement per item
+  // All operations in one transaction so PO status and stock stay in sync.
+  async createBatchFromPO(purchaseOrderId, userId) {
     await db.transaction(async (tx) => {
+      await tx.run("UPDATE purchase_orders SET status='validated', validated_by=$1, validated_at=CURRENT_TIMESTAMP WHERE id=$2", [userId, purchaseOrderId]);
       const r = await tx.query(`
         SELECT poi.*, po.tgl_beli
         FROM purchase_order_items poi
