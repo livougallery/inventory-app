@@ -102,6 +102,10 @@ async function bootstrapSchema(schemaName) {
   const pfx = schemaName && schemaName !== 'public' ? `"${schemaName}".` : '';
   const t = (name) => `${pfx}${name}`;
 
+  if (pfx) {
+    await db.query(`CREATE SCHEMA IF NOT EXISTS "${schemaName}"`);
+  }
+
   await db.exec(`
     CREATE TABLE IF NOT EXISTS ${t('users')} (
       id SERIAL PRIMARY KEY,
