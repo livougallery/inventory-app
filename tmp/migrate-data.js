@@ -93,6 +93,29 @@ async function migrate() {
 
       console.log(`  ${table}: ${inserted} rows`);
     }
+
+    // Rows were inserted with their original SQLite ids, which does NOT advance
+    // the SERIAL sequences — they stay at 1 and the next app-side INSERT fails
+    // with a duplicate-key error on the primary key. Fast-forward every
+    // sequence to max(id) so subsequent inserts continue after the imported rows.
+    console.log('\nResyncing sequences:');
+    const seqs = await client.query(`
+      SELECT table_name, column_name,
+             pg_get_serial_sequence(table_schema || '.' || table_name, column_name) AS seq
+      FROM information_schema.columns
+      WHERE table_schema = 'public' AND column_default LIKE 'nextval%'
+    `);
+    for (const { table_name, column_name, seq } of seqs.rows) {
+      if (!seq) continue;
+      const { rows } = await client.query(
+        `SELECT COALESCE(MAX("${column_name}"), 0)::int AS mx FROM public."${table_name}"`
+      );
+      const mx = rows[0].mx;
+      // is_called=false when max is 0 so the first generated id is 1, not 2.
+      await client.query('SELECT setval($1, $2, $3)', [seq, mx || 1, mx > 0]);
+      console.log(`  ${table_name}.${column_name}: setval -> ${mx}`);
+    }
+
     console.log('\nMigration complete!');
   } finally {
     client.release();

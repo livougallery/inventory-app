@@ -20,7 +20,7 @@ router.get('/', isAuthenticated, async (req, res) => {
   const totalPending = pendingPO + pendingCost + pendingImport;
 
   const products = (await db.query(`
-    SELECT p.nama_produk, ROUND(AVG(pv.hpp_saat_ini),0) as avg_hpp
+    SELECT p.nama_produk, ROUND(AVG(pv.hpp_saat_ini)::numeric, 0) as avg_hpp
     FROM products p JOIN product_variants pv ON p.id = pv.product_id
     WHERE pv.hpp_saat_ini > 0 GROUP BY p.id
   `)).rows;

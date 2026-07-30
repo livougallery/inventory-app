@@ -107,6 +107,15 @@ async function bootstrapSchema(schemaName) {
   }
 
   await db.exec(`
+    -- Session store for connect-pg-simple. That store does not create its own
+    -- table unless createTableIfMissing is set, so it is provisioned here with
+    -- the rest of the schema (shape must match connect-pg-simple/table.sql).
+    CREATE TABLE IF NOT EXISTS ${t('session')} (
+      sid VARCHAR NOT NULL PRIMARY KEY,
+      sess JSON NOT NULL,
+      expire TIMESTAMP(6) NOT NULL
+    );
+
     CREATE TABLE IF NOT EXISTS ${t('users')} (
       id SERIAL PRIMARY KEY,
       username TEXT UNIQUE NOT NULL,
@@ -397,6 +406,7 @@ async function bootstrapSchema(schemaName) {
 
     CREATE INDEX IF NOT EXISTS idx_product_photos_product ON ${t('product_photos')}(product_id);
     CREATE INDEX IF NOT EXISTS idx_product_photos_variant ON ${t('product_photos')}(variant_id);
+    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON ${t('session')}(expire);
   `);
 }
 

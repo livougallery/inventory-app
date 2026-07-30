@@ -21,6 +21,7 @@ const db = require('../db');
 // parent table does not violate FK constraints on its children. CASCADE also
 // handles the recursive cases, but explicit ordering is clearer and safer.
 const TABLES = [
+  'session',
   'delivery_expenses', 'variant_prices', 'product_photos', 'hpp_batch_config',
   'hpp_formula_templates', 'stock_movements', 'material_batches',
   'shipment_invoices', 'shipments', 'purchase_imports', 'hpp_history',
