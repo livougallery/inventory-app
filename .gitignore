@@ -11,3 +11,5 @@ data/*.sqlite-wal
 tmp/data.sql
 tmp/schema.sql
 tmp/supabase-import.sql
+tmp/pg-schema.sql
+tmp/pg-data.sql
