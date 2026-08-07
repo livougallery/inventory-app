@@ -1,3 +1,15 @@
 node_modules/
 data/*.sqlite
 data/sessions.sqlite
+.env
+
+# SQLite runtime artifacts (WAL / shared-memory sidecars)
+data/*.sqlite-shm
+data/*.sqlite-wal
+
+# Local database dumps — contain real rows and password hashes
+tmp/data.sql
+tmp/schema.sql
+tmp/supabase-import.sql
+tmp/pg-schema.sql
+tmp/pg-data.sql

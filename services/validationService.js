@@ -4,42 +4,30 @@ const FifoService = require('./fifoService');
 const HppService = require('./hppService');
 
 const ValidationService = {
-  approvePurchaseOrder(id, userId) {
-    const tx = db.transaction(() => {
-      db.prepare("UPDATE purchase_orders SET status='validated', validated_by=?, validated_at=CURRENT_TIMESTAMP WHERE id=?")
-        .run(userId, id);
-      // Existing legacy: bump raw_materials.stok (kept for backward compat with UI that reads it)
-      StockService.addFromPurchaseOrder(id);
-      // NEW: create FIFO batches + movement entries
-      FifoService.createBatchFromPO(id);
-    });
-    tx();
+  async approvePurchaseOrder(id, userId) {
+    // All work (status update + FIFO batches + stock movements) inside one transaction
+    await FifoService.createBatchFromPO(id, userId);
   },
-  rejectPurchaseOrder(id, userId, catatan) {
-    db.prepare("UPDATE purchase_orders SET status='rejected', validated_by=?, validated_at=CURRENT_TIMESTAMP, catatan_reject=? WHERE id=?")
-      .run(userId, catatan, id);
+  async rejectPurchaseOrder(id, userId, catatan) {
+    await db.run("UPDATE purchase_orders SET status='rejected', validated_by=$1, validated_at=CURRENT_TIMESTAMP, catatan_reject=$2 WHERE id=$3", [userId, catatan, id]);
   },
-  approveProductionCost(id, userId) {
-    const cost = db.prepare("SELECT * FROM production_costs WHERE id = ?").get(id);
+  async approveProductionCost(id, userId) {
+    const cost = await db.one("SELECT * FROM production_costs WHERE id = $1", [id]);
     if (!cost) return false;
-    db.prepare("UPDATE production_costs SET status_validasi='validated', validated_by=?, validated_at=CURRENT_TIMESTAMP WHERE id=?")
-      .run(userId, id);
-    HppService.calculateFromBatch(cost.batch_id);
+    await db.run("UPDATE production_costs SET status_validasi='validated', validated_by=$1, validated_at=CURRENT_TIMESTAMP WHERE id=$2", [userId, id]);
+    await HppService.calculateFromBatch(cost.batch_id);
     return true;
   },
-  rejectProductionCost(id, userId, catatan) {
-    db.prepare("UPDATE production_costs SET status_validasi='rejected', validated_by=?, validated_at=CURRENT_TIMESTAMP, keterangan=? WHERE id=?")
-      .run(userId, catatan, id);
+  async rejectProductionCost(id, userId, catatan) {
+    await db.run("UPDATE production_costs SET status_validasi='rejected', validated_by=$1, validated_at=CURRENT_TIMESTAMP, keterangan=$2 WHERE id=$3", [userId, catatan, id]);
   },
-  approvePurchaseImport(id, userId) {
-    db.prepare("UPDATE purchase_imports SET status='validated', validated_by=?, validated_at=CURRENT_TIMESTAMP WHERE id=?")
-      .run(userId, id);
-    StockService.addFromPurchaseImport(id);
-    HppService.calculateFromImport(id);
+  async approvePurchaseImport(id, userId) {
+    await db.run("UPDATE purchase_imports SET status='validated', validated_by=$1, validated_at=CURRENT_TIMESTAMP WHERE id=$2", [userId, id]);
+    await StockService.addFromPurchaseImport(id);
+    await HppService.calculateFromImport(id);
   },
-  rejectPurchaseImport(id, userId, catatan) {
-    db.prepare("UPDATE purchase_imports SET status='rejected', validated_by=?, validated_at=CURRENT_TIMESTAMP, catatan_reject=? WHERE id=?")
-      .run(userId, catatan, id);
+  async rejectPurchaseImport(id, userId, catatan) {
+    await db.run("UPDATE purchase_imports SET status='rejected', validated_by=$1, validated_at=CURRENT_TIMESTAMP, catatan_reject=$2 WHERE id=$3", [userId, catatan, id]);
   }
 };
 

@@ -1,22 +1,23 @@
 const db = require('../db');
 
 const StockService = {
-  addFromPurchaseOrder(purchaseOrderId) {
-    const items = db.prepare('SELECT * FROM purchase_order_items WHERE purchase_order_id = ?').all(purchaseOrderId);
+  async addFromPurchaseOrder(purchaseOrderId) {
+    const r = await db.query('SELECT * FROM purchase_order_items WHERE purchase_order_id = $1', [purchaseOrderId]);
+    const items = r.rows;
     for (const item of items) {
-      db.prepare('UPDATE raw_materials SET stok = stok + ? WHERE id = ?').run(item.qty, item.raw_material_id);
+      await db.run('UPDATE raw_materials SET stok = stok + $1 WHERE id = $2', [item.qty, item.raw_material_id]);
     }
   },
-  deductRawMaterial(rawMaterialId, qty) {
-    db.prepare('UPDATE raw_materials SET stok = stok - ? WHERE id = ?').run(qty, rawMaterialId);
+  async deductRawMaterial(rawMaterialId, qty) {
+    await db.run('UPDATE raw_materials SET stok = stok - $1 WHERE id = $2', [qty, rawMaterialId]);
   },
-  addFinishedGoodFromDelivery(variantId, qty) {
-    db.prepare('UPDATE product_variants SET stok = stok + ? WHERE id = ?').run(qty, variantId);
+  async addFinishedGoodFromDelivery(variantId, qty) {
+    await db.run('UPDATE product_variants SET stok = stok + $1 WHERE id = $2', [qty, variantId]);
   },
-  addFromPurchaseImport(importId) {
-    const imp = db.prepare('SELECT * FROM purchase_imports WHERE id = ?').get(importId);
+  async addFromPurchaseImport(importId) {
+    const imp = await db.one('SELECT * FROM purchase_imports WHERE id = $1', [importId]);
     if (imp) {
-      db.prepare('UPDATE product_variants SET stok = stok + ? WHERE id = ?').run(imp.qty, imp.variant_id);
+      await db.run('UPDATE product_variants SET stok = stok + $1 WHERE id = $2', [imp.qty, imp.variant_id]);
     }
   }
 };
