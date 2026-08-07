@@ -5,17 +5,17 @@ const db = require('../db');
 const { isGuest, isAuthenticated } = require('../middleware/auth');
 
 router.get('/login', isGuest, async (req, res) => {
-  res.render('auth/login', { error: null });
+  res.render('auth/login', { error: null, layout: false });
 });
 
 router.post('/login', isGuest, async (req, res) => {
   const { username, password } = req.body;
   if (!username || !password) {
-    return res.render('auth/login', { error: 'Username dan password harus diisi' });
+    return res.render('auth/login', { error: 'Username dan password harus diisi', layout: false });
   }
   const user = await db.one('SELECT * FROM users WHERE username = $1', [username]);
   if (!user || !bcrypt.compareSync(password, user.password)) {
-    return res.render('auth/login', { error: 'Username atau password salah' });
+    return res.render('auth/login', { error: 'Username atau password salah', layout: false });
   }
   req.session.userId = user.id;
   req.session.username = user.username;
@@ -25,20 +25,20 @@ router.post('/login', isGuest, async (req, res) => {
 });
 
 router.get('/register', isGuest, async (req, res) => {
-  res.render('auth/register', { error: null });
+  res.render('auth/register', { error: null, layout: false });
 });
 
 router.post('/register', isGuest, async (req, res) => {
   const { username, password, nama_lengkap, role } = req.body;
   if (!username || !password || !nama_lengkap) {
-    return res.render('auth/register', { error: 'Semua field harus diisi' });
+    return res.render('auth/register', { error: 'Semua field harus diisi', layout: false });
   }
   if (password.length < 6) {
-    return res.render('auth/register', { error: 'Password minimal 6 karakter' });
+    return res.render('auth/register', { error: 'Password minimal 6 karakter', layout: false });
   }
   const existing = await db.one('SELECT id FROM users WHERE username = $1', [username]);
   if (existing) {
-    return res.render('auth/register', { error: 'Username sudah digunakan' });
+    return res.render('auth/register', { error: 'Username sudah digunakan', layout: false });
   }
   const hash = bcrypt.hashSync(password, 10);
   await db.run('INSERT INTO users (username, password, nama_lengkap, role) VALUES ($1, $2, $3, $4) RETURNING id',
