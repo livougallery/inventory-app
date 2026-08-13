@@ -10,10 +10,24 @@ const { validateToken } = require('../middleware/csrf');
 
 router.get('/', isAuthenticated, async (req, res) => {
   const batches = (await db.query(`
-    SELECT pb.*, p.nama_produk, v.nama as vendor_nama
+    SELECT pb.*, p.nama_produk, v.nama AS vendor_nama,
+           ph.file_path AS foto_path,
+           pv.sku AS sku_dasar,
+           COALESCE(vc.jumlah, 0) AS jumlah_variasi
     FROM production_batches pb
     LEFT JOIN products p ON pb.product_id = p.id
     LEFT JOIN vendors v ON pb.vendor_id = v.id
+    LEFT JOIN product_photos ph
+      ON ph.id = (SELECT p2.id FROM product_photos p2
+                  WHERE p2.product_id = pb.product_id
+                  ORDER BY p2.is_primary DESC, p2.id ASC LIMIT 1)
+    LEFT JOIN product_variants pv
+      ON pv.id = (SELECT p3.id FROM product_variants p3
+                  WHERE p3.product_id = pb.product_id
+                  ORDER BY p3.id ASC LIMIT 1)
+    LEFT JOIN (
+      SELECT product_id, COUNT(*) AS jumlah FROM product_variants GROUP BY product_id
+    ) vc ON vc.product_id = pb.product_id
     ORDER BY pb.created_at DESC
   `)).rows;
   res.render('production-batches/index', { title: 'Batch Produksi', batches, error: null });
@@ -61,6 +75,21 @@ router.get('/:id', isAuthenticated, async (req, res) => {
   const cfgRow = await db.one('SELECT formula_json FROM hpp_batch_config WHERE batch_id = $1', [req.params.id]);
   batch.formula_json = (cfgRow && cfgRow.formula_json) || '';
   res.render('production-batches/show', { title: batch.nama_batch, batch, error: null });
+});
+
+router.get('/:id/variants', isAuthenticated, async (req, res) => {
+  const batch = await db.one(`
+    SELECT pb.id, pb.nama_batch, pb.product_id, p.nama_produk
+    FROM production_batches pb
+    LEFT JOIN products p ON pb.product_id = p.id
+    WHERE pb.id = $1
+  `, [req.params.id]);
+  if (!batch) return res.status(404).json({ ok: false, error: 'Batch tidak ditemukan' });
+  const variants = (await db.query(
+    'SELECT sku, warna, size, stok FROM product_variants WHERE product_id = $1 ORDER BY warna, size',
+    [batch.product_id]
+  )).rows;
+  res.json({ batch: { id: batch.id, nama_batch: batch.nama_batch, nama_produk: batch.nama_produk }, variants });
 });
 
 router.get('/:id/add-cost', isAuthenticated, role('admin'), async (req, res) => {
