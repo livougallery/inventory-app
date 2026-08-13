@@ -1,45 +1,167 @@
-<div class="flex justify-between items-center mb-4">
-  <h1 class="text-2xl font-bold">Batch Produksi</h1>
-  <% if (user.role === 'admin') { %>
-    <a href="/production-batches/create" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">+ Buat Batch</a>
+<style>
+  .kanban-wrap { display:grid; grid-template-columns:repeat(3,1fr); gap:1rem; align-items:start; }
+  @media (max-width:768px) { .kanban-wrap { grid-template-columns:1fr; } }
+  .kanban-col { background:#eef1f5; border-radius:12px; padding:0.75rem; }
+  .kanban-col-header { display:flex; align-items:center; gap:0.5rem; padding:0.25rem 0.5rem 0.75rem; font-weight:700; color:#111827; font-size:0.95rem; }
+  .kanban-col-accent { width:4px; min-height:1.25rem; border-radius:2px; }
+  .kanban-count { margin-left:auto; background:#fff; color:#374151; border-radius:9999px; padding:0.1rem 0.6rem; font-size:0.75rem; font-weight:600; }
+  .kanban-card { display:block; width:100%; background:#fff; border:none; padding:0; margin:0; text-align:left; border-radius:10px; box-shadow:0 1px 3px rgba(0,0,0,0.08); overflow:hidden; cursor:pointer; transition:box-shadow 150ms, transform 150ms; }
+  .kanban-card:hover { box-shadow:0 4px 12px rgba(0,0,0,0.15); transform:translateY(-2px); }
+  .kanban-card + .kanban-card { margin-top:0.75rem; }
+  .kanban-foto { width:100%; aspect-ratio:1/1; object-fit:cover; display:block; background:#f3f4f6; }
+  .kanban-foto-placeholder { width:100%; aspect-ratio:1/1; display:flex; align-items:center; justify-content:center; font-size:3rem; background:#f3f4f6; }
+  .kanban-body { padding:0.75rem; }
+  .kanban-nama { font-weight:700; font-size:1rem; color:#111827; margin:0 0 0.15rem; }
+  .kanban-sku { font-family:ui-monospace, SFMono-Regular, Menlo, monospace; font-size:0.72rem; color:#6b7280; }
+  .kanban-badge { display:inline-block; margin-top:0.6rem; background:#f3f4f6; color:#374151; border-radius:9999px; padding:0.15rem 0.6rem; font-size:0.75rem; }
+  .kanban-empty { color:#9ca3af; font-size:0.85rem; text-align:center; padding:1.5rem 0.5rem; }
+  .kb-modal-backdrop { position:fixed; inset:0; background:rgba(17,24,39,0.5); display:none; align-items:center; justify-content:center; z-index:50; padding:1rem; }
+  .kb-modal-backdrop.open { display:flex; }
+  .kb-modal { background:#fff; border-radius:12px; max-width:34rem; width:100%; max-height:85vh; overflow-y:auto; box-shadow:0 20px 40px rgba(0,0,0,0.25); }
+  .kb-modal-header { display:flex; align-items:flex-start; justify-content:space-between; gap:1rem; padding:1rem 1.25rem; border-bottom:1px solid #f3f4f6; }
+  .kb-modal-body { padding:1rem 1.25rem; }
+  .kb-modal-table { width:100%; font-size:0.85rem; border-collapse:collapse; }
+  .kb-modal-table th { text-align:left; color:#6b7280; font-size:0.7rem; text-transform:uppercase; padding:0.5rem; border-bottom:1px solid #e5e7eb; }
+  .kb-modal-table td { padding:0.5rem; border-bottom:1px solid #f3f4f6; color:#374151; }
+  .kb-close { background:transparent; border:none; font-size:1.25rem; cursor:pointer; color:#6b7280; line-height:1; }
+</style>
+
+<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:1rem;">
+  <h1 style="font-size:1.5rem; font-weight:700; color:#111827; margin:0;">Batch Produksi</h1>
+  <% if (locals.user && user.role === 'admin') { %>
+    <a href="/production-batches/create" style="background:#4f46e5; color:#fff; padding:0.625rem 1rem; border-radius:0.5rem; font-size:0.875rem; text-decoration:none;">+ Buat Batch</a>
   <% } %>
 </div>
-<div class="bg-white shadow rounded overflow-x-auto">
-  <table class="w-full text-sm">
-    <thead><tr class="bg-gray-100">
-      <th class="p-3 text-left">Batch</th>
-      <th class="p-3 text-left">Produk</th>
-      <th class="p-3 text-left">Jenis</th>
-      <th class="p-3 text-right">Progress</th>
-      <th class="p-3 text-left">Status</th>
-      <th class="p-3 text-left">Aksi</th>
-    </tr></thead>
-    <tbody>
-      <% batches.forEach(b => { %>
-      <tr class="border-t hover:bg-gray-50">
-        <td class="p-3 font-medium"><%= b.nama_batch %></td>
-        <td class="p-3"><%= b.nama_produk %></td>
-        <td class="p-3">
-          <span class="px-2 py-0.5 text-xs rounded-full
-            <%= b.jenis_produksi === 'in_house' ? 'bg-green-100 text-green-700' : '' %>
-            <%= b.jenis_produksi === 'konveksi' ? 'bg-blue-100 text-blue-700' : '' %>
-            <%= b.jenis_produksi === 'garment' ? 'bg-purple-100 text-purple-700' : '' %>">
-            <%= b.jenis_produksi === 'in_house' ? 'In House' : b.jenis_produksi === 'konveksi' ? 'Konveksi' : 'Garment' %>
-          </span>
-        </td>
-        <td class="p-3 text-right"><%= b.jumlah_selesai %>/<%= b.jumlah_dipesan %></td>
-        <td class="p-3">
-          <span class="px-2 py-0.5 text-xs rounded-full
-            <%= b.status === 'planned' ? 'bg-gray-100 text-gray-700' : '' %>
-            <%= b.status === 'in_progress' ? 'bg-yellow-100 text-yellow-700' : '' %>
-            <%= b.status === 'completed' ? 'bg-green-100 text-green-700' : '' %>">
-            <%= b.status === 'planned' ? 'Rencana' : b.status === 'in_progress' ? 'Berjalan' : 'Selesai' %>
-          </span>
-        </td>
-        <td class="p-3"><a href="/production-batches/<%= b.id %>" class="text-blue-600 hover:underline">Detail</a></td>
-      </tr>
-      <% }) %>
-      <% if (batches.length === 0) { %><tr><td colspan="6" class="p-3 text-center text-gray-400">Belum ada batch produksi</td></tr><% } %>
-    </tbody>
-  </table>
+
+<div class="kanban-wrap">
+  <% const kolom = [
+    { status: 'planned',     emoji: '🗓', label: 'Rencana',  accent: '#9ca3af' },
+    { status: 'in_progress', emoji: '🔨', label: 'Berjalan', accent: '#f59e0b' },
+    { status: 'completed',   emoji: '✅', label: 'Selesai',  accent: '#10b981' },
+  ]; %>
+  <% kolom.forEach(k => { const daftar = batches.filter(b => b.status === k.status); %>
+  <section class="kanban-col">
+    <div class="kanban-col-header">
+      <span class="kanban-col-accent" style="background:<%= k.accent %>;"></span>
+      <span><%= k.emoji %> <%= k.label %></span>
+      <span class="kanban-count"><%= daftar.length %></span>
+    </div>
+    <% if (daftar.length === 0) { %>
+      <div class="kanban-empty">Belum ada batch</div>
+    <% } %>
+    <% daftar.forEach(b => { %>
+    <button type="button" class="kanban-card"
+            data-batch-id="<%= b.id %>"
+            data-sku="<%= b.sku_dasar || '' %>"
+            data-variasi="<%= b.jumlah_variasi %>">
+      <% if (b.foto_path) { %>
+        <img class="kanban-foto" src="/uploads/<%= b.foto_path %>" alt="<%= b.nama_produk %>" loading="lazy">
+      <% } else { %>
+        <div class="kanban-foto-placeholder">👕</div>
+      <% } %>
+      <div class="kanban-body">
+        <div class="kanban-nama"><%= b.nama_produk %></div>
+        <div class="kanban-sku"><%= b.sku_dasar || '—' %></div>
+        <div class="kanban-badge">👕 <%= b.jumlah_variasi %> variasi</div>
+      </div>
+    </button>
+    <% }) %>
+  </section>
+  <% }) %>
 </div>
+
+<div class="kb-modal-backdrop" id="kb-backdrop">
+  <div class="kb-modal" role="dialog" aria-modal="true" aria-labelledby="kb-title">
+    <div class="kb-modal-header">
+      <div>
+        <div id="kb-title" style="font-weight:700; font-size:1.05rem; color:#111827;"></div>
+        <div id="kb-subtitle" style="font-size:0.78rem; color:#6b7280; margin-top:0.15rem;"></div>
+      </div>
+      <button type="button" class="kb-close" id="kb-close" aria-label="Tutup">✕</button>
+    </div>
+    <div class="kb-modal-body">
+      <div id="kb-loading" style="display:none; text-align:center; color:#6b7280; padding:1rem;">Memuat variasi…</div>
+      <div id="kb-error" style="display:none; text-align:center; padding:1rem;">
+        <div style="color:#991b1b; margin-bottom:0.5rem;">Gagal memuat variasi.</div>
+        <button type="button" id="kb-retry" style="background:#4f46e5; color:#fff; border:none; border-radius:0.5rem; padding:0.4rem 1rem; cursor:pointer;">Coba lagi</button>
+      </div>
+      <div id="kb-content" style="display:none;">
+        <table class="kb-modal-table">
+          <thead><tr><th>SKU</th><th>Warna</th><th>Size</th><th style="text-align:right;">Stok</th></tr></thead>
+          <tbody id="kb-rows"></tbody>
+        </table>
+        <div id="kb-empty-msg" style="display:none; color:#9ca3af; text-align:center; padding:1rem;">Belum ada variasi</div>
+      </div>
+      <div style="margin-top:1rem; text-align:right;">
+        <a id="kb-detail-link" href="#" style="color:#4f46e5; font-size:0.85rem; text-decoration:none; font-weight:600;">Buka Detail Batch →</a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var backdrop = document.getElementById('kb-backdrop');
+  var rowsEl = document.getElementById('kb-rows');
+  var loadingEl = document.getElementById('kb-loading');
+  var errorEl = document.getElementById('kb-error');
+  var contentEl = document.getElementById('kb-content');
+  var emptyMsg = document.getElementById('kb-empty-msg');
+  var currentBatchId = null;
+
+  function openModal() { backdrop.classList.add('open'); }
+  function closeModal() { backdrop.classList.remove('open'); }
+
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  function loadVariants(batchId) {
+    loadingEl.style.display = 'block';
+    errorEl.style.display = 'none';
+    contentEl.style.display = 'none';
+    fetch('/production-batches/' + batchId + '/variants', { headers: { 'Accept': 'application/json' } })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+      .then(function (data) {
+        document.getElementById('kb-title').textContent = data.batch.nama_produk || '';
+        document.getElementById('kb-detail-link').href = '/production-batches/' + data.batch.id;
+        rowsEl.innerHTML = '';
+        if (!data.variants.length) {
+          emptyMsg.style.display = 'block';
+        } else {
+          emptyMsg.style.display = 'none';
+          data.variants.forEach(function (v) {
+            var tr = document.createElement('tr');
+            tr.innerHTML = '<td style="font-family:ui-monospace,Menlo,monospace;">' + esc(v.sku) + '</td>'
+              + '<td>' + esc(v.warna) + '</td>'
+              + '<td>' + esc(v.size) + '</td>'
+              + '<td style="text-align:right;">' + esc(v.stok) + '</td>';
+            rowsEl.appendChild(tr);
+          });
+        }
+        loadingEl.style.display = 'none';
+        contentEl.style.display = 'block';
+      })
+      .catch(function () {
+        loadingEl.style.display = 'none';
+        errorEl.style.display = 'block';
+      });
+  }
+
+  document.querySelectorAll('.kanban-card').forEach(function (card) {
+    card.addEventListener('click', function () {
+      currentBatchId = card.getAttribute('data-batch-id');
+      openModal();
+      loadVariants(currentBatchId);
+    });
+  });
+
+  document.getElementById('kb-close').addEventListener('click', closeModal);
+  document.getElementById('kb-retry').addEventListener('click', function () {
+    if (currentBatchId) loadVariants(currentBatchId);
+  });
+  backdrop.addEventListener('click', function (e) { if (e.target === backdrop) closeModal(); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeModal(); });
+})();
+</script>
