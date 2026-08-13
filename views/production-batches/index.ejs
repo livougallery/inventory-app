@@ -152,6 +152,10 @@
   document.querySelectorAll('.kanban-card').forEach(function (card) {
     card.addEventListener('click', function () {
       currentBatchId = card.getAttribute('data-batch-id');
+      var sku = card.getAttribute('data-sku');
+      var variasi = card.getAttribute('data-variasi');
+      document.getElementById('kb-subtitle').textContent =
+        (sku || 'Tanpa SKU') + ' · ' + variasi + ' variasi';
       openModal();
       loadVariants(currentBatchId);
     });
