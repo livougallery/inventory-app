@@ -13,3 +13,6 @@ tmp/schema.sql
 tmp/supabase-import.sql
 tmp/pg-schema.sql
 tmp/pg-data.sql
+
+# Runtime log (server berjalan via nohup)
+tmp/server.log

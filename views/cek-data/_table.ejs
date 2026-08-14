@@ -1,0 +1,33 @@
+<%#
+  Partial satu tabel view-only "Cek Data".
+  Variabel wajib:
+    cdTab   — path tab aktif (untuk menandai .active)
+    cdP     — prefix DOM tabel ini (mis. 'cdm')
+    cdPh    — placeholder input cari
+%>
+<nav class="cd-tabs">
+  <a class="cd-tab <%= cdTab === 'material' ? 'active' : '' %>" href="/cek-data/material">📦 Data Material</a>
+  <a class="cd-tab <%= cdTab === 'pembelian-material' ? 'active' : '' %>" href="/cek-data/pembelian-material">🚚 Pembelian Material</a>
+</nav>
+
+<div class="cd-toolbar">
+  <input id="<%= cdP %>-global" class="cd-search" type="text" placeholder="🔎 <%= cdPh %>">
+  <span id="<%= cdP %>-flag" class="cd-note warn"></span>
+  <span class="cd-note">🔒 View only</span>
+</div>
+
+<div class="cd-card">
+  <div class="cd-scroll">
+    <table class="cd-table">
+      <thead><tr id="<%= cdP %>-head"></tr></thead>
+      <tbody id="<%= cdP %>-body"></tbody>
+    </table>
+  </div>
+  <div class="cd-pager">
+    <span id="<%= cdP %>-info" class="cd-pager-info"></span>
+    <div>
+      <button id="<%= cdP %>-prev" class="cd-pager-btn">← Sebelumnya</button>
+      <button id="<%= cdP %>-next" class="cd-pager-btn">Berikutnya →</button>
+    </div>
+  </div>
+</div>

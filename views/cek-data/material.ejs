@@ -1,0 +1,60 @@
+<%
+  // Data dikirim ke TanStack Table (client-side) sebagai JSON.
+  // View-only: halaman ini hanya untuk mengecek salah input data.
+%>
+<link rel="stylesheet" href="/cek-data.css">
+
+<div class="cd-page">
+  <h1 class="cd-title">📦 Material — Data Material</h1>
+  <p class="cd-subtitle">Bahan baku dari Supabase — hanya untuk melihat, cek apakah ada salah input data</p>
+
+  <%- include('_table', { cdTab: 'material', cdP: 'cdm', cdPh: 'Cari bahan…' }) %>
+</div>
+
+<script src="/vendor/tanstack-table.js"></script>
+<script src="/cek-data.js"></script>
+<script id="cdm-data" type="application/json"><%- JSON.stringify(rows) %></script>
+<script>
+(function () {
+  // stok dari pg bisa datang sebagai string — ubah ke number supaya sorting benar
+  var toNum = function (v) { return v == null ? null : Number(v); };
+  var data = JSON.parse(document.getElementById('cdm-data').textContent).map(function (r) {
+    return Object.assign({}, r, {
+      stok: toNum(r.stok),
+      harga_terakhir: toNum(r.harga_terakhir)
+    });
+  });
+
+  CekDataTable({
+    prefix: 'cdm',
+    data: data,
+    rowId: function (r) { return r.id; },
+    pageSize: 10,
+    flag: function (r) {
+      return Number(r.stok) <= 0 || !r.satuan || r.harga_terakhir == null;
+    },
+    columns: [
+      { id: 'foto_path',    header: 'Foto',
+        render: function (v) {
+          if (!v) return null;
+          var a = document.createElement('a');
+          a.href = '/uploads/' + v;
+          a.target = '_blank';
+          a.className = 'cd-link';
+          a.textContent = '📷 Lihat';
+          return a;
+        } },
+      { id: 'kode_bahan',   header: 'Kode' },
+      { id: 'nama',         header: 'Nama Bahan' },
+      { id: 'tipe_label',   header: 'Tipe' },
+      { id: 'varian_list',  header: 'Varian' },
+      { id: 'stok',         header: 'Stok', type: 'num',
+        cellClass: function (r) { return Number(r.stok) <= 0 ? 'cd-bad' : ''; } },
+      { id: 'satuan',       header: 'Satuan',
+        cellClass: function (r) { return r.satuan ? '' : 'cd-bad'; } },
+      { id: 'harga_terakhir', header: 'Harga Terakhir', type: 'rp',
+        cellClass: function (r) { return r.harga_terakhir == null ? 'cd-warn' : ''; } }
+    ]
+  });
+})();
+</script>

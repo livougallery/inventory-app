@@ -1,0 +1,65 @@
+<%
+  // Data dikirim ke TanStack Table (client-side) sebagai JSON.
+  // View-only: halaman ini hanya untuk mengecek salah input data.
+%>
+<link rel="stylesheet" href="/cek-data.css">
+
+<div class="cd-page">
+  <h1 class="cd-title">🚚 Material — Pembelian Material</h1>
+  <p class="cd-subtitle">Kedatangan batch bahan baku dari Supabase — hanya untuk melihat, cek apakah ada salah input data</p>
+
+  <%- include('_table', { cdTab: 'pembelian-material', cdP: 'cdk', cdPh: 'Cari batch / bahan / No PO / supplier…' }) %>
+</div>
+
+<script src="/vendor/tanstack-table.js"></script>
+<script src="/cek-data.js"></script>
+<script id="cdk-data" type="application/json"><%- JSON.stringify(rows) %></script>
+<script>
+(function () {
+  // qty / harga dari pg bisa datang sebagai string — ubah ke number supaya sorting benar
+  var toNum = function (v) { return v == null ? null : Number(v); };
+  var data = JSON.parse(document.getElementById('cdk-data').textContent).map(function (r) {
+    return Object.assign({}, r, { qty_awal: toNum(r.qty_awal), harga_satuan: toNum(r.harga_satuan) });
+  });
+
+  CekDataTable({
+    prefix: 'cdk',
+    data: data,
+    rowId: function (r) { return r.id; },
+    pageSize: 10,
+    flag: function (r) {
+      return Number(r.qty_awal) <= 0 || Number(r.harga_satuan) <= 0 || r.finance_status === 'Rejected';
+    },
+    columns: [
+      { id: 'tgl_masuk',     header: 'Tgl Masuk', type: 'tgl', sortFn: 'datetime' },
+      { id: 'bahan',         header: 'Bahan' },
+      { id: 'varian_list',   header: 'Varian' },
+      { id: 'qty_awal',      header: 'Qty Masuk', type: 'num',
+        cellClass: function (r) { return Number(r.qty_awal) <= 0 ? 'cd-bad' : ''; } },
+      { id: 'satuan',        header: 'Satuan' },
+      { id: 'harga_satuan',  header: 'Harga Satuan', type: 'rp',
+        cellClass: function (r) { return Number(r.harga_satuan) <= 0 ? 'cd-warn' : ''; } },
+      { id: 'no_po',         header: 'No PO' },
+      { id: 'supplier',      header: 'Supplier' },
+      { id: 'pic',           header: 'PIC' },
+      { id: 'flow_transaksi', header: 'Flow Transaksi',
+        cellClass: function (r) { return r.flow_transaksi ? '' : 'cd-warn'; } },
+      { id: 'invoice_url',   header: 'Proof of Invoice',
+        render: function (v) {
+          if (!v) return null;
+          var a = document.createElement('a');
+          a.href = v;
+          a.className = 'cd-link';
+          a.textContent = '🧾 Lihat Bukti';
+          return a;
+        } },
+      { id: 'finance_status', header: 'Finance Validation', type: 'badge',
+        badgeText: function (r) { return r.finance_status; },
+        badgeClass: function (r) {
+          return r.finance_status === 'Approved' ? 'ok'
+               : r.finance_status === 'Rejected' ? 'bad' : 'pending';
+        } }
+    ]
+  });
+})();
+</script>

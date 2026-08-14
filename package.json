@@ -6,13 +6,15 @@
   "scripts": {
     "start": "node index.js",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "build:vendor": "esbuild scripts/tanstack-entry.js --bundle --format=iife --target=es2019 --minify --outfile=public/vendor/tanstack-table.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@tanstack/table-core": "^9.1.2",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.11.1",
     "connect-pg-simple": "^10.0.0",
@@ -28,6 +30,7 @@
     "pg": "^8.22.0"
   },
   "devDependencies": {
+    "esbuild": "^0.28.2",
     "jest": "^30.4.2"
   }
 }

@@ -392,6 +392,15 @@ async function bootstrapSchema(schemaName) {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- Foto bahan baku (untuk kolom Foto di tabel view Material).
+    CREATE TABLE IF NOT EXISTS ${t('raw_material_photos')} (
+      id SERIAL PRIMARY KEY,
+      raw_material_id INTEGER NOT NULL REFERENCES ${t('raw_materials')}(id) ON DELETE CASCADE,
+      file_path TEXT NOT NULL,
+      is_primary INTEGER NOT NULL DEFAULT 0,
+      uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS ${t('delivery_expenses')} (
       id SERIAL PRIMARY KEY,
       tgl TEXT NOT NULL,
@@ -404,9 +413,28 @@ async function bootstrapSchema(schemaName) {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- Resep bahan (BOM) per varian produk: berapa bahan dibutuhkan untuk 1 pcs jadi.
+    -- Dibuat untuk tabel view "Material" di menu Cek Data.
+    CREATE TABLE IF NOT EXISTS ${t('product_bom')} (
+      id SERIAL PRIMARY KEY,
+      variant_id INTEGER NOT NULL REFERENCES ${t('product_variants')}(id) ON DELETE CASCADE,
+      raw_material_id INTEGER NOT NULL REFERENCES ${t('raw_materials')}(id),
+      qty_per_pcs REAL NOT NULL DEFAULT 0,
+      catatan TEXT DEFAULT '',
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE INDEX IF NOT EXISTS idx_product_photos_product ON ${t('product_photos')}(product_id);
     CREATE INDEX IF NOT EXISTS idx_product_photos_variant ON ${t('product_photos')}(variant_id);
     CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON ${t('session')}(expire);
+  `);
+
+  // Migrasi kolom tambahan (idempotent) — untuk tabel yang sudah terlanjur dibuat
+  // sebelum kolomnya ada. Nilai: Livou Transfer, Saldo Shopee, Reimbursement,
+  // Deposit Cash, Saldo Lalamove.
+  await db.exec(`
+    ALTER TABLE ${t('purchase_orders')} ADD COLUMN IF NOT EXISTS flow_transaksi TEXT DEFAULT '';
   `);
 }
 

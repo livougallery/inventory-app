@@ -116,11 +116,16 @@
       <a href="/production-batches" class="sb-item <%= currentPath.startsWith('/production-batches') ? 'active' : '' %>">
         <span class="sb-icon">🏭</span><span class="sb-label">Produksi</span>
       </a>
+      <div class="sb-group">Data</div>
+      <a href="/cek-data/material" class="sb-item <%= currentPath.startsWith('/cek-data') ? 'active' : '' %>">
+        <span class="sb-icon">🧵</span><span class="sb-label">Material</span>
+      </a>
     </nav>
     <% } else { %>
     <nav class="sb-nav">
       <a href="/dashboard" class="sb-item <%= currentPath === '/dashboard' ? 'active' : '' %>"><span class="sb-icon">📊</span><span class="sb-label">Dashboard</span></a>
       <div class="sb-group">Master Data</div>
+      <a href="/cek-data/material" class="sb-item <%= currentPath.startsWith('/cek-data') ? 'active' : '' %>"><span class="sb-icon">🧵</span><span class="sb-label">Material</span></a>
       <a href="/vendors" class="sb-item <%= currentPath.startsWith('/vendors') ? 'active' : '' %>"><span class="sb-icon">🏢</span><span class="sb-label">Vendor</span></a>
       <a href="/products" class="sb-item <%= currentPath.startsWith('/products') ? 'active' : '' %>"><span class="sb-icon">📦</span><span class="sb-label">Produk</span></a>
       <a href="/raw-materials" class="sb-item <%= currentPath.startsWith('/raw-materials') ? 'active' : '' %>"><span class="sb-icon">🧵</span><span class="sb-label">Bahan Baku</span></a>
@@ -189,5 +194,6 @@
     <% } %>
     <%- body %>
   </main>
+  <%- locals.script || '' %>
 </body>
 </html>

@@ -69,6 +69,7 @@ app.use('/hpp', require('./routes/hpp'));
 app.use('/validation', require('./routes/validation'));
 app.use('/reports', require('./routes/reports'));
 app.use('/admin/currencies', require('./routes/currencies'));
+app.use('/cek-data', require('./routes/cek-data'));
 
 // Error handler
 app.use((err, req, res, next) => {
@@ -108,6 +109,21 @@ async function seedDefaults() {
     for (const tipe of ['kain', 'aksesoris', 'jahit', 'kirim_aksesoris', 'others']) {
       await db.run('INSERT INTO hpp_formula_templates (tipe_biaya, nama_template, formula_json, is_default) VALUES ($1, $2, $3, 1) ON CONFLICT DO NOTHING',
         [tipe, `Default ${tipe} (Weighted Average)`, fjson]);
+    }
+  }
+
+  // Contoh resep bahan (BOM) supaya tabel "Material" tidak kosong saat pertama dilihat.
+  // Baris ini data contoh — silakan dihapus/diedit lewat form BOM nanti.
+  const bomCnt = await db.one('SELECT COUNT(*)::int AS c FROM product_bom');
+  if (bomCnt.c === 0) {
+    const contoh = [
+      [3, 4, 1.5, 'Contoh: kain utama 1.5 Yard per pcs'],   // Rowe Tee LVU-TOP-11-EBK × FP20703
+      [3, 5, 1,   'Contoh: 1 label per pcs'],                // Rowe Tee LVU-TOP-11-EBK × Label Livou
+      [3, 6, 1,   'Contoh: 1 jasa jahit per pcs'],           // Rowe Tee LVU-TOP-11-EBK × Jahit Konveksi
+    ];
+    for (const [variant_id, raw_material_id, qty, catatan] of contoh) {
+      await db.run('INSERT INTO product_bom (variant_id, raw_material_id, qty_per_pcs, catatan) VALUES ($1, $2, $3, $4)',
+        [variant_id, raw_material_id, qty, catatan]);
     }
   }
 }
