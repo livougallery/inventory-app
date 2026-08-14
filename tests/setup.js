@@ -14,6 +14,11 @@
  */
 require('dotenv').config();
 process.env.NODE_ENV = 'test';
+// Test harus selalu menguji perilaku auth normal — matikan mode presentasi
+// kalau kebetulan aktif di .env developer. Jangan pakai delete: db.js
+// memanggil dotenv.config() lagi setelah file ini dan akan meng-inject
+// ulang nilainya; set ke string kosong supaya dotenv tidak menimpanya.
+process.env.AUTO_LOGIN = '';
 
 const db = require('../db');
 

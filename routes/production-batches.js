@@ -8,12 +8,17 @@ const FifoService = require('../services/fifoService');
 const HppFormula = require('../services/hppFormulaService');
 const { validateToken } = require('../middleware/csrf');
 
+// Variasi dengan stok di bawah ambang ini membuat batch dianggap urgent
+const STOK_URGENT = 20;
+
 router.get('/', isAuthenticated, async (req, res) => {
   const batches = (await db.query(`
     SELECT pb.*, p.nama_produk, v.nama AS vendor_nama,
            ph.file_path AS foto_path,
            pv.sku AS sku_dasar,
-           COALESCE(vc.jumlah, 0) AS jumlah_variasi
+           COALESCE(vc.jumlah, 0) AS jumlah_variasi,
+           COALESCE(vk.kritis, 0) AS stok_kritis,
+           COALESCE(vs.total, 0) AS stok_total
     FROM production_batches pb
     LEFT JOIN products p ON pb.product_id = p.id
     LEFT JOIN vendors v ON pb.vendor_id = v.id
@@ -28,8 +33,31 @@ router.get('/', isAuthenticated, async (req, res) => {
     LEFT JOIN (
       SELECT product_id, COUNT(*) AS jumlah FROM product_variants GROUP BY product_id
     ) vc ON vc.product_id = pb.product_id
+    LEFT JOIN (
+      SELECT product_id, COUNT(*) AS kritis
+      FROM product_variants WHERE stok < $1 GROUP BY product_id
+    ) vk ON vk.product_id = pb.product_id
+    LEFT JOIN (
+      SELECT product_id, COALESCE(SUM(stok), 0) AS total
+      FROM product_variants GROUP BY product_id
+    ) vs ON vs.product_id = pb.product_id
     ORDER BY pb.created_at DESC
-  `)).rows;
+  `, [STOK_URGENT])).rows;
+
+  // Urutan kartu (di dalam tiap kolom mengikuti urutan array ini):
+  // 1. batch urgent (ada variasi stok < STOK_URGENT) paling atas
+  // 2. lalu total stok terkecil (paling butuh produksi)
+  // 3. lalu yang paling baru dibuat
+  batches.sort((a, b) => {
+    const ua = a.stok_kritis > 0 ? 1 : 0;
+    const ub = b.stok_kritis > 0 ? 1 : 0;
+    if (ub !== ua) return ub - ua;
+    const sa = Number(a.stok_total) || 0;
+    const sb = Number(b.stok_total) || 0;
+    if (sa !== sb) return sa - sb;
+    return new Date(b.created_at) - new Date(a.created_at);
+  });
+
   res.render('production-batches/index', { title: 'Batch Produksi', batches, error: null });
 });
 
@@ -51,10 +79,20 @@ router.post('/', isAuthenticated, role('admin'), async (req, res) => {
 
 router.get('/:id', isAuthenticated, async (req, res) => {
   const batch = await db.one(`
-    SELECT pb.*, p.nama_produk, v.nama as vendor_nama
+    SELECT pb.*, p.nama_produk, v.nama as vendor_nama,
+           pv.sku AS sku_dasar,
+           ph.file_path AS foto_path
     FROM production_batches pb
     LEFT JOIN products p ON pb.product_id = p.id
     LEFT JOIN vendors v ON pb.vendor_id = v.id
+    LEFT JOIN product_variants pv
+      ON pv.id = (SELECT p3.id FROM product_variants p3
+                  WHERE p3.product_id = pb.product_id
+                  ORDER BY p3.id ASC LIMIT 1)
+    LEFT JOIN product_photos ph
+      ON ph.id = (SELECT p2.id FROM product_photos p2
+                  WHERE p2.product_id = pb.product_id
+                  ORDER BY p2.is_primary DESC, p2.id ASC LIMIT 1)
     WHERE pb.id = $1
   `, [req.params.id]);
   if (!batch) return res.status(404).send('Batch tidak ditemukan');
@@ -65,12 +103,14 @@ router.get('/:id', isAuthenticated, async (req, res) => {
     LEFT JOIN product_variants pv ON pc.variant_id = pv.id
     WHERE pc.batch_id = $1 ORDER BY pc.created_at DESC
   `, [req.params.id])).rows;
+  // Ascending supaya "row selesai jahit" terbaca sebagai alur progres (1, 2, 3…)
   batch.deliveries = (await db.query(`
     SELECT pd.*, pv.warna, pv.size
     FROM production_deliveries pd
     LEFT JOIN product_variants pv ON pd.variant_id = pv.id
-    WHERE pd.batch_id = $1 ORDER BY pd.tgl_datang DESC
+    WHERE pd.batch_id = $1 ORDER BY pd.tgl_datang ASC, pd.id ASC
   `, [req.params.id])).rows;
+  batch.totalSelesai = batch.deliveries.reduce((s, d) => s + (d.qty_datang || 0), 0);
   batch.variants = (await db.query('SELECT * FROM product_variants WHERE product_id = $1 ORDER BY warna, size', [batch.product_id])).rows;
   const cfgRow = await db.one('SELECT formula_json FROM hpp_batch_config WHERE batch_id = $1', [req.params.id]);
   batch.formula_json = (cfgRow && cfgRow.formula_json) || '';

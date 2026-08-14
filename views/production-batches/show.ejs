@@ -1,143 +1,318 @@
-<div class="mb-4">
-  <a href="/production-batches" class="text-blue-600 hover:underline text-sm">← Kembali</a>
-</div>
+<%
+  const st = batch.status;
+  const meta = {
+    planned:     { chip: '🗓 Rencana',  grad: 'linear-gradient(135deg,#a78bfa,#6d28d9)', bg: 'linear-gradient(160deg,#ede9fe,#f5f3ff)', border: '#ddd6fe', text: '#6d28d9' },
+    in_progress: { chip: '🔨 Berjalan', grad: 'linear-gradient(135deg,#fbbf24,#f59e0b)', bg: 'linear-gradient(160deg,#fff7ed,#fffbeb)', border: '#fde68a', text: '#d97706' },
+    completed:   { chip: '✅ Selesai',  grad: 'linear-gradient(135deg,#34d399,#059669)', bg: 'linear-gradient(160deg,#d1fae5,#ecfdf5)', border: '#a7f3d0', text: '#047857' },
+  }[st];
+  const fmtNum = n => Number(n || 0).toLocaleString('id-ID');
+  const fmtRp = n => 'Rp ' + Number(n || 0).toLocaleString('id-ID');
+  const fmtTgl = s => {
+    if (!s) return '—';
+    const d = new Date(s);
+    return isNaN(d) ? s : d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  };
+  const jenisLabel = batch.jenis_produksi === 'in_house' ? 'In House' : batch.jenis_produksi === 'konveksi' ? 'Konveksi' : 'Garment';
+  const pct = batch.jumlah_dipesan > 0 ? Math.min(100, Math.round((batch.jumlah_selesai || 0) / batch.jumlah_dipesan * 100)) : 0;
+  const totalBiaya = batch.costs.reduce((s, c) => s + Number(c.biaya || 0), 0);
+  const biayaValid = batch.costs.filter(c => c.status_validasi === 'validated').reduce((s, c) => s + Number(c.biaya || 0), 0);
+%>
+<style>
+  .bd-page { background:linear-gradient(135deg,#eef2ff 0%,#fdf2f8 50%,#ecfdf5 100%); margin:-1rem -1.5rem; padding:1.5rem 1.5rem 6rem; min-height:100vh; }
+  @media (min-width:768px){ .bd-page { padding:1.5rem 2rem 3rem; } }
+  .bd-back { display:inline-flex; align-items:center; gap:0.4rem; background:#fff; color:#6d28d9; font-weight:700; font-size:0.85rem; text-decoration:none; padding:0.5rem 1rem; border-radius:9999px; box-shadow:0 1px 3px rgba(0,0,0,0.1); margin-bottom:1rem; transition:transform 150ms, box-shadow 150ms; }
+  .bd-back:hover { transform:translateX(-3px); box-shadow:0 4px 10px rgba(109,40,217,0.25); }
 
-<h1 class="text-2xl font-bold mb-1"><%= batch.nama_batch %></h1>
-<p class="text-gray-500 mb-4">
-  Produk: <strong><%= batch.nama_produk %></strong> |
-  Jenis: <strong><%= batch.jenis_produksi === 'in_house' ? 'In House' : batch.jenis_produksi === 'konveksi' ? 'Konveksi' : 'Garment' %></strong>
-  <% if (batch.vendor_nama) { %> | Vendor: <strong><%= batch.vendor_nama %></strong><% } %> |
-  Progress: <strong><%= batch.jumlah_selesai %>/<%= batch.jumlah_dipesan %></strong>
-</p>
+  .bd-hero { border-radius:18px; overflow:hidden; box-shadow:0 10px 30px rgba(0,0,0,0.12); background:<%= meta.bg %>; border:1px solid <%= meta.border %>; display:flex; }
+  @media (max-width:640px){ .bd-hero { flex-direction:column; } }
+  .bd-hero-foto { width:200px; object-fit:cover; background:#f3f4f6; }
+  @media (max-width:640px){ .bd-hero-foto { width:100%; height:180px; } }
+  .bd-hero-foto-ph { width:200px; display:flex; align-items:center; justify-content:center; font-size:4.5rem; }
+  @media (max-width:640px){ .bd-hero-foto-ph { width:100%; height:180px; } }
+  .bd-hero-body { padding:1.25rem 1.5rem; flex:1; }
+  .bd-status { display:inline-block; background:<%= meta.grad %>; color:#fff; font-weight:700; font-size:0.78rem; padding:0.25rem 0.8rem; border-radius:9999px; box-shadow:0 2px 6px rgba(0,0,0,0.18); margin-bottom:0.6rem; }
+  .bd-nama { font-size:1.4rem; font-weight:800; color:#1f2937; margin:0 0 0.2rem; }
+  .bd-produk { font-size:0.95rem; color:#4b5563; margin:0 0 0.5rem; }
+  .bd-sku { display:inline-block; font-family:ui-monospace,SFMono-Regular,Menlo,monospace; background:#fff; border:1px solid #e5e7eb; color:#6b7280; font-size:0.75rem; padding:0.15rem 0.6rem; border-radius:0.5rem; }
+  .bd-chips { display:flex; flex-wrap:wrap; gap:0.5rem; margin-top:0.75rem; }
+  .bd-chip { background:rgba(255,255,255,0.85); border-radius:9999px; padding:0.25rem 0.75rem; font-size:0.78rem; font-weight:600; color:#374151; }
 
-<% if (user.role === 'admin' && batch.status !== 'completed') { %>
-<div class="bg-white shadow rounded p-4 mb-4">
-  <h3 class="font-bold mb-2">📥 Input Kedatangan Barang</h3>
-  <form method="POST" action="/production-batches/<%= batch.id %>/deliveries" class="flex flex-wrap gap-2 items-end">
-    <input type="hidden" name="_csrf" value="<%= csrfToken %>">
-    <div>
-      <label class="block text-xs text-gray-500">Varian</label>
-      <select name="variant_id" class="border rounded p-2" required>
-        <option value="">Pilih Varian</option>
+  .bd-section { margin-top:1.5rem; }
+  .bd-section-title { font-size:1.05rem; font-weight:800; color:#312e81; margin:0 0 0.75rem; }
+
+  .bd-progress { background:#fff; border-radius:16px; padding:1.1rem 1.25rem; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
+  .bd-progress-top { display:flex; justify-content:space-between; align-items:baseline; flex-wrap:wrap; gap:0.5rem; margin-bottom:0.6rem; }
+  .bd-progress-label { font-weight:700; color:#374151; font-size:0.9rem; }
+  .bd-progress-num { font-weight:800; color:<%= meta.text %>; font-size:1rem; }
+  .bd-progress-track { background:#f3f4f6; border-radius:9999px; height:0.9rem; overflow:hidden; }
+  .bd-progress-fill { height:100%; border-radius:9999px; background:<%= meta.grad %>; transition:width 600ms ease; }
+
+  .bd-tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(150px,1fr)); gap:0.75rem; }
+  .bd-tile { background:#fff; border-radius:14px; padding:0.9rem 1rem; box-shadow:0 1px 4px rgba(0,0,0,0.06); border-top:4px solid #c4b5fd; }
+  .bd-tile:nth-child(3n+2) { border-top-color:#fcd34d; }
+  .bd-tile:nth-child(3n) { border-top-color:#6ee7b7; }
+  .bd-tile-label { font-size:0.7rem; text-transform:uppercase; letter-spacing:0.05em; color:#9ca3af; font-weight:700; }
+  .bd-tile-value { font-size:1.05rem; font-weight:800; color:#1f2937; margin-top:0.2rem; overflow-wrap:anywhere; }
+  .bd-tile-sub { font-size:0.72rem; color:#9ca3af; margin-top:0.1rem; }
+
+  .bd-var-wrap { display:flex; flex-wrap:wrap; gap:0.6rem; }
+  .bd-var { background:#fff; border-radius:14px; padding:0.7rem 0.95rem; box-shadow:0 1px 4px rgba(0,0,0,0.06); border-left:4px solid <%= meta.grad.split(',')[1] %>; min-width:140px; }
+  .bd-var-sku { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:0.72rem; color:#9ca3af; }
+  .bd-var-name { font-weight:700; font-size:0.88rem; color:#1f2937; margin:0.1rem 0 0.25rem; }
+  .bd-var-stok { font-size:0.78rem; font-weight:700; color:<%= meta.text %>; }
+
+  .bd-jahit-row { display:flex; align-items:center; gap:0.75rem; background:#fff; border-radius:14px; padding:0.75rem 1rem; box-shadow:0 1px 4px rgba(0,0,0,0.06); }
+  .bd-jahit-row + .bd-jahit-row { margin-top:0.6rem; }
+  .bd-jahit-num { width:2rem; height:2rem; flex-shrink:0; border-radius:9999px; background:<%= meta.grad %>; color:#fff; font-weight:800; font-size:0.85rem; display:flex; align-items:center; justify-content:center; box-shadow:0 2px 6px rgba(0,0,0,0.15); }
+  .bd-jahit-info { flex:1; }
+  .bd-jahit-tgl { font-weight:700; font-size:0.85rem; color:#1f2937; }
+  .bd-jahit-var { font-size:0.78rem; color:#6b7280; }
+  .bd-jahit-qty { background:<%= meta.bg %>; color:<%= meta.text %>; font-weight:800; font-size:0.85rem; border-radius:9999px; padding:0.3rem 0.8rem; white-space:nowrap; }
+
+  .bd-biaya { background:#fff; border-radius:16px; padding:1.1rem 1.25rem; box-shadow:0 1px 4px rgba(0,0,0,0.06); display:flex; flex-wrap:wrap; gap:1rem; align-items:center; justify-content:space-between; }
+  .bd-biaya-item { display:flex; flex-direction:column; gap:0.15rem; }
+  .bd-biaya-label { font-size:0.72rem; text-transform:uppercase; letter-spacing:0.05em; color:#9ca3af; font-weight:700; }
+  .bd-biaya-value { font-size:1.15rem; font-weight:800; color:#312e81; }
+  .bd-biaya-value.green { color:#047857; }
+  .bd-empty { color:#9ca3af; font-size:0.85rem; background:#fff; border:2px dashed #e5e7eb; border-radius:14px; padding:1.25rem; text-align:center; }
+
+  /* Opt-in view transition (wajib ada di halaman tujuan juga, Chrome 126+) */
+  @view-transition { navigation: auto; }
+  ::view-transition-old(batch-card-<%= batch.id %>), ::view-transition-new(batch-card-<%= batch.id %>) {
+    height:100%;
+    animation-duration:380ms;
+    animation-timing-function:cubic-bezier(0.3, 0, 0.2, 1);
+  }
+</style>
+
+<div class="bd-page">
+  <a href="/production-batches" class="bd-back">← Kembali ke Kanban</a>
+
+  <div class="bd-hero" style="view-transition-name:batch-card-<%= batch.id %>;">
+    <% if (batch.foto_path) { %>
+      <img class="bd-hero-foto" src="/uploads/<%= batch.foto_path %>" alt="<%= batch.nama_produk %>">
+    <% } else { %>
+      <div class="bd-hero-foto-ph">👕</div>
+    <% } %>
+    <div class="bd-hero-body">
+      <span class="bd-status"><%= meta.chip %></span>
+      <h1 class="bd-nama"><%= batch.nama_batch %></h1>
+      <p class="bd-produk">Produk: <strong><%= batch.nama_produk %></strong></p>
+      <span class="bd-sku"><%= batch.sku_dasar || 'Tanpa SKU' %></span>
+      <div class="bd-chips">
+        <span class="bd-chip">🧵 <%= jenisLabel %></span>
+        <% if (batch.vendor_nama) { %><span class="bd-chip">🏢 <%= batch.vendor_nama %></span><% } %>
+        <span class="bd-chip">📅 Mulai <%= fmtTgl(batch.tgl_mulai) %></span>
+        <% if (batch.tgl_selesai_est) { %><span class="bd-chip">🎯 Target <%= fmtTgl(batch.tgl_selesai_est) %></span><% } %>
+      </div>
+    </div>
+  </div>
+
+  <div class="bd-section bd-progress">
+    <div class="bd-progress-top">
+      <span class="bd-progress-label">✂️ Progress Selesai Jahit</span>
+      <span class="bd-progress-num"><%= fmtNum(batch.jumlah_selesai) %> / <%= fmtNum(batch.jumlah_dipesan) %> pcs (<%= pct %>%)</span>
+    </div>
+    <div class="bd-progress-track">
+      <div class="bd-progress-fill" style="width:<%= pct %>%;"></div>
+    </div>
+  </div>
+
+  <div class="bd-section">
+    <h2 class="bd-section-title">📌 Info Produksi</h2>
+    <div class="bd-tiles">
+      <div class="bd-tile">
+        <div class="bd-tile-label">Kode Produksi</div>
+        <div class="bd-tile-value"><%= batch.nama_batch || '—' %></div>
+      </div>
+      <div class="bd-tile">
+        <div class="bd-tile-label">Jumlah Dipesan</div>
+        <div class="bd-tile-value"><%= fmtNum(batch.jumlah_dipesan) %> pcs</div>
+      </div>
+      <div class="bd-tile">
+        <div class="bd-tile-label">Selesai Jahit</div>
+        <div class="bd-tile-value"><%= fmtNum(batch.jumlah_selesai) %> pcs</div>
+      </div>
+      <div class="bd-tile">
+        <div class="bd-tile-label">Variasi</div>
+        <div class="bd-tile-value"><%= batch.variants.length %></div>
+        <div class="bd-tile-sub">warna & ukuran</div>
+      </div>
+      <div class="bd-tile">
+        <div class="bd-tile-label">Baris Jahit Selesai</div>
+        <div class="bd-tile-value"><%= batch.deliveries.length %></div>
+        <div class="bd-tile-sub">catatan kedatangan</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="bd-section">
+    <h2 class="bd-section-title">🎨 Variasi</h2>
+    <% if (batch.variants.length === 0) { %>
+      <div class="bd-empty">Belum ada variasi untuk produk ini</div>
+    <% } else { %>
+      <div class="bd-var-wrap">
         <% batch.variants.forEach(v => { %>
-        <option value="<%= v.id %>"><%= v.warna %> - <%= v.size %></option>
+        <div class="bd-var">
+          <div class="bd-var-sku"><%= v.sku || '—' %></div>
+          <div class="bd-var-name"><%= v.warna %> · <%= v.size %></div>
+          <div class="bd-var-stok">Stok: <%= fmtNum(v.stok) %> pcs</div>
+        </div>
         <% }) %>
-      </select>
-    </div>
-    <div>
-      <label class="block text-xs text-gray-500">Tanggal Datang</label>
-      <input type="date" name="tgl_datang" value="<%= new Date().toISOString().split('T')[0] %>" class="border rounded p-2" required>
-    </div>
-    <div>
-      <label class="block text-xs text-gray-500">Jumlah (pcs)</label>
-      <input type="number" name="qty_datang" class="border rounded p-2 w-20" required min="1">
-    </div>
-    <div>
-      <label class="block text-xs text-gray-500">Keterangan</label>
-      <input type="text" name="keterangan" class="border rounded p-2">
-    </div>
-    <button type="submit" class="bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700">Catat</button>
-  </form>
-</div>
-<% } %>
+      </div>
+    <% } %>
+  </div>
 
-<h2 class="font-bold text-lg mb-2">Riwayat Kedatangan</h2>
-<div class="bg-white shadow rounded overflow-x-auto mb-6">
-  <table class="w-full text-sm">
-    <thead><tr class="bg-gray-100">
-      <th class="p-3 text-left">Tanggal</th>
-      <th class="p-3 text-left">Varian</th>
-      <th class="p-3 text-right">Qty</th>
-      <th class="p-3 text-left">Keterangan</th>
-    </tr></thead>
-    <tbody>
-      <% batch.deliveries.forEach(d => { %>
-      <tr class="border-t">
-        <td class="p-3"><%= d.tgl_datang %></td>
-        <td class="p-3"><%= d.warna %> - <%= d.size %></td>
-        <td class="p-3 text-right"><%= d.qty_datang %></td>
-        <td class="p-3"><%= d.keterangan || '-' %></td>
-      </tr>
+  <div class="bd-section">
+    <h2 class="bd-section-title">🪡 Selesai Jahit</h2>
+    <% if (batch.deliveries.length === 0) { %>
+      <div class="bd-empty">Belum ada catatan selesai jahit</div>
+    <% } else { %>
+      <% batch.deliveries.forEach((d, i) => { %>
+      <div class="bd-jahit-row">
+        <div class="bd-jahit-num"><%= i + 1 %></div>
+        <div class="bd-jahit-info">
+          <div class="bd-jahit-tgl"><%= fmtTgl(d.tgl_datang) %></div>
+          <div class="bd-jahit-var"><%= d.warna %> · <%= d.size %><%= d.keterangan ? ' — ' + d.keterangan : '' %></div>
+        </div>
+        <div class="bd-jahit-qty">+<%= fmtNum(d.qty_datang) %> pcs</div>
+      </div>
       <% }) %>
-      <% if (batch.deliveries.length === 0) { %><tr><td colspan="4" class="p-3 text-center text-gray-400">Belum ada kedatangan</td></tr><% } %>
-    </tbody>
-  </table>
-</div>
+    <% } %>
+  </div>
 
-<div class="flex justify-between items-center mb-2">
-  <h2 class="font-bold text-lg">Biaya Produksi</h2>
+  <div class="bd-section">
+    <h2 class="bd-section-title">💰 Biaya Produksi</h2>
+    <% if (batch.costs.length === 0) { %>
+      <div class="bd-empty">Belum ada biaya tercatat</div>
+    <% } else { %>
+      <div class="bd-biaya">
+        <div class="bd-biaya-item">
+          <span class="bd-biaya-label">Total Biaya</span>
+          <span class="bd-biaya-value"><%= fmtRp(totalBiaya) %></span>
+        </div>
+        <div class="bd-biaya-item">
+          <span class="bd-biaya-label">Tervalidasi Finance</span>
+          <span class="bd-biaya-value green"><%= fmtRp(biayaValid) %></span>
+        </div>
+        <div class="bd-biaya-item">
+          <span class="bd-biaya-label">Jumlah Catatan</span>
+          <span class="bd-biaya-value"><%= batch.costs.length %></span>
+        </div>
+      </div>
+    <% } %>
+  </div>
+
+  <% if (!locals.modePresentasi) { %>
+  <!-- Form input & kalkulator HPP disembunyikan saat mode presentasi.
+       Ke depannya input data lewat form tersendiri, bukan langsung di tabel master. -->
   <% if (user.role === 'admin' && batch.status !== 'completed') { %>
-    <a href="/production-batches/<%= batch.id %>/add-cost" class="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">+ Tambah Biaya</a>
+  <div class="bg-white shadow rounded p-4 mb-4 mt-6">
+    <h3 class="font-bold mb-2">📥 Input Kedatangan Barang</h3>
+    <form method="POST" action="/production-batches/<%= batch.id %>/deliveries" class="flex flex-wrap gap-2 items-end">
+      <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+      <div>
+        <label class="block text-xs text-gray-500">Varian</label>
+        <select name="variant_id" class="border rounded p-2" required>
+          <option value="">Pilih Varian</option>
+          <% batch.variants.forEach(v => { %>
+          <option value="<%= v.id %>"><%= v.warna %> - <%= v.size %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500">Tanggal Datang</label>
+        <input type="date" name="tgl_datang" value="<%= new Date().toISOString().split('T')[0] %>" class="border rounded p-2" required>
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500">Jumlah (pcs)</label>
+        <input type="number" name="qty_datang" class="border rounded p-2 w-20" required min="1">
+      </div>
+      <div>
+        <label class="block text-xs text-gray-500">Keterangan</label>
+        <input type="text" name="keterangan" class="border rounded p-2">
+      </div>
+      <button type="submit" class="bg-green-600 text-white px-3 py-2 rounded text-sm hover:bg-green-700">Catat</button>
+    </form>
+  </div>
+  <% } %>
+
+  <div class="flex justify-between items-center mb-2 mt-6">
+    <h2 class="font-bold text-lg">Rincian Biaya</h2>
+    <% if (user.role === 'admin' && batch.status !== 'completed') { %>
+      <a href="/production-batches/<%= batch.id %>/add-cost" class="bg-blue-600 text-white px-3 py-1.5 rounded text-sm hover:bg-blue-700">+ Tambah Biaya</a>
+    <% } %>
+  </div>
+  <div class="bg-white shadow rounded overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead><tr class="bg-gray-100">
+        <th class="p-3 text-left">Tipe Biaya</th>
+        <th class="p-3 text-left">Varian</th>
+        <th class="p-3 text-left">Material</th>
+        <th class="p-3 text-right">Qty</th>
+        <th class="p-3 text-right">Biaya</th>
+        <th class="p-3 text-left">Status</th>
+      </tr></thead>
+      <tbody>
+        <% batch.costs.forEach(c => { %>
+        <tr class="border-t">
+          <td class="p-3"><%= c.tipe_biaya === 'kirim_aksesoris' ? 'Kirim Aksesoris' : c.tipe_biaya.charAt(0).toUpperCase() + c.tipe_biaya.slice(1) %></td>
+          <td class="p-3"><%= c.warna ? c.warna + ' - ' + c.size : 'Semua Varian' %></td>
+          <td class="p-3"><%= c.material_nama || '-' %></td>
+          <td class="p-3 text-right"><%= c.qty_terpakai ? Number(c.qty_terpakai).toLocaleString('id-ID') : '-' %></td>
+          <td class="p-3 text-right">Rp <%= Number(c.biaya).toLocaleString('id-ID') %></td>
+          <td class="p-3">
+            <span class="px-2 py-0.5 text-xs rounded-full
+              <%= c.status_validasi === 'pending' ? 'bg-yellow-100 text-yellow-700' : '' %>
+              <%= c.status_validasi === 'validated' ? 'bg-green-100 text-green-700' : '' %>
+              <%= c.status_validasi === 'rejected' ? 'bg-red-100 text-red-700' : '' %>">
+              <%= c.status_validasi === 'pending' ? 'Pending' : c.status_validasi === 'validated' ? 'Valid' : 'Ditolak' %>
+            </span>
+          </td>
+        </tr>
+        <% }) %>
+        <% if (batch.costs.length === 0) { %><tr><td colspan="6" class="p-3 text-center text-gray-400">Belum ada biaya</td></tr><% } %>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="card mt-6">
+    <div class="card-header flex justify-between items-center">
+      <span><i class="fas fa-calculator"></i> Kalkulator HPP</span>
+      <span id="fallback-warn" class="alert-warning text-xs px-2 py-1 rounded hidden">Formula custom invalid — pakai default</span>
+    </div>
+    <div class="card-body">
+      <label class="input-label">Formula Config (JSON)</label>
+      <textarea id="formula-json" class="input-field font-mono text-xs" rows="6" placeholder='{"mode":"weighted_avg","fields":["biaya"]}'><%- batch.formula_json || '{"mode":"weighted_avg","fields":["biaya"]}' %></textarea>
+      <div class="flex gap-2 mt-2">
+        <button type="button" class="btn btn-primary btn-sm" onclick="previewHpp()"><i class="fas fa-play"></i> Preview</button>
+        <button type="button" class="btn btn-success btn-sm" onclick="applyFormula()"><i class="fas fa-save"></i> Apply Formula</button>
+      </div>
+
+      <div id="hpp-preview" class="alert-info mt-4" style="display:none">
+        <p class="font-semibold mb-2">Preview HPP</p>
+        <pre id="hpp-preview-content" class="text-xs"></pre>
+      </div>
+    </div>
+  </div>
+
+  <script>
+  async function previewHpp() {
+    const r = await fetch('/production-batches/<%= batch.id %>/hpp-preview');
+    const j = await r.json();
+    document.getElementById('hpp-preview').style.display='block';
+    document.getElementById('hpp-preview-content').textContent = JSON.stringify(j, null, 2);
+    document.getElementById('fallback-warn').classList.toggle('hidden', !j.fallback);
+  }
+  async function applyFormula() {
+    const json = document.getElementById('formula-json').value;
+    const fd = new FormData();
+    fd.append('formula_json', json);
+    fd.append('_csrf', '<%= csrfToken %>');
+    const r = await fetch('/production-batches/<%= batch.id %>/formula', { method:'POST', body: fd });
+    if (r.ok || r.redirected) location.reload();
+    else alert('Gagal menyimpan formula');
+  }
+  </script>
   <% } %>
 </div>
-<div class="bg-white shadow rounded overflow-x-auto">
-  <table class="w-full text-sm">
-    <thead><tr class="bg-gray-100">
-      <th class="p-3 text-left">Tipe Biaya</th>
-      <th class="p-3 text-left">Varian</th>
-      <th class="p-3 text-left">Material</th>
-      <th class="p-3 text-right">Qty</th>
-      <th class="p-3 text-right">Biaya</th>
-      <th class="p-3 text-left">Status</th>
-    </tr></thead>
-    <tbody>
-      <% batch.costs.forEach(c => { %>
-      <tr class="border-t">
-        <td class="p-3"><%= c.tipe_biaya === 'kirim_aksesoris' ? 'Kirim Aksesoris' : c.tipe_biaya.charAt(0).toUpperCase() + c.tipe_biaya.slice(1) %></td>
-        <td class="p-3"><%= c.warna ? c.warna + ' - ' + c.size : 'Semua Varian' %></td>
-        <td class="p-3"><%= c.material_nama || '-' %></td>
-        <td class="p-3 text-right"><%= c.qty_terpakai ? Number(c.qty_terpakai).toLocaleString('id-ID') : '-' %></td>
-        <td class="p-3 text-right">Rp <%= Number(c.biaya).toLocaleString('id-ID') %></td>
-        <td class="p-3">
-          <span class="px-2 py-0.5 text-xs rounded-full
-            <%= c.status_validasi === 'pending' ? 'bg-yellow-100 text-yellow-700' : '' %>
-            <%= c.status_validasi === 'validated' ? 'bg-green-100 text-green-700' : '' %>
-            <%= c.status_validasi === 'rejected' ? 'bg-red-100 text-red-700' : '' %>">
-            <%= c.status_validasi === 'pending' ? 'Pending' : c.status_validasi === 'validated' ? 'Valid' : 'Ditolak' %>
-          </span>
-        </td>
-      </tr>
-      <% }) %>
-      <% if (batch.costs.length === 0) { %><tr><td colspan="6" class="p-3 text-center text-gray-400">Belum ada biaya</td></tr><% } %>
-    </tbody>
-  </table>
-</div>
-
-<div class="card mt-6">
-  <div class="card-header flex justify-between items-center">
-    <span><i class="fas fa-calculator"></i> Kalkulator HPP</span>
-    <span id="fallback-warn" class="alert-warning text-xs px-2 py-1 rounded hidden">Formula custom invalid — pakai default</span>
-  </div>
-  <div class="card-body">
-    <label class="input-label">Formula Config (JSON)</label>
-    <textarea id="formula-json" class="input-field font-mono text-xs" rows="6" placeholder='{"mode":"weighted_avg","fields":["biaya"]}'><%- batch.formula_json || '{"mode":"weighted_avg","fields":["biaya"]}' %></textarea>
-    <div class="flex gap-2 mt-2">
-      <button type="button" class="btn btn-primary btn-sm" onclick="previewHpp()"><i class="fas fa-play"></i> Preview</button>
-      <button type="button" class="btn btn-success btn-sm" onclick="applyFormula()"><i class="fas fa-save"></i> Apply Formula</button>
-    </div>
-
-    <div id="hpp-preview" class="alert-info mt-4" style="display:none">
-      <p class="font-semibold mb-2">Preview HPP</p>
-      <pre id="hpp-preview-content" class="text-xs"></pre>
-    </div>
-  </div>
-</div>
-
-<script>
-async function previewHpp() {
-  const r = await fetch('/production-batches/<%= batch.id %>/hpp-preview');
-  const j = await r.json();
-  document.getElementById('hpp-preview').style.display='block';
-  document.getElementById('hpp-preview-content').textContent = JSON.stringify(j, null, 2);
-  document.getElementById('fallback-warn').classList.toggle('hidden', !j.fallback);
-}
-async function applyFormula() {
-  const json = document.getElementById('formula-json').value;
-  const fd = new FormData();
-  fd.append('formula_json', json);
-  fd.append('_csrf', '<%= csrfToken %>');
-  const r = await fetch('/production-batches/<%= batch.id %>/formula', { method:'POST', body: fd });
-  if (r.ok || r.redirected) location.reload();
-  else alert('Gagal menyimpan formula');
-}
-</script>

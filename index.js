@@ -37,6 +37,9 @@ app.use((req, res, next) => {
     nama_lengkap: req.session.namaLengkap || req.session.username
   } : null;
   res.locals.currentPath = req.path;
+  // Mode presentasi: bendera global untuk layout & view (tanpa label UI apa pun).
+  // Ubah ke false untuk tampilan normal.
+  res.locals.modePresentasi = true;
   next();
 });
 
@@ -52,6 +55,9 @@ app.set('views', path.join(__dirname, 'views'));
 
 // Routes
 app.use('/', require('./routes/auth'));
+
+// Mode presentasi: root "/" langsung tampilkan kanban produksi
+app.get('/', (req, res) => res.redirect('/production-batches'));
 app.use('/dashboard', require('./routes/dashboard'));
 app.use('/vendors', require('./routes/vendors'));
 app.use('/products', require('./routes/products'));
