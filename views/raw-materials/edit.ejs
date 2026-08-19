@@ -6,10 +6,11 @@
     <input type="text" name="nama" value="<%= material.nama %>" class="w-full border rounded p-2" required>
   </div>
   <div class="mb-4">
-    <label class="block mb-1 text-sm font-medium">Tipe</label>
+    <label class="block mb-1 text-sm font-medium">Kategori</label>
     <select name="tipe" class="w-full border rounded p-2">
-      <option value="kain_roll" <%= material.tipe === 'kain_roll' ? 'selected' : '' %>>Kain Roll</option>
+      <option value="kain_roll" <%= material.tipe === 'kain_roll' ? 'selected' : '' %>>Fabric Roll</option>
       <option value="kain_ecer" <%= material.tipe === 'kain_ecer' ? 'selected' : '' %>>Kain Ecer (Meteran)</option>
+      <option value="cmt_cost" <%= material.tipe === 'cmt_cost' ? 'selected' : '' %>>Product Fulfillment</option>
       <option value="aksesoris" <%= material.tipe === 'aksesoris' ? 'selected' : '' %>>Aksesoris</option>
     </select>
   </div>

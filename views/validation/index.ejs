@@ -51,7 +51,7 @@
       <% pendingCosts.forEach(c => { %>
       <tr class="border-t">
         <td class="p-3"><%= c.nama_batch %></td>
-        <td class="p-3"><%= c.tipe_biaya %></td>
+        <td class="p-3"><%= c.tipe_biaya === 'kirim_aksesoris' ? 'Delivery' : c.tipe_biaya.charAt(0).toUpperCase() + c.tipe_biaya.slice(1) %></td>
         <td class="p-3 text-right">Rp <%= Number(c.biaya).toLocaleString('id-ID') %></td>
         <td class="p-3 text-center">
           <form method="POST" action="/validation/cost/<%= c.id %>/approve" style="display:inline">

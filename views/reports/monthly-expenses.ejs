@@ -38,7 +38,7 @@
     <a href="?bulan=<%= bulan %>&tahun=<%= tahun %>&tipe_biaya=<%= k.tipe_biaya %>"
        class="block py-2 px-3 rounded cursor-pointer <%= filterTipe === k.tipe_biaya ? 'bg-amber-100' : 'hover:bg-gray-50' %>">
       <div class="flex justify-between text-sm mb-1">
-        <span><%= k.tipe_biaya === 'kirim_aksesoris' ? 'Kirim Aksesoris' : k.tipe_biaya.charAt(0).toUpperCase() + k.tipe_biaya.slice(1) %></span>
+        <span><%= k.tipe_biaya === 'kirim_aksesoris' ? 'Delivery' : k.tipe_biaya.charAt(0).toUpperCase() + k.tipe_biaya.slice(1) %></span>
         <span class="font-semibold">Rp <%= Number(k.total).toLocaleString('id-ID') %></span>
       </div>
       <div class="bg-gray-200 rounded h-4 w-full">
@@ -60,7 +60,7 @@
       <tr>
         <td><%= d.created_at %></td>
         <td><%= d.nama_batch || '-' %></td>
-        <td><%= d.tipe_biaya %></td>
+        <td><%= d.tipe_biaya === 'kirim_aksesoris' ? 'Delivery' : d.tipe_biaya.charAt(0).toUpperCase() + d.tipe_biaya.slice(1) %></td>
         <td class="font-mono">Rp <%= Number(d.biaya || 0).toLocaleString('id-ID') %></td>
       </tr>
       <% }); %>

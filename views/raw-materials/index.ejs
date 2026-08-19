@@ -8,7 +8,7 @@
   <table class="w-full text-sm">
     <thead><tr class="bg-gray-100">
       <th class="p-3 text-left">Nama</th>
-      <th class="p-3 text-left">Tipe</th>
+      <th class="p-3 text-left">Kategori</th>
       <th class="p-3 text-left">Satuan</th>
       <th class="p-3 text-right">Stok</th>
       <th class="p-3 text-right">Min Stok</th>
@@ -25,8 +25,9 @@
           <span class="px-2 py-0.5 text-xs rounded-full
             <%= m.tipe === 'kain_roll' ? 'bg-indigo-100 text-indigo-700' : '' %>
             <%= m.tipe === 'kain_ecer' ? 'bg-pink-100 text-pink-700' : '' %>
+            <%= m.tipe === 'cmt_cost' ? 'bg-purple-100 text-purple-700' : '' %>
             <%= m.tipe === 'aksesoris' ? 'bg-yellow-100 text-yellow-700' : '' %>">
-            <%= m.tipe === 'kain_roll' ? 'Kain Roll' : m.tipe === 'kain_ecer' ? 'Kain Ecer' : 'Aksesoris' %>
+            <%= m.tipe === 'kain_roll' ? 'Fabric Roll' : m.tipe === 'kain_ecer' ? 'Kain Ecer' : m.tipe === 'cmt_cost' ? 'Product Fulfillment' : 'Aksesoris' %>
           </span>
         </td>
         <td class="p-3"><%= m.satuan %></td>

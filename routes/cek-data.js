@@ -16,10 +16,10 @@ const db = require('../db');
 const { isAuthenticated } = require('../middleware/auth');
 
 const TIPE_LABEL = {
-  kain_roll: 'Kain (Roll)',
+  kain_roll: 'Fabric Roll',
   kain_ecer: 'Kain (Ecer)',
   aksesoris: 'Aksesoris',
-  cmt_cost: 'Jasa / CMT',
+  cmt_cost: 'Product Fulfillment',
 };
 
 // 1. Data Material — raw_materials + agregasi raw_material_variants + harga

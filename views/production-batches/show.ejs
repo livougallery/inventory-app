@@ -254,7 +254,7 @@
       <tbody>
         <% batch.costs.forEach(c => { %>
         <tr class="border-t">
-          <td class="p-3"><%= c.tipe_biaya === 'kirim_aksesoris' ? 'Kirim Aksesoris' : c.tipe_biaya.charAt(0).toUpperCase() + c.tipe_biaya.slice(1) %></td>
+          <td class="p-3"><%= c.tipe_biaya === 'kirim_aksesoris' ? 'Delivery' : c.tipe_biaya.charAt(0).toUpperCase() + c.tipe_biaya.slice(1) %></td>
           <td class="p-3"><%= c.warna ? c.warna + ' - ' + c.size : 'Semua Varian' %></td>
           <td class="p-3"><%= c.material_nama || '-' %></td>
           <td class="p-3 text-right"><%= c.qty_terpakai ? Number(c.qty_terpakai).toLocaleString('id-ID') : '-' %></td>

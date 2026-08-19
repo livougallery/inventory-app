@@ -7,7 +7,7 @@
       <option value="">-- Pilih Bahan --</option>
       <% materials.forEach(m => { %>
       <option value="<%= m.id %>" <%= materialId === m.id ? 'selected' : '' %>>
-        <%= m.nama %> (<%= m.tipe === 'kain_roll' ? 'Roll' : m.tipe === 'kain_ecer' ? 'Ecer' : 'Aksesoris' %>) — Stok: <%= Number(m.stok).toLocaleString('id-ID') %> <%= m.satuan %>
+        <%= m.nama %> (<%= m.tipe === 'kain_roll' ? 'Fabric Roll' : m.tipe === 'kain_ecer' ? 'Ecer' : m.tipe === 'cmt_cost' ? 'Product Fulfillment' : 'Aksesoris' %>) — Stok: <%= Number(m.stok).toLocaleString('id-ID') %> <%= m.satuan %>
       </option>
       <% }) %>
     </select>
