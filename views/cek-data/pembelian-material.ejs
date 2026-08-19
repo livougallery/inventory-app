@@ -42,7 +42,7 @@
       { id: 'no_po',         header: 'No PO' },
       { id: 'supplier',      header: 'Supplier' },
       { id: 'pic',           header: 'PIC' },
-      { id: 'flow_transaksi', header: 'Flow Transaksi',
+      { id: 'flow_transaksi', header: 'Flow Transaksi', filterable: true,
         cellClass: function (r) { return r.flow_transaksi ? '' : 'cd-warn'; } },
       { id: 'invoice_url',   header: 'Proof of Invoice',
         render: function (v) {
@@ -54,7 +54,7 @@
           if (window.lucide) lucide.createIcons();
           return a;
         } },
-      { id: 'finance_status', header: 'Finance Validation', type: 'badge',
+      { id: 'finance_status', header: 'Finance Validation', type: 'badge', filterable: true,
         badgeText: function (r) { return r.finance_status; },
         badgeClass: function (r) {
           return r.finance_status === 'Approved' ? 'ok'

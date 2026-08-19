@@ -5,7 +5,8 @@
 // Cara pakai (di inline <script> view EJS):
 //   CekDataTable({
 //     prefix: 'cdm1',               // id elemen: cdm1-global, cdm1-head, cdm1-body,
-//                                    //            cdm1-info, cdm1-prev, cdm1-next, cdm1-flag
+//                                    //            cdm1-info, cdm1-prev, cdm1-next, cdm1-flag,
+//                                    //            cdm1-filters
 //     data: rows,                    // array objek (sudah dinormalisasi di view bila perlu)
 //     rowId: function (r) { return r.id; },
 //     pageSize: 10,
@@ -13,7 +14,9 @@
 //     columns: [
 //       { id: 'kode',   header: 'Kode' },
 //       { id: 'stok',   header: 'Stok',   type: 'num' },        // num | rp | tgl | text (default text)
-//       { id: 'nama',   header: 'Nama',   cellClass: fn(row) }  // cellClass opsional -> class td
+//       { id: 'nama',   header: 'Nama',   cellClass: fn(row) }, // cellClass opsional -> class td
+//       { id: 'tipe_label', header: 'Kategori', filterable: true }
+//                                    // filterable: true -> dropdown filter per nilai unik kolom tsb
 //     ]
 //   });
 (function () {
@@ -169,6 +172,76 @@
     }
 
     function renderAll() { renderHead(); renderBody(); renderPager(); }
+
+    // ===== Filter per kolom (dropdown nilai unik untuk kolom filterable) =====
+    // Opsi dropdown di-render sekali dari data awal (set halaman ini view-only);
+    // filter bekerja lewat columnFilteringFeature + createFilteredRowModel.
+    (function () {
+      var filterEl = document.getElementById(p + '-filters');
+      if (!filterEl) return;
+      var specs = colSpecs.filter(function (c) { return c.filterable; });
+      if (specs.length === 0) return;
+
+      var resetBtn = document.createElement('button');
+      resetBtn.type = 'button';
+      resetBtn.className = 'cd-filter-reset';
+      resetBtn.innerHTML = '<i data-lucide="x"></i> Reset Filter';
+      resetBtn.style.display = 'none';
+      var updateReset = function () {
+        resetBtn.style.display = (table.store.state.columnFilters || []).length > 0 ? '' : 'none';
+      };
+      resetBtn.addEventListener('click', function () {
+        table.resetColumnFilters();
+        filterEl.querySelectorAll('select').forEach(function (s) { s.value = ''; });
+        if (table.store.state.pagination.pageIndex !== 0) table.setPageIndex(0);
+        renderBody(); renderPager(); updateReset();
+      });
+
+      specs.forEach(function (c) {
+        var seen = {};
+        opts.data.forEach(function (r) {
+          var v = r[c.id];
+          if (v == null || v === '') return;
+          seen[String(v)] = true;
+        });
+        var values = Object.keys(seen).sort(function (a, b) {
+          return a.localeCompare(b, 'id');
+        });
+        if (values.length === 0) return;
+
+        var col = table.getColumn(c.id);
+        var wrap = document.createElement('span');
+        wrap.className = 'cd-filter';
+        var label = document.createElement('span');
+        label.className = 'cd-filter-label';
+        label.textContent = c.header;
+        var sel = document.createElement('select');
+        sel.className = 'cd-filter-select';
+        sel.setAttribute('aria-label', 'Filter ' + c.header);
+        var all = document.createElement('option');
+        all.value = '';
+        all.textContent = 'Semua';
+        sel.appendChild(all);
+        values.forEach(function (v) {
+          var o = document.createElement('option');
+          o.value = v;
+          o.textContent = v;
+          sel.appendChild(o);
+        });
+        sel.addEventListener('change', function () {
+          var v = sel.value;
+          col.setFilterValue(v === '' ? undefined : v);
+          if (table.store.state.pagination.pageIndex !== 0) table.setPageIndex(0);
+          renderBody(); renderPager(); updateReset();
+        });
+        wrap.appendChild(label);
+        wrap.appendChild(sel);
+        filterEl.appendChild(wrap);
+      });
+
+      filterEl.appendChild(resetBtn);
+      updateReset();
+    })();
 
     document.getElementById(p + '-global').addEventListener('input', function (e) {
       table.setGlobalFilter(e.target.value);

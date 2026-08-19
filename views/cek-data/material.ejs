@@ -47,7 +47,7 @@
         } },
       { id: 'kode_bahan',   header: 'Kode' },
       { id: 'nama',         header: 'Nama Bahan' },
-      { id: 'tipe_label',   header: 'Kategori' },
+      { id: 'tipe_label',   header: 'Kategori', filterable: true },
       { id: 'varian_list',  header: 'Varian' },
       { id: 'stok',         header: 'Stok', type: 'num',
         cellClass: function (r) { return Number(r.stok) <= 0 ? 'cd-bad' : ''; } },
