@@ -26,32 +26,70 @@
       --input: 240 5.9% 90%;
       --ring: 240 10% 3.9%;
       --radius: 0.5rem;
+      /* Token sidebar shadcn (block sidebar-07, tema light) */
+      --sidebar-background: 0 0% 98%;
+      --sidebar-foreground: 240 5.3% 26.1%;
+      --sidebar-primary: 240 5.9% 10%;
+      --sidebar-primary-foreground: 0 0% 98%;
+      --sidebar-accent: 240 4.8% 95.9%;
+      --sidebar-accent-foreground: 240 5.9% 10%;
+      --sidebar-border: 220 13% 91%;
+      --sidebar-ring: 217.2 91.2% 59.8%;
     }
     body { background-color:hsl(var(--background)); color:hsl(var(--foreground)); font-family:ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif; }
 
-    /* ===== Sidebar (shadcn sidebar, dark zinc) ===== */
-    .sidebar-aside { width:15rem; flex-shrink:0; min-height:100vh; background:#09090b; color:#fafafa; transition:width 220ms ease; }
+    /* ===== Sidebar — pola shadcn block sidebar-07 ===== */
+    .sidebar-aside { width:16rem; flex-shrink:0; display:flex; flex-direction:column; background:hsl(var(--sidebar-background)); color:hsl(var(--sidebar-foreground)); border-right:1px solid hsl(var(--sidebar-border)); transition:width 220ms ease; }
     .sidebar-aside.collapsed { width:4.5rem; }
-    .sb-header { display:flex; align-items:center; justify-content:space-between; gap:0.5rem; padding:0.9rem 0.85rem; border-bottom:1px solid #27272a; }
-    .sb-brand { display:flex; align-items:center; gap:0.5rem; font-weight:700; font-size:1.05rem; white-space:nowrap; overflow:hidden; }
-    .sb-logo { font-size:1.3rem; }
-    .sb-toggle { background:#27272a; border:none; color:#fafafa; width:1.9rem; height:1.9rem; border-radius:var(--radius); cursor:pointer; font-size:0.8rem; line-height:1; display:flex; align-items:center; justify-content:center; flex-shrink:0; transition:background 150ms; }
-    .sb-toggle:hover { background:#3f3f46; }
-    .sb-user { padding:0.55rem 0.85rem; font-size:0.72rem; background:#18181b; border:1px solid #27272a; border-radius:var(--radius); margin:0.6rem 0.75rem; color:#d4d4d8; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-    .sb-nav { padding:0.5rem 0.75rem; display:flex; flex-direction:column; gap:0.25rem; }
-    .sb-group { font-size:0.65rem; color:#71717a; padding:0.9rem 0.5rem 0.2rem; text-transform:uppercase; letter-spacing:0.08em; font-weight:600; }
-    .sb-item { display:flex; align-items:center; gap:0.7rem; padding:0.6rem 0.75rem; border-radius:var(--radius); color:#a1a1aa; text-decoration:none; font-size:0.875rem; font-weight:500; transition:background-color 150ms, color 150ms; white-space:nowrap; overflow:hidden; }
-    .sb-item:hover { background:#18181b; color:#fafafa; }
-    .sb-item.active { background:#27272a; color:#fff; }
-    .sb-icon { width:1.6rem; text-align:center; font-size:1.05rem; flex-shrink:0; }
-    .sb-footer { margin-top:auto; padding:0.75rem; border-top:1px solid #27272a; }
-    .sidebar-aside.collapsed .sb-label, .sidebar-aside.collapsed .sb-user { display:none; }
-    .sidebar-aside.collapsed .sb-header { justify-content:center; padding-left:0.4rem; padding-right:0.4rem; }
-    .sidebar-aside.collapsed .sb-item { justify-content:center; padding-left:0.4rem; padding-right:0.4rem; }
-    .sidebar-scroll::-webkit-scrollbar { width: 4px; }
-    .sidebar-scroll::-webkit-scrollbar-track { background: transparent; }
-    .sidebar-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 4px; }
-    .sidebar-scroll::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.2); }
+
+    /* Header sidebar: team switcher (logo + nama app) */
+    .sb-header { padding:0.5rem; }
+    .sb-team { display:flex; align-items:center; gap:0.5rem; padding:0.5rem; border-radius:calc(var(--radius) - 2px); text-decoration:none; color:inherit; transition:background-color 150ms; }
+    .sb-team:hover { background:hsl(var(--sidebar-accent)); }
+    .sb-logo { width:2rem; height:2rem; flex-shrink:0; border-radius:calc(var(--radius) - 2px); background:hsl(var(--sidebar-primary)); color:hsl(var(--sidebar-primary-foreground)); display:flex; align-items:center; justify-content:center; font-size:1rem; }
+    .sb-team-name { display:block; font-size:0.9rem; font-weight:600; line-height:1.2; white-space:nowrap; overflow:hidden; }
+    .sb-team-sub { display:block; font-size:0.72rem; color:hsl(var(--muted-foreground)); white-space:nowrap; overflow:hidden; }
+
+    .sb-scroll { flex:1; overflow-y:auto; overflow-x:hidden; padding:0.5rem; display:flex; flex-direction:column; gap:0.25rem; }
+    .sb-scroll::-webkit-scrollbar { width:4px; }
+    .sb-scroll::-webkit-scrollbar-track { background:transparent; }
+    .sb-scroll::-webkit-scrollbar-thumb { background:rgba(0,0,0,0.12); border-radius:4px; }
+
+    .sb-group { font-size:0.75rem; color:hsl(var(--sidebar-foreground) / 0.7); padding:0.9rem 0.5rem 0.25rem; font-weight:500; white-space:nowrap; overflow:hidden; }
+    .sb-item { display:flex; align-items:center; gap:0.6rem; padding:0.5rem 0.55rem; border-radius:calc(var(--radius) - 2px); color:hsl(var(--sidebar-foreground)); text-decoration:none; font-size:0.875rem; font-weight:500; transition:background-color 150ms, color 150ms; white-space:nowrap; overflow:hidden; }
+    .sb-item:hover { background:hsl(var(--sidebar-accent)); color:hsl(var(--sidebar-accent-foreground)); }
+    .sb-item.active { background:hsl(var(--sidebar-accent)); color:hsl(var(--sidebar-accent-foreground)); font-weight:600; }
+    .sb-icon { display:inline-flex; flex-shrink:0; font-size:1rem; width:1.4rem; justify-content:center; }
+
+    /* Footer sidebar: user card (pola NavUser sidebar-07) */
+    .sb-footer { padding:0.5rem; border-top:1px solid hsl(var(--sidebar-border)); }
+    .sb-user { display:flex; align-items:center; gap:0.5rem; padding:0.5rem; border-radius:calc(var(--radius) - 2px); transition:background-color 150ms; }
+    .sb-user:hover { background:hsl(var(--sidebar-accent)); }
+    .sb-avatar { width:2rem; height:2rem; flex-shrink:0; border-radius:calc(var(--radius) - 2px); background:hsl(var(--sidebar-primary)); color:hsl(var(--sidebar-primary-foreground)); display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:600; }
+    .sb-user-info { flex:1; min-width:0; }
+    .sb-user-name { display:block; font-size:0.8rem; font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .sb-user-role { display:block; font-size:0.72rem; color:hsl(var(--muted-foreground)); white-space:nowrap; }
+    .sb-logout { display:flex; align-items:center; justify-content:center; width:1.9rem; height:1.9rem; flex-shrink:0; border-radius:calc(var(--radius) - 2px); color:hsl(var(--muted-foreground)); font-size:1rem; transition:background-color 150ms, color 150ms; }
+    .sb-logout:hover { background:hsl(var(--sidebar-accent)); color:hsl(var(--destructive)); }
+
+    .sidebar-aside.collapsed .sb-label,
+    .sidebar-aside.collapsed .sb-team-name,
+    .sidebar-aside.collapsed .sb-team-sub,
+    .sidebar-aside.collapsed .sb-user-info,
+    .sidebar-aside.collapsed .sb-logout { display:none; }
+    .sidebar-aside.collapsed .sb-team { justify-content:center; padding:0.5rem 0.25rem; }
+    .sidebar-aside.collapsed .sb-item { justify-content:center; padding:0.5rem 0.25rem; }
+    .sidebar-aside.collapsed .sb-user { justify-content:center; padding:0.5rem 0.25rem; }
+    .sidebar-aside.collapsed .sb-group { font-size:0; padding:0.7rem 0 0.2rem; }
+
+    /* ===== Header konten — pola header SidebarInset sidebar-07 ===== */
+    .app-header { position:sticky; top:0; z-index:20; height:3.5rem; display:flex; align-items:center; gap:0.5rem; padding:0 1rem; background:hsl(var(--background) / 0.95); backdrop-filter:blur(4px); border-bottom:1px solid hsl(var(--border)); }
+    .app-trigger { display:flex; align-items:center; justify-content:center; width:2rem; height:2rem; margin-left:-0.25rem; border:none; background:transparent; border-radius:calc(var(--radius) - 2px); color:hsl(var(--muted-foreground)); cursor:pointer; font-size:1rem; transition:background-color 150ms, color 150ms; }
+    .app-trigger:hover { background:hsl(var(--accent)); color:hsl(var(--accent-foreground)); }
+    .app-sep { width:1px; height:1rem; background:hsl(var(--border)); margin-right:0.5rem; }
+    .app-crumb { display:flex; align-items:center; gap:0.5rem; font-size:0.875rem; color:hsl(var(--muted-foreground)); min-width:0; }
+    .app-crumb-current { color:hsl(var(--foreground)); font-weight:500; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .app-avatar { margin-left:auto; width:2rem; height:2rem; flex-shrink:0; border-radius:9999px; background:hsl(var(--primary)); color:hsl(var(--primary-foreground)); display:flex; align-items:center; justify-content:center; font-size:0.7rem; font-weight:600; }
 
     /* ===== Card ===== */
     .card { background:hsl(var(--card)); border-radius:var(--radius); border:1px solid hsl(var(--border)); box-shadow:0 1px 2px 0 rgb(0 0 0 / 0.04); }
@@ -122,30 +160,44 @@
     .urgent-row-critical { background:#fee2e2 !important; }
     .dismiss-banner { float:right; background:transparent; border:none; color:inherit; cursor:pointer; font-size:1.25rem; line-height:1; }
 
+    /* ===== Mobile bottom nav ===== */
+    .mob-nav a { color:hsl(var(--muted-foreground)); padding:0.4rem 0.6rem; border-radius:var(--radius); }
+    .mob-nav a.mob-active { color:hsl(var(--foreground)); background:hsl(var(--accent)); }
+
     /* ===== Lucide icons (pengganti emoji) ===== */
     svg.lucide { width:1em; height:1em; display:inline-block; vertical-align:-0.125em; stroke-width:2; flex-shrink:0; }
   </style>
 </head>
 <body class="min-h-screen flex">
   <% if (locals.user) { %>
-  <aside id="sb" class="no-print hidden md:flex flex-col sidebar-aside">
+  <%
+    const _nama = user.nama_lengkap || 'User';
+    const _initials = _nama.trim().split(/\s+/).map(function (w) { return w.charAt(0); }).slice(0, 2).join('').toUpperCase();
+    const _roleLabel = user.role === 'admin' ? 'Admin' : 'Finance';
+    const _pageTitle = (typeof title !== 'undefined' && title) || '';
+  %>
+  <aside id="sb" class="no-print hidden md:flex sidebar-aside">
     <div class="sb-header">
-      <span class="sb-brand"><span class="sb-logo"><i data-lucide="package"></i></span><span class="sb-label">Inventory</span></span>
-      <button type="button" id="sb-toggle" class="sb-toggle" aria-label="Sembunyikan menu"><i data-lucide="chevron-left"></i></button>
+      <a href="/<%= locals.modePresentasi ? 'production-batches' : 'dashboard' %>" class="sb-team">
+        <span class="sb-logo"><i data-lucide="package"></i></span>
+        <span class="sb-label">
+          <span class="sb-team-name">Inventory</span>
+          <span class="sb-team-sub">Fashion UMKM</span>
+        </span>
+      </a>
     </div>
-    <div class="sb-user"><%= user.nama_lengkap %> (<%= user.role === 'admin' ? 'Admin' : 'Finance' %>)</div>
     <% if (locals.modePresentasi) { %>
-    <nav class="sb-nav">
+    <nav class="sb-scroll">
+      <div class="sb-group">Menu</div>
       <a href="/production-batches" class="sb-item <%= currentPath.startsWith('/production-batches') ? 'active' : '' %>">
         <span class="sb-icon"><i data-lucide="factory"></i></span><span class="sb-label">Produksi</span>
       </a>
-      <div class="sb-group">Data</div>
       <a href="/cek-data/material" class="sb-item <%= currentPath.startsWith('/cek-data') ? 'active' : '' %>">
         <span class="sb-icon"><i data-lucide="shirt"></i></span><span class="sb-label">Material</span>
       </a>
     </nav>
     <% } else { %>
-    <nav class="sb-nav">
+    <nav class="sb-scroll">
       <a href="/dashboard" class="sb-item <%= currentPath === '/dashboard' ? 'active' : '' %>"><span class="sb-icon"><i data-lucide="layout-dashboard"></i></span><span class="sb-label">Dashboard</span></a>
       <div class="sb-group">Master Data</div>
       <a href="/cek-data/material" class="sb-item <%= currentPath.startsWith('/cek-data') ? 'active' : '' %>"><span class="sb-icon"><i data-lucide="shirt"></i></span><span class="sb-label">Material</span></a>
@@ -169,13 +221,61 @@
     </nav>
     <% } %>
     <div class="sb-footer">
-      <% if (!locals.modePresentasi) { %>
-      <a href="/logout" class="sb-item"><span class="sb-icon"><i data-lucide="log-out"></i></span><span class="sb-label">Logout</span></a>
-      <% } %>
+      <div class="sb-user">
+        <span class="sb-avatar"><%= _initials %></span>
+        <span class="sb-user-info">
+          <span class="sb-user-name"><%= user.nama_lengkap %></span>
+          <span class="sb-user-role"><%= _roleLabel %></span>
+        </span>
+        <% if (!locals.modePresentasi) { %>
+        <a href="/logout" class="sb-logout" title="Logout" aria-label="Logout"><i data-lucide="log-out"></i></a>
+        <% } %>
+      </div>
     </div>
   </aside>
+
+  <div class="flex-1 flex flex-col min-w-0">
+    <header class="app-header no-print">
+      <button type="button" id="sb-toggle" class="app-trigger hidden md:flex" aria-label="Toggle sidebar"><i data-lucide="panel-left"></i></button>
+      <span class="app-sep hidden md:block"></span>
+      <nav class="app-crumb" aria-label="Breadcrumb">
+        <span>Inventory</span>
+        <% if (_pageTitle) { %>
+        <span>/</span>
+        <span class="app-crumb-current"><%= _pageTitle %></span>
+        <% } %>
+      </nav>
+      <% if (!locals.modePresentasi) { %>
+      <span class="app-avatar" title="<%= user.nama_lengkap %>"><%= _initials %></span>
+      <% } %>
+    </header>
+  <% } %>
+
+    <main class="flex-1 p-4 md:p-6 pb-20 md:pb-6 min-h-screen w-full max-w-7xl mx-auto">
+      <% if (locals.success) { %>
+        <div class="alert alert-success mb-4"><%= success %></div>
+      <% } %>
+      <% if (locals.error) { %>
+        <div class="alert alert-error mb-4"><%= error %></div>
+      <% } %>
+      <%- body %>
+    </main>
+  <% if (locals.user) { %>
+  </div>
+
+  <% if (!locals.modePresentasi) { %>
+  <!-- mobile bottom nav -->
+  <nav class="mob-nav no-print md:hidden fixed bottom-0 left-0 right-0 flex justify-around py-2 z-10 text-xs" style="background:hsl(var(--background)); border-top:1px solid hsl(var(--border));">
+    <a href="/dashboard" class="text-center <%= currentPath === '/dashboard' ? 'mob-active' : '' %>" style="font-size:1.25rem"><i data-lucide="layout-dashboard"></i></a>
+    <a href="/vendors" class="text-center <%= currentPath.startsWith('/vendors') ? 'mob-active' : '' %>" style="font-size:1.25rem"><i data-lucide="building-2"></i></a>
+    <a href="/products" class="text-center <%= currentPath.startsWith('/products') ? 'mob-active' : '' %>" style="font-size:1.25rem"><i data-lucide="package"></i></a>
+    <a href="/purchase-orders" class="text-center <%= currentPath.startsWith('/purchase-orders') ? 'mob-active' : '' %>" style="font-size:1.25rem"><i data-lucide="shopping-cart"></i></a>
+    <a href="/production-batches" class="text-center <%= currentPath.startsWith('/production-batches') ? 'mob-active' : '' %>" style="font-size:1.25rem"><i data-lucide="factory"></i></a>
+    <a href="/admin/currencies" class="text-center <%= currentPath.startsWith('/admin/currencies') ? 'mob-active' : '' %>" style="font-size:1.25rem"><i data-lucide="coins"></i></a>
+  </nav>
+  <% } %>
   <script>
-    // Collapse sidebar (state disimpan di localStorage)
+    // Collapse sidebar (state disimpan di localStorage) — trigger di header
     (function () {
       var sb = document.getElementById('sb');
       var btn = document.getElementById('sb-toggle');
@@ -189,35 +289,11 @@
       });
       function apply() {
         sb.classList.toggle('collapsed', collapsed);
-        btn.innerHTML = collapsed ? '<i data-lucide="chevron-right"></i>' : '<i data-lucide="chevron-left"></i>';
-        if (window.lucide) lucide.createIcons();
         btn.setAttribute('aria-label', collapsed ? 'Tampilkan menu' : 'Sembunyikan menu');
       }
     })();
   </script>
-
-  <% if (!locals.modePresentasi) { %>
-  <!-- mobile bottom nav -->
-  <nav class="no-print md:hidden fixed bottom-0 left-0 right-0 bg-zinc-950 text-white flex justify-around py-2 z-10 text-xs">
-    <a href="/dashboard" class="text-center" style="font-size:1.25rem"><i data-lucide="layout-dashboard"></i></a>
-    <a href="/vendors" class="text-center" style="font-size:1.25rem"><i data-lucide="building-2"></i></a>
-    <a href="/products" class="text-center" style="font-size:1.25rem"><i data-lucide="package"></i></a>
-    <a href="/purchase-orders" class="text-center" style="font-size:1.25rem"><i data-lucide="shopping-cart"></i></a>
-    <a href="/production-batches" class="text-center" style="font-size:1.25rem"><i data-lucide="factory"></i></a>
-    <a href="/admin/currencies" class="text-center" style="font-size:1.25rem"><i data-lucide="coins"></i></a>
-  </nav>
   <% } %>
-  <% } %>
-
-  <main class="flex-1 p-4 md:p-6 pb-20 md:pb-6 min-h-screen w-full max-w-7xl mx-auto">
-    <% if (locals.success) { %>
-      <div class="alert alert-success mb-4"><%= success %></div>
-    <% } %>
-    <% if (locals.error) { %>
-      <div class="alert alert-error mb-4"><%= error %></div>
-    <% } %>
-    <%- body %>
-  </main>
   <%- locals.script || '' %>
   <script src="/vendor/lucide.min.js"></script>
   <script>if (window.lucide) lucide.createIcons();</script>
