@@ -3,14 +3,14 @@
 
 <% if (hasUrgent) { %>
 <div class="alert-warning mb-6" id="urgent-banner">
-  <i class="fas fa-exclamation-triangle mt-0.5"></i>
+  <i data-lucide="alert-triangle" class="mt-0.5"></i>
   <div class="flex-1">
     <p class="font-semibold mb-1">Perhatian: ada kondisi urgent</p>
     <% if (urgentPOs.length > 0) { %>
-      <p class="mb-1">📦 <%= urgentPOs.length %> PO pending lebih dari 3 hari.</p>
+      <p class="mb-1"><i data-lucide="package"></i> <%= urgentPOs.length %> PO pending lebih dari 3 hari.</p>
     <% } %>
     <% if (lowStock.length > 0) { %>
-      <p>⚠️ <%= lowStock.length %> bahan baku di bawah stok minimum.</p>
+      <p><i data-lucide="alert-triangle"></i> <%= lowStock.length %> bahan baku di bawah stok minimum.</p>
     <% } %>
   </div>
   <button type="button" class="dismiss-banner" onclick="this.closest('#urgent-banner').style.display='none'" aria-label="Tutup">×</button>
@@ -19,17 +19,17 @@
 
 <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
   <div class="bg-white shadow rounded p-4">
-    <p class="text-sm text-gray-500">🧵 Stok Bahan Baku</p>
+    <p class="text-sm text-gray-500"><i data-lucide="shirt"></i> Stok Bahan Baku</p>
     <p class="text-2xl font-bold"><%= Number(stokBahan).toLocaleString('id-ID') %></p>
     <p class="text-xs text-gray-400"><%= totalBahan %> jenis bahan</p>
   </div>
   <div class="bg-white shadow rounded p-4">
-    <p class="text-sm text-gray-500">🏭 Produksi Berjalan</p>
+    <p class="text-sm text-gray-500"><i data-lucide="factory"></i> Produksi Berjalan</p>
     <p class="text-2xl font-bold"><%= produksiBerjalan %></p>
     <p class="text-xs text-gray-400">batch aktif</p>
   </div>
   <div class="bg-white shadow rounded p-4">
-    <p class="text-sm text-gray-500">⏳ Pending Validasi</p>
+    <p class="text-sm text-gray-500"><i data-lucide="clock"></i> Pending Validasi</p>
     <p class="text-2xl font-bold"><%= totalPending %></p>
     <p class="text-xs text-gray-400">menunggu Finance</p>
   </div>
@@ -37,7 +37,7 @@
 
 <% if (bahanMenipis.length > 0) { %>
 <div class="bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-6 rounded">
-  <strong class="text-yellow-800">⚠️ Stok Menipis!</strong>
+  <strong class="text-yellow-800"><i data-lucide="alert-triangle"></i> Stok Menipis!</strong>
   <ul class="mt-1 text-sm">
     <% bahanMenipis.forEach(b => { %>
     <li>• <%= b.nama %> — <%= b.stok %> <%= b.satuan %> (min: <%= b.stok_minimum %>)</li>
@@ -48,7 +48,7 @@
 
 <% if (products.length > 0) { %>
 <div class="bg-white shadow rounded p-4 mb-6">
-  <h3 class="font-bold mb-3">📈 Rata-rata HPP per Produk</h3>
+  <h3 class="font-bold mb-3"><i data-lucide="trending-up"></i> Rata-rata HPP per Produk</h3>
   <div class="space-y-3">
     <% var maxHpp = Math.max(...products.map(p => p.avg_hpp), 1); %>
     <% products.forEach(p => { %>
@@ -68,7 +68,7 @@
 
 <% if (user.role === 'finance' && totalPending > 0) { %>
 <div class="bg-blue-50 border border-blue-200 p-4 rounded">
-  <strong>🔔 Validasi Pending</strong>
+  <strong><i data-lucide="bell"></i> Validasi Pending</strong>
   <p class="text-sm mt-1"><%= totalPending %> transaksi menunggu validasi.
   <a href="/validation" class="text-blue-600 hover:underline">Lihat Semua →</a></p>
 </div>

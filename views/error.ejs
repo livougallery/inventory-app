@@ -5,12 +5,15 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Error</title>
   <script src="https://cdn.tailwindcss.com"></script>
+  <style>svg.lucide{width:1em;height:1em;display:inline-block;vertical-align:-0.125em;stroke-width:2;flex-shrink:0;}</style>
 </head>
 <body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
   <div class="bg-white p-8 rounded shadow-md max-w-md text-center">
-    <h1 class="text-4xl mb-4">⚠️</h1>
+    <h1 class="text-4xl mb-4 text-amber-500"><i data-lucide="alert-triangle"></i></h1>
     <p class="text-gray-700"><%= message || 'Terjadi kesalahan' %></p>
     <a href="/dashboard" class="mt-4 inline-block text-blue-600 hover:underline">Kembali ke Dashboard</a>
   </div>
+  <script src="/vendor/lucide.min.js"></script>
+  <script>lucide.createIcons();</script>
 </body>
 </html>

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title><%= title || 'Inventory System' %></title>
+  <title><%= (typeof title !== 'undefined' && title) || 'Inventory System' %></title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     /* ===== Design tokens: shadcn/ui — default neutral theme ===== */
@@ -121,53 +121,56 @@
     .urgent-row { background:#fef3c7 !important; }
     .urgent-row-critical { background:#fee2e2 !important; }
     .dismiss-banner { float:right; background:transparent; border:none; color:inherit; cursor:pointer; font-size:1.25rem; line-height:1; }
+
+    /* ===== Lucide icons (pengganti emoji) ===== */
+    svg.lucide { width:1em; height:1em; display:inline-block; vertical-align:-0.125em; stroke-width:2; flex-shrink:0; }
   </style>
 </head>
 <body class="min-h-screen flex">
   <% if (locals.user) { %>
   <aside id="sb" class="no-print hidden md:flex flex-col sidebar-aside">
     <div class="sb-header">
-      <span class="sb-brand"><span class="sb-logo">📦</span><span class="sb-label">Inventory</span></span>
-      <button type="button" id="sb-toggle" class="sb-toggle" aria-label="Sembunyikan menu">◀</button>
+      <span class="sb-brand"><span class="sb-logo"><i data-lucide="package"></i></span><span class="sb-label">Inventory</span></span>
+      <button type="button" id="sb-toggle" class="sb-toggle" aria-label="Sembunyikan menu"><i data-lucide="chevron-left"></i></button>
     </div>
     <div class="sb-user"><%= user.nama_lengkap %> (<%= user.role === 'admin' ? 'Admin' : 'Finance' %>)</div>
     <% if (locals.modePresentasi) { %>
     <nav class="sb-nav">
       <a href="/production-batches" class="sb-item <%= currentPath.startsWith('/production-batches') ? 'active' : '' %>">
-        <span class="sb-icon">🏭</span><span class="sb-label">Produksi</span>
+        <span class="sb-icon"><i data-lucide="factory"></i></span><span class="sb-label">Produksi</span>
       </a>
       <div class="sb-group">Data</div>
       <a href="/cek-data/material" class="sb-item <%= currentPath.startsWith('/cek-data') ? 'active' : '' %>">
-        <span class="sb-icon">🧵</span><span class="sb-label">Material</span>
+        <span class="sb-icon"><i data-lucide="shirt"></i></span><span class="sb-label">Material</span>
       </a>
     </nav>
     <% } else { %>
     <nav class="sb-nav">
-      <a href="/dashboard" class="sb-item <%= currentPath === '/dashboard' ? 'active' : '' %>"><span class="sb-icon">📊</span><span class="sb-label">Dashboard</span></a>
+      <a href="/dashboard" class="sb-item <%= currentPath === '/dashboard' ? 'active' : '' %>"><span class="sb-icon"><i data-lucide="layout-dashboard"></i></span><span class="sb-label">Dashboard</span></a>
       <div class="sb-group">Master Data</div>
-      <a href="/cek-data/material" class="sb-item <%= currentPath.startsWith('/cek-data') ? 'active' : '' %>"><span class="sb-icon">🧵</span><span class="sb-label">Material</span></a>
-      <a href="/vendors" class="sb-item <%= currentPath.startsWith('/vendors') ? 'active' : '' %>"><span class="sb-icon">🏢</span><span class="sb-label">Vendor</span></a>
-      <a href="/products" class="sb-item <%= currentPath.startsWith('/products') ? 'active' : '' %>"><span class="sb-icon">📦</span><span class="sb-label">Produk</span></a>
-      <a href="/raw-materials" class="sb-item <%= currentPath.startsWith('/raw-materials') ? 'active' : '' %>"><span class="sb-icon">🧵</span><span class="sb-label">Bahan Baku</span></a>
-      <a href="/admin/currencies" class="sb-item <%= currentPath.startsWith('/admin/currencies') ? 'active' : '' %>"><span class="sb-icon">💱</span><span class="sb-label">Currency</span></a>
+      <a href="/cek-data/material" class="sb-item <%= currentPath.startsWith('/cek-data') ? 'active' : '' %>"><span class="sb-icon"><i data-lucide="shirt"></i></span><span class="sb-label">Material</span></a>
+      <a href="/vendors" class="sb-item <%= currentPath.startsWith('/vendors') ? 'active' : '' %>"><span class="sb-icon"><i data-lucide="building-2"></i></span><span class="sb-label">Vendor</span></a>
+      <a href="/products" class="sb-item <%= currentPath.startsWith('/products') ? 'active' : '' %>"><span class="sb-icon"><i data-lucide="package"></i></span><span class="sb-label">Produk</span></a>
+      <a href="/raw-materials" class="sb-item <%= currentPath.startsWith('/raw-materials') ? 'active' : '' %>"><span class="sb-icon"><i data-lucide="layers"></i></span><span class="sb-label">Bahan Baku</span></a>
+      <a href="/admin/currencies" class="sb-item <%= currentPath.startsWith('/admin/currencies') ? 'active' : '' %>"><span class="sb-icon"><i data-lucide="coins"></i></span><span class="sb-label">Currency</span></a>
       <div class="sb-group">Transaksi</div>
-      <a href="/purchase-orders" class="sb-item <%= currentPath.startsWith('/purchase-orders') ? 'active' : '' %>"><span class="sb-icon">🛒</span><span class="sb-label">Pembelian Bahan</span></a>
-      <a href="/production-batches" class="sb-item <%= currentPath.startsWith('/production-batches') ? 'active' : '' %>"><span class="sb-icon">🏭</span><span class="sb-label">Produksi</span></a>
-      <a href="/purchase-imports" class="sb-item <%= currentPath.startsWith('/purchase-imports') ? 'active' : '' %>"><span class="sb-icon">📥</span><span class="sb-label">Beli Jadi</span></a>
+      <a href="/purchase-orders" class="sb-item <%= currentPath.startsWith('/purchase-orders') ? 'active' : '' %>"><span class="sb-icon"><i data-lucide="shopping-cart"></i></span><span class="sb-label">Pembelian Bahan</span></a>
+      <a href="/production-batches" class="sb-item <%= currentPath.startsWith('/production-batches') ? 'active' : '' %>"><span class="sb-icon"><i data-lucide="factory"></i></span><span class="sb-label">Produksi</span></a>
+      <a href="/purchase-imports" class="sb-item <%= currentPath.startsWith('/purchase-imports') ? 'active' : '' %>"><span class="sb-icon"><i data-lucide="download"></i></span><span class="sb-label">Beli Jadi</span></a>
       <div class="sb-group">Analisa</div>
-      <a href="/hpp" class="sb-item <%= currentPath.startsWith('/hpp') ? 'active' : '' %>"><span class="sb-icon">💰</span><span class="sb-label">HPP</span></a>
+      <a href="/hpp" class="sb-item <%= currentPath.startsWith('/hpp') ? 'active' : '' %>"><span class="sb-icon"><i data-lucide="calculator"></i></span><span class="sb-label">HPP</span></a>
       <% if (user.role === 'finance') { %>
       <div class="sb-group">Validasi</div>
-      <a href="/validation" class="sb-item <%= currentPath.startsWith('/validation') ? 'active' : '' %>"><span class="sb-icon">✅</span><span class="sb-label">Validasi Finance</span></a>
+      <a href="/validation" class="sb-item <%= currentPath.startsWith('/validation') ? 'active' : '' %>"><span class="sb-icon"><i data-lucide="badge-check"></i></span><span class="sb-label">Validasi Finance</span></a>
       <% } %>
       <div class="sb-group">Laporan</div>
-      <a href="/reports/stock-card" class="sb-item"><span class="sb-icon">📋</span><span class="sb-label">Kartu Stok</span></a>
-      <a href="/reports/monthly-expenses" class="sb-item"><span class="sb-icon">📉</span><span class="sb-label">Pengeluaran</span></a>
+      <a href="/reports/stock-card" class="sb-item"><span class="sb-icon"><i data-lucide="clipboard-list"></i></span><span class="sb-label">Kartu Stok</span></a>
+      <a href="/reports/monthly-expenses" class="sb-item"><span class="sb-icon"><i data-lucide="trending-down"></i></span><span class="sb-label">Pengeluaran</span></a>
     </nav>
     <% } %>
     <div class="sb-footer">
       <% if (!locals.modePresentasi) { %>
-      <a href="/logout" class="sb-item"><span class="sb-icon">🚪</span><span class="sb-label">Logout</span></a>
+      <a href="/logout" class="sb-item"><span class="sb-icon"><i data-lucide="log-out"></i></span><span class="sb-label">Logout</span></a>
       <% } %>
     </div>
   </aside>
@@ -186,7 +189,8 @@
       });
       function apply() {
         sb.classList.toggle('collapsed', collapsed);
-        btn.textContent = collapsed ? '▶' : '◀';
+        btn.innerHTML = collapsed ? '<i data-lucide="chevron-right"></i>' : '<i data-lucide="chevron-left"></i>';
+        if (window.lucide) lucide.createIcons();
         btn.setAttribute('aria-label', collapsed ? 'Tampilkan menu' : 'Sembunyikan menu');
       }
     })();
@@ -195,12 +199,12 @@
   <% if (!locals.modePresentasi) { %>
   <!-- mobile bottom nav -->
   <nav class="no-print md:hidden fixed bottom-0 left-0 right-0 bg-zinc-950 text-white flex justify-around py-2 z-10 text-xs">
-    <a href="/dashboard" class="text-center">📊</a>
-    <a href="/vendors" class="text-center">🏢</a>
-    <a href="/products" class="text-center">📦</a>
-    <a href="/purchase-orders" class="text-center">🛒</a>
-    <a href="/production-batches" class="text-center">🏭</a>
-    <a href="/admin/currencies" class="text-center">💱</a>
+    <a href="/dashboard" class="text-center" style="font-size:1.25rem"><i data-lucide="layout-dashboard"></i></a>
+    <a href="/vendors" class="text-center" style="font-size:1.25rem"><i data-lucide="building-2"></i></a>
+    <a href="/products" class="text-center" style="font-size:1.25rem"><i data-lucide="package"></i></a>
+    <a href="/purchase-orders" class="text-center" style="font-size:1.25rem"><i data-lucide="shopping-cart"></i></a>
+    <a href="/production-batches" class="text-center" style="font-size:1.25rem"><i data-lucide="factory"></i></a>
+    <a href="/admin/currencies" class="text-center" style="font-size:1.25rem"><i data-lucide="coins"></i></a>
   </nav>
   <% } %>
   <% } %>
@@ -215,5 +219,7 @@
     <%- body %>
   </main>
   <%- locals.script || '' %>
+  <script src="/vendor/lucide.min.js"></script>
+  <script>if (window.lucide) lucide.createIcons();</script>
 </body>
 </html>

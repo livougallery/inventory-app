@@ -48,7 +48,7 @@
         </select>
         <input name="items[0][qty]" placeholder="Qty" step="any" class="border rounded p-2 w-20" required>
         <input name="items[0][harga_satuan]" placeholder="Harga" step="any" class="border rounded p-2 w-32" required>
-        <button type="button" class="remove-item text-red-500 px-2 font-bold">✕</button>
+        <button type="button" class="remove-item text-red-500 px-2 font-bold"><i data-lucide="x"></i></button>
       </div>
     </div>
     <button type="button" id="add-item" class="text-blue-600 text-sm hover:underline mt-1">+ Tambah Item</button>
@@ -68,12 +68,14 @@ document.getElementById('add-item')?.addEventListener('click', () => {
     </select>
     <input name="items[\${ii}][qty]" placeholder="Qty" step="any" class="border rounded p-2 w-20" required>
     <input name="items[\${ii}][harga_satuan]" placeholder="Harga" step="any" class="border rounded p-2 w-32" required>
-    <button type="button" class="remove-item text-red-500 px-2 font-bold">✕</button>
+    <button type="button" class="remove-item text-red-500 px-2 font-bold"><i data-lucide="x"></i></button>
   </div>`;
   document.getElementById('items-container').insertAdjacentHTML('beforeend', html);
+  if (window.lucide) lucide.createIcons();
   ii++;
 });
 document.addEventListener('click', (e) => {
-  if (e.target.classList.contains('remove-item')) e.target.closest('.item-row').remove();
+  const btn = e.target.closest('.remove-item');
+  if (btn) btn.closest('.item-row').remove();
 });
 </script>

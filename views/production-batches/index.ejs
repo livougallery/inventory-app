@@ -49,20 +49,20 @@
 
 <div class="kanban-page">
   <div style="margin-bottom:1.25rem;">
-    <h1 class="kanban-title">🏭 Batch Produksi</h1>
+    <h1 class="kanban-title"><i data-lucide="factory"></i> Batch Produksi</h1>
     <p class="kanban-subtitle">Pantau semua batch produksi — klik kartu untuk buka detailnya</p>
   </div>
 
   <div class="kanban-wrap">
     <% const kolom = [
-      { status: 'planned',     emoji: '🗓', label: 'Rencana',  cls: 'planned' },
-      { status: 'in_progress', emoji: '🔨', label: 'Berjalan', cls: 'in_progress' },
-      { status: 'completed',   emoji: '✅', label: 'Selesai',  cls: 'completed' },
+      { status: 'planned',     icon: 'calendar',     label: 'Rencana',  cls: 'planned' },
+      { status: 'in_progress', icon: 'hammer',       label: 'Berjalan', cls: 'in_progress' },
+      { status: 'completed',   icon: 'circle-check', label: 'Selesai',  cls: 'completed' },
     ]; %>
     <% kolom.forEach(k => { const daftar = batches.filter(b => b.status === k.status); %>
     <section class="kanban-col <%= k.cls %>">
       <div class="kanban-col-header">
-        <span class="kanban-col-emoji"><%= k.emoji %></span>
+        <span class="kanban-col-emoji"><i data-lucide="<%= k.icon %>"></i></span>
         <span><%= k.label %></span>
         <span class="kanban-count"><%= daftar.length %></span>
       </div>
@@ -75,15 +75,15 @@
         <% if (b.foto_path) { %>
           <img class="kanban-foto" src="/uploads/<%= b.foto_path %>" alt="<%= b.nama_produk %>" loading="lazy">
         <% } else { %>
-          <div class="kanban-foto-placeholder">👕</div>
+          <div class="kanban-foto-placeholder"><i data-lucide="shirt"></i></div>
         <% } %>
         <div class="kanban-body">
           <div class="kanban-kode"><%= b.nama_batch || '—' %></div>
           <div class="kanban-produk"><%= b.nama_produk %></div>
           <div>
-            <span class="kanban-badge">👕 <%= b.jumlah_variasi %> variasi</span>
+            <span class="kanban-badge"><i data-lucide="shirt"></i> <%= b.jumlah_variasi %> variasi</span>
             <% if (b.stok_kritis > 0) { %>
-            <span class="kanban-urgent">🔥 <%= b.stok_kritis %> variasi &lt; 20 pcs</span>
+            <span class="kanban-urgent"><i data-lucide="flame"></i> <%= b.stok_kritis %> variasi &lt; 20 pcs</span>
             <% } %>
           </div>
         </div>

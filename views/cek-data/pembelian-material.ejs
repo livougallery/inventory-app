@@ -5,7 +5,7 @@
 <link rel="stylesheet" href="/cek-data.css">
 
 <div class="cd-page">
-  <h1 class="cd-title">🚚 Material — Pembelian Material</h1>
+  <h1 class="cd-title"><i data-lucide="truck"></i> Material — Pembelian Material</h1>
   <p class="cd-subtitle">Kedatangan batch bahan baku dari Supabase — hanya untuk melihat, cek apakah ada salah input data</p>
 
   <%- include('_table', { cdTab: 'pembelian-material', cdP: 'cdk', cdPh: 'Cari batch / bahan / No PO / supplier…' }) %>
@@ -50,7 +50,8 @@
           var a = document.createElement('a');
           a.href = v;
           a.className = 'cd-link';
-          a.textContent = '🧾 Lihat Bukti';
+          a.innerHTML = '<i data-lucide="receipt"></i> Lihat Bukti';
+          if (window.lucide) lucide.createIcons();
           return a;
         } },
       { id: 'finance_status', header: 'Finance Validation', type: 'badge',

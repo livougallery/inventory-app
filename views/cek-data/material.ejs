@@ -5,7 +5,7 @@
 <link rel="stylesheet" href="/cek-data.css">
 
 <div class="cd-page">
-  <h1 class="cd-title">📦 Material — Data Material</h1>
+  <h1 class="cd-title"><i data-lucide="package"></i> Material — Data Material</h1>
   <p class="cd-subtitle">Bahan baku dari Supabase — hanya untuk melihat, cek apakah ada salah input data</p>
 
   <%- include('_table', { cdTab: 'material', cdP: 'cdm', cdPh: 'Cari bahan…' }) %>
@@ -41,7 +41,8 @@
           a.href = '/uploads/' + v;
           a.target = '_blank';
           a.className = 'cd-link';
-          a.textContent = '📷 Lihat';
+          a.innerHTML = '<i data-lucide="camera"></i> Lihat';
+          if (window.lucide) lucide.createIcons();
           return a;
         } },
       { id: 'kode_bahan',   header: 'Kode' },

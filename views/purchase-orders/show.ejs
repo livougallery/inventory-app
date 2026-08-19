@@ -1,11 +1,11 @@
 <div class="mb-4">
-  <a href="/purchase-orders" class="text-blue-600 hover:underline text-sm">← Kembali</a>
+  <a href="/purchase-orders" class="text-blue-600 hover:underline text-sm"><i data-lucide="arrow-left"></i> Kembali</a>
 </div>
 <div class="page-header">
   <h1 class="page-title">Detail PO: <%= po.no_po %></h1>
   <% if (po.status === 'pending') { %>
     <button type="button" class="btn btn-primary btn-sm" onclick="document.getElementById('quick-edit-modal').classList.remove('hidden')">
-      <i class="fas fa-pen"></i> Quick Edit
+      <i data-lucide="pencil"></i> Quick Edit
     </button>
   <% } %>
 </div>
@@ -62,7 +62,7 @@
   <div class="card max-w-md w-full">
     <div class="card-header flex justify-between items-center">
       <span class="font-semibold">Quick Edit PO</span>
-      <button type="button" onclick="document.getElementById('quick-edit-modal').classList.add('hidden')" style="background:transparent;border:none;color:#9ca3af;font-size:1.25rem;cursor:pointer;line-height:1;">×</button>
+      <button type="button" onclick="document.getElementById('quick-edit-modal').classList.add('hidden')" style="background:transparent;border:none;color:#9ca3af;font-size:1.25rem;cursor:pointer;line-height:1;"><i data-lucide="x"></i></button>
     </div>
     <div class="card-body">
       <form id="quick-edit-form">

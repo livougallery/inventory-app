@@ -100,7 +100,7 @@
             <form method="POST" action="/products/variants/<%= v.id %>/price" class="flex gap-1 items-center">
               <input class="input-field" type="number" name="harga_jual" value="<%= _hargaJual || 0 %>" step="100" style="width:8rem">
               <input type="hidden" name="berlaku_at" value="<%= new Date().toISOString().slice(0,10) %>">
-              <button type="submit" class="btn btn-sm btn-primary" title="Simpan harga"><i class="fas fa-save"></i></button>
+              <button type="submit" class="btn btn-sm btn-primary" title="Simpan harga"><i data-lucide="save"></i></button>
             </form>
           </div>
         </td>
