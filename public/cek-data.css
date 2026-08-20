@@ -1,6 +1,6 @@
 /* ===== Gaya bersama halaman Cek Data (tabel view-only) — tema shadcn ===== */
-.cd-page { background:hsl(var(--background)); margin:-1rem -1.5rem; padding:1.5rem 1.5rem 6rem; min-height:100vh; }
-@media (min-width:768px){ .cd-page { padding:1.5rem 2rem 3rem; } }
+.cd-page { background:hsl(var(--background)); margin:-1rem; padding:1rem 1rem 5rem; min-height:100vh; }
+@media (min-width:768px){ .cd-page { padding:1rem 1rem 3rem; } }
 .cd-title { font-size:1.5rem; font-weight:700; margin:0 0 0.25rem; color:hsl(var(--foreground)); letter-spacing:-0.025em; }
 .cd-subtitle { font-size:0.85rem; color:hsl(var(--muted-foreground)); margin:0; }
 
