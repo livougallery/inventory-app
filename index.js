@@ -6,76 +6,87 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const expressLayouts = require('express-ejs-layouts');
 
-const app = express();
 const PORT = process.env.PORT || 3000;
 
 const db = require('./db');
 
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
-app.use(methodOverride('_method'));
-app.use(express.static(path.join(__dirname, 'public')));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-app.use(session({
-  store: new PgSession({
+function createApp(options = {}) {
+  const app = express();
+  // Session store: pakai pool yang di-inject saat test (search_path sudah
+  // ter-pin ke schema `test` oleh tests/setup.js), buat PgSession baru
+  // untuk runtime.
+  const store = options.store || new PgSession({
     conString: process.env.DATABASE_URL,
     tableName: 'session'
-  }),
-  secret: 'inventory-secret-key-2026',
-  resave: false,
-  saveUninitialized: false,
-  cookie: { maxAge: 24 * 60 * 60 * 1000 }
-}));
+  });
 
-// Share session user to all views
-app.use((req, res, next) => {
-  res.locals.user = req.session.userId ? {
-    id: req.session.userId,
-    username: req.session.username,
-    role: req.session.role,
-    nama_lengkap: req.session.namaLengkap || req.session.username
-  } : null;
-  res.locals.currentPath = req.path;
-  // Mode presentasi: bendera global untuk layout & view (tanpa label UI apa pun).
-  // Ubah ke false untuk tampilan normal.
-  res.locals.modePresentasi = true;
-  next();
-});
+  app.use(express.urlencoded({ extended: true }));
+  app.use(express.json());
+  app.use(methodOverride('_method'));
+  app.use(express.static(path.join(__dirname, 'public')));
+  app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-const { generateToken } = require('./middleware/csrf');
-app.use(generateToken);
+  app.use(session({
+    store,
+    secret: 'inventory-secret-key-2026',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { maxAge: 24 * 60 * 60 * 1000 }
+  }));
 
-// Error view
-app.use(expressLayouts);
-app.set('layout', 'layout');
-app.set('layout extractScripts', true);
-app.set('view engine', 'ejs');
-app.set('views', path.join(__dirname, 'views'));
+  // Share session user to all views
+  app.use((req, res, next) => {
+    res.locals.user = req.session.userId ? {
+      id: req.session.userId,
+      username: req.session.username,
+      role: req.session.role,
+      nama_lengkap: req.session.namaLengkap || req.session.username
+    } : null;
+    res.locals.currentPath = req.path;
+    // Mode presentasi: bendera global untuk layout & view (tanpa label UI apa pun).
+    // Ubah ke false untuk tampilan normal.
+    res.locals.modePresentasi = true;
+    next();
+  });
 
-// Routes
-app.use('/', require('./routes/auth'));
+  const { generateToken } = require('./middleware/csrf');
+  app.use(generateToken);
 
-// Mode presentasi: root "/" langsung tampilkan kanban produksi
-app.get('/', (req, res) => res.redirect('/production-batches'));
-app.use('/dashboard', require('./routes/dashboard'));
-app.use('/vendors', require('./routes/vendors'));
-app.use('/products', require('./routes/products'));
-app.use('/raw-materials', require('./routes/raw-materials'));
-app.use('/purchase-orders', require('./routes/purchase-orders'));
-app.use('/production-batches', require('./routes/production-batches'));
-app.use('/purchase-imports', require('./routes/purchase-imports'));
-app.use('/hpp', require('./routes/hpp'));
-app.use('/validation', require('./routes/validation'));
-app.use('/reports', require('./routes/reports'));
-app.use('/admin/currencies', require('./routes/currencies'));
-app.use('/cek-data', require('./routes/cek-data'));
+  // Error view
+  app.use(expressLayouts);
+  app.set('layout', 'layout');
+  app.set('layout extractScripts', true);
+  app.set('view engine', 'ejs');
+  app.set('views', path.join(__dirname, 'views'));
 
-// Error handler
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).send('Terjadi kesalahan: ' + err.message);
-});
+  // Routes
+  app.use('/', require('./routes/auth'));
+
+  // Mode presentasi: root "/" langsung tampilkan kanban produksi
+  app.get('/', (req, res) => res.redirect('/production-batches'));
+  app.use('/dashboard', require('./routes/dashboard'));
+  app.use('/vendors', require('./routes/vendors'));
+  app.use('/products', require('./routes/products'));
+  app.use('/raw-materials', require('./routes/raw-materials'));
+  app.use('/purchase-orders', require('./routes/purchase-orders'));
+  app.use('/production-batches', require('./routes/production-batches'));
+  app.use('/purchase-imports', require('./routes/purchase-imports'));
+  app.use('/hpp', require('./routes/hpp'));
+  app.use('/validation', require('./routes/validation'));
+  app.use('/reports', require('./routes/reports'));
+  app.use('/admin/currencies', require('./routes/currencies'));
+  app.use('/cek-data', require('./routes/cek-data'));
+
+  // Error handler
+  app.use((err, req, res, next) => {
+    console.error(err.stack);
+    res.status(500).send('Terjadi kesalahan: ' + err.message);
+  });
+
+  return app;
+}
+
+const app = createApp();
 
 // Seed default users, currencies, HPP templates
 async function seedDefaults() {
@@ -130,15 +141,23 @@ async function seedDefaults() {
 
 // Boot: create tables, seed defaults, then start server.
 // Do NOT start the server if schema bootstrap or seeding fails.
-(async () => {
-  try {
-    await db.bootstrapSchema();
-    await seedDefaults();
-    app.listen(PORT, () => {
-      console.log(`Server running at http://localhost:${PORT}`);
-    });
-  } catch (err) {
-    console.error('[FATAL] Boot failed:', err.message);
-    process.exit(1);
-  }
-})();
+// Boot HANYA saat dijalankan langsung (`npm start` / `node index.js`).
+// Saat di-require oleh test: JANGAN bootstrap/seed/listen — tests/setup.js
+// sudah bootstrap schema `test`, dan side effect ke DB runtime tidak boleh
+// terjadi saat test.
+if (require.main === module) {
+  (async () => {
+    try {
+      await db.bootstrapSchema();
+      await seedDefaults();
+      app.listen(PORT, () => {
+        console.log(`Server running at http://localhost:${PORT}`);
+      });
+    } catch (err) {
+      console.error('[FATAL] Boot failed:', err.message);
+      process.exit(1);
+    }
+  })();
+}
+
+module.exports = { createApp, app };
