@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Package, ShoppingCart, Hammer, FileText, Users, Crate } from 'lucide-react';
+import { LayoutDashboard, Package, ShoppingCart, Hammer, FileText, Users } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 interface NavItem {
@@ -16,8 +16,8 @@ const navItems: NavItem[] = [
   { path: '/cek-data', label: 'Master Data', icon: Package, roles: ['admin'] },
   { path: '/bom', label: 'Bill of Materials', icon: FileText, roles: ['admin', 'production'] },
   { path: '/vendors', label: 'Vendor Management', icon: Users, roles: ['admin', 'purchasing'] },
-  { path: '/products', label: 'Products', icon: Crate, roles: ['admin', 'production'] },
-  { path: '/raw-materials', label: 'Raw Materials', icon: Crate, roles: ['admin', 'production'] },
+  { path: '/products', label: 'Products', icon: Package, roles: ['admin', 'production'] },
+  { path: '/raw-materials', label: 'Raw Materials', icon: Package, roles: ['admin', 'production'] },
   { path: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingCart, roles: ['admin', 'purchasing'] },
   { path: '/production-batches', label: 'Production Batches', icon: Hammer, roles: ['admin', 'production'] },
   { path: '/hpp', label: 'HPP & Reports', icon: FileText, roles: ['admin', 'finance'] },
