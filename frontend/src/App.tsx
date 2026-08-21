@@ -9,22 +9,66 @@ import PurchaseOrders from './pages/PurchaseOrders';
 import ProductionBatches from './pages/ProductionBatches';
 import BOM from './pages/BOM';
 import HPP from './pages/HPP';
+import { Shell } from './components/Shell';
 
 function App() {
   return (
     <Routes>
+      {/* Login page - no shell */}
       <Route path="/login" element={<Login />} />
-      <Route path="/" element={<Dashboard />} />
-      <Route path="/cek-data" element={<MaterialAndProducts />} />
-      <Route path="/vendors" element={<Vendors />} />
-      <Route path="/products" element={<Products />} />
-      <Route path="/raw-materials" element={<RawMaterials />} />
-      <Route path="/purchase-orders" element={<PurchaseOrders />} />
-      <Route path="/production-batches" element={<ProductionBatches />} />
-      <Route path="/bom" element={<BOM />} />
-      <Route path="/hpp" element={<HPP />} />
+
+      {/* All other pages wrapped in Shell with sidebar */}
+      <Route path="/" element={
+        <Shell>
+          <Dashboard />
+        </Shell>
+      } />
+      <Route path="/cek-data" element={
+        <Shell>
+          <MaterialAndProducts />
+        </Shell>
+      } />
+      <Route path="/vendors" element={
+        <Shell>
+          <Vendors />
+        </Shell>
+      } />
+      <Route path="/products" element={
+        <Shell>
+          <Products />
+        </Shell>
+      } />
+      <Route path="/raw-materials" element={
+        <Shell>
+          <RawMaterials />
+        </Shell>
+      } />
+      <Route path="/purchase-orders" element={
+        <Shell>
+          <PurchaseOrders />
+        </Shell>
+      } />
+      <Route path="/production-batches" element={
+        <Shell>
+          <ProductionBatches />
+        </Shell>
+      } />
+      <Route path="/bom" element={
+        <Shell>
+          <BOM />
+        </Shell>
+      } />
+      <Route path="/hpp" element={
+        <Shell>
+          <HPP />
+        </Shell>
+      } />
       {/* Fallback */}
-      <Route path="*" element={<div className="p-8">Coming soon...</div>} />
+      <Route path="*" element={
+        <Shell>
+          <div className="p-8">Coming soon...</div>
+        </Shell>
+      } />
     </Routes>
   );
 }
