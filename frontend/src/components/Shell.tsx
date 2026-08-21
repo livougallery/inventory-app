@@ -13,13 +13,12 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/cek-data', label: 'Material & Products', icon: Package },
-  { path: '/vendors', label: 'Vendor Management', icon: Users },
-  { path: '/products', label: 'Produk', icon: Package },
-  { path: '/raw-materials', label: 'Bahan Baku', icon: Package },
-  { path: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingCart },
-  { path: '/production-batches', label: 'Batch Produksi', icon: Hammer },
-  { path: '/hpp', label: 'HPP & Reports', icon: FileText },
+  { path: '/cek-data', label: 'Master Data', icon: Package, roles: ['admin'] },
+  { path: '/bom', label: 'Bill of Materials', icon: FileText, roles: ['admin', 'production'] },
+  { path: '/vendors', label: 'Vendor Management', icon: Users, roles: ['admin', 'purchasing'] },
+  { path: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingCart, roles: ['admin', 'purchasing'] },
+  { path: '/production-batches', label: 'Production Batches', icon: Hammer, roles: ['admin', 'production'] },
+  { path: '/hpp', label: 'HPP & Reports', icon: FileText, roles: ['admin', 'finance'] },
 ];
 
 export function Shell({ children }: { children: ReactNode }) {
