@@ -77,10 +77,14 @@ function createApp(options = {}) {
   // Catch-all for debugging - MUST be last
   app.use((req, res, next) => {
     console.log('[DEBUG] Route matched:', req.method, req.path);
-    if (req.path === '/login') {
-      console.log('[DEBUG] Serving React SPA');
-      const path = require('path');
-      return res.sendFile(path.join(__dirname, 'frontend/dist/index.html'));
+    if (MIGRATED_ROUTES.has(req.path)) {
+      const fs = require('fs');
+      const pathModule = require('path');
+      const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
+      if (fs.existsSync(distPath)) {
+        console.log('[DEBUG] Serving React SPA for catch-all route:', req.path);
+        return res.sendFile(distPath);
+      }
     }
     next();
   });
