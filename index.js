@@ -159,12 +159,16 @@ async function seedDefaults() {
 // sudah bootstrap schema `test`, dan side effect ke DB runtime tidak boleh
 // terjadi saat test.
 if (require.main === module) {
+  console.log('[BOOT] require.main === module is TRUE');
   (async () => {
     try {
+      console.log('[BOOT] Starting bootstrap...');
       await db.bootstrapSchema();
+      console.log('[BOOT] Schema ready, about to call seedDefaults');
       await seedDefaults();
+      console.log('[BOOT] Seeding done, about to listen on PORT', PORT);
       app.listen(PORT, () => {
-        console.log(`Server running at http://localhost:${PORT}`);
+        console.log(`[SERVER LISTEN] Listening on http://localhost:${PORT}`);
       });
     } catch (err) {
       console.error('[FATAL] Boot failed:', err.message);
