@@ -27,6 +27,7 @@ function createApp(options = {}) {
     saveUninitialized: false,
     cookie: { secure: false } // set true in production with HTTPS
   }));
+  console.log('[createApp] Session middleware added');
 
   const MIGRATED_ROUTES = new Set([
     '/',
@@ -40,6 +41,7 @@ function createApp(options = {}) {
     '/production-batches',
     '/hpp'
   ]);
+  console.log('[createApp] MIGRATED_ROUTES created with size:', MIGRATED_ROUTES.size);
 
   const { generateToken } = require('./middleware/csrf');
   app.use(generateToken);
