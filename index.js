@@ -20,19 +20,28 @@ function createApp(options = {}) {
     tableName: 'session'
   });
 
-  app.use(express.urlencoded({ extended: true }));
-  app.use(express.json());
-  app.use(methodOverride('_method'));
-  app.use(express.static(path.join(__dirname, 'public')));
-  app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+  // Create separate app instance for login SPA - NO MIDDLEWARE
+  const loginApp = require('express')();
+  const distPath = path.join(__dirname, 'frontend/dist/index.html');
 
-  app.use(session({
-    store,
-    secret: 'inventory-secret-key-2026',
-    resave: false,
-    saveUninitialized: false,
-    cookie: { maxAge: 24 * 60 * 60 * 1000 }
-  }));
+  loginApp.get('/login', (req, res) => {
+    console.log('[LOGIN SPA] Serving React build');
+    return res.sendFile(distPath);
+  });
+
+  // Mount SPA app at root level with highest priority
+  app.use((req, res, next) => {
+    if (req.path === '/login' || req.path.startsWith('/login/')) {
+      console.log('[PRIORITY ROUTE] Serving React SPA at /login');
+      const fs = require('fs');
+      const pathModule = require('path');
+      const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
+      if (fs.existsSync(distPath)) {
+        return res.sendFile(distPath);
+      }
+    }
+    next();
+  });
 
   // Share session user to all views
   app.use((req, res, next) => {
@@ -71,11 +80,32 @@ function createApp(options = {}) {
   // API routes (JSON endpoints)
   app.use('/api', require('./routes/api'));
 
+  // Catch-all for debugging - MUST be last
+  app.use((req, res, next) => {
+    console.log('[DEBUG] Route matched:', req.method, req.path);
+    if (req.path === '/login') {
+      console.log('[DEBUG] Serving React SPA');
+      const path = require('path');
+      return res.sendFile(path.join(__dirname, 'frontend/dist/index.html'));
+    }
+    next();
+  });
+
   // Routes
   app.use('/', require('./routes/auth'));
 
-  // Root redirect to dashboard (normal mode)
-  app.get('/', (req, res) => res.redirect('/dashboard'));
+  // Serve React SPA at / for migrated pages (will expand Phase 2)
+  app.get('/', (req, res) => {
+    const fs = require('fs');
+    const pathModule = require('path');
+    const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
+    if (fs.existsSync(distPath)) {
+      console.log('[SPA ROUTE] Serving React SPA at root /');
+      return res.sendFile(distPath);
+    }
+    // Fallback: redirect to dashboard (EJS)
+    res.redirect('/dashboard');
+  });
   app.use('/dashboard', require('./routes/dashboard'));
   app.use('/vendors', require('./routes/vendors'));
   app.use('/products', require('./routes/products'));

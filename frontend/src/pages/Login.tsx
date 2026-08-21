@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -11,7 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card';
-import { Loader2 } from 'lucide-react';
+import { Loader2, ShoppingCart } from 'lucide-react';
 
 export default function Login() {
   const [username, setUsername] = useState('');
@@ -31,6 +31,7 @@ export default function Login() {
         setCsrfToken(data.csrfToken);
       } catch (err) {
         console.error('CSRF fetch error:', err);
+        setError('Failed to initialize login');
       }
     };
 
@@ -74,7 +75,7 @@ export default function Login() {
 
       // Save CSRF token for future requests
       setCsrfToken(data.csrfToken);
-      
+
       // Redirect
       navigate(data.redirect || '/dashboard');
     } catch (err: any) {
@@ -85,16 +86,23 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <Card className="w-full max-w-md">
-        <CardHeader className="space-y-1">
-          <CardTitle className="text-2xl font-bold text-center">Inventory System</CardTitle>
-          <CardDescription className="text-center">Sign in to your account</CardDescription>
+    <div className="min-h-screen flex items-center justify-center bg-muted/50 p-4">
+      <Card className="w-full max-w-md shadow-lg">
+        <CardHeader className="text-center space-y-3 pb-4">
+          <div className="mx-auto mb-2">
+            <ShoppingCart className="h-12 w-12 text-primary mx-auto" />
+          </div>
+          <CardTitle className="text-3xl font-bold tracking-tight">
+            Inventory System
+          </CardTitle>
+          <CardDescription>Sign in to your account</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
+              <Label htmlFor="username" className="text-sm font-medium">
+                Username
+              </Label>
               <Input
                 id="username"
                 type="text"
@@ -102,10 +110,14 @@ export default function Login() {
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="Enter your username"
                 required
+                disabled={loading}
+                className="h-11"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password" className="text-sm font-medium">
+                Password
+              </Label>
               <Input
                 id="password"
                 type="password"
@@ -113,19 +125,33 @@ export default function Login() {
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Enter your password"
                 required
+                disabled={loading}
+                className="h-11"
               />
             </div>
             {error && (
-              <div className="text-sm text-red-500">{error}</div>
+              <div className="p-3 text-sm text-red-600 bg-red-50 border border-red-200 rounded-md">
+                {error}
+              </div>
             )}
-            <Button type="submit" className="w-full" disabled={loading}>
+            <Button
+              type="submit"
+              className="w-full h-11 text-sm font-semibold"
+              size="lg"
+              disabled={loading}
+            >
               {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
               {loading ? 'Signing in...' : 'Sign In'}
             </Button>
           </form>
         </CardContent>
-        <CardFooter className="flex justify-center text-sm">
-          Don't have an account? <a href="/register" className="ml-1 text-primary underline">Register</a>
+        <CardFooter className="flex justify-center border-t pt-4">
+          <div className="text-sm text-muted-foreground">
+            Don't have an account?{' '}
+            <Link to="/register" className="text-primary hover:underline font-medium">
+              Register
+            </Link>
+          </div>
         </CardFooter>
       </Card>
     </div>
