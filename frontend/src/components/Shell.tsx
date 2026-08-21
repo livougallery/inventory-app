@@ -31,98 +31,90 @@ export function Shell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background flex">
       {/* Sidebar */}
-      <aside className="w-64 bg-card border-r hidden md:block">
-        <div className="p-4 space-y-4">
-          {/* App Header */}
-          <div className="flex items-center gap-2 px-2">
-            <ShoppingCart className="h-8 w-8 text-primary" />
-            <span className="font-bold text-xl">Inventory System</span>
-          </div>
+      <aside className="hidden md:flex w-64 flex-col fixed inset-y-0 border-r bg-card">
+        <div className="flex h-14 items-center border-b px-4 shrink-0">
+          <Link to="/" className="flex items-center gap-2 font-semibold">
+            <ShoppingCart className="h-6 w-6 text-primary" />
+            <span>Inventory System</span>
+          </Link>
+        </div>
 
-          {/* Navigation */}
-          <nav className="space-y-1">
+        <nav className="flex-1 overflow-auto py-4">
+          <div className="space-y-1 px-3">
             {navItems.map((item) => {
               const Icon = item.icon;
               const isActive = location.pathname === item.path;
-              
+
               return (
                 <Link
                   key={item.path}
                   to={item.path}
                   className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
+                    "flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors",
                     isActive
                       ? "bg-primary text-primary-foreground"
                       : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                   )}
                 >
-                  <Icon className="h-5 w-5" />
+                  <Icon className="h-4 w-4" />
                   {item.label}
                 </Link>
               );
             })}
-          </nav>
+          </div>
 
-          <Separator />
+          <Separator className="my-3" />
 
-          {/* Additional Actions */}
-          <nav className="space-y-1">
-            <button className="flex items-center gap-3 w-full rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
-              <Settings className="h-5 w-5" />
+          <div className="px-3">
+            <button className="flex items-center gap-3 w-full rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
+              <Settings className="h-4 w-4" />
               Settings
             </button>
-          </nav>
-        </div>
+          </div>
+        </nav>
       </aside>
 
       {/* Mobile Header */}
-      <header className="md:hidden fixed top-0 left-0 right-0 h-14 bg-card border-b z-50">
-        <div className="flex items-center justify-between h-full px-4">
-          <div className="flex items-center gap-2">
-            <ShoppingCart className="h-6 w-6 text-primary" />
-            <span className="font-semibold">Inventory</span>
-          </div>
-
-          {/* Mobile menu button would go here */}
+      <header className="md:hidden sticky top-0 z-50 h-14 flex items-center gap-4 border-b bg-card px-4">
+        <div className="flex items-center gap-2 font-semibold">
+          <ShoppingCart className="h-6 w-6 text-primary" />
+          <span>Inventory</span>
         </div>
       </header>
 
-      {/* Main Content */}
-      <main className="flex-1 p-6 pt-6 md:pt-6 overflow-auto">
-        {/* Top Bar */}
-        <div className="mb-6 flex items-center justify-between">
-          <h1 className="text-2xl font-bold tracking-tight">
-            Inventory Dashboard
-          </h1>
+      {/* Top Bar in main content area */}
+      <div className="flex items-center justify-between mb-6 px-2">
+        <h1 className="text-xl md:text-2xl font-bold tracking-tight">
+          Inventory Dashboard
+        </h1>
 
-          {/* User Profile Dropdown */}
-          <DropdownMenu>
-            <DropdownMenuTrigger>
-              <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-                <UserCircle2 className="h-8 w-8 text-muted-foreground" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuLabel className="font-normal">
-                <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none">{user.name}</p>
-                  <p className="text-xs leading-none text-muted-foreground">
-                    {user.role}
-                  </p>
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>Profile</DropdownMenuItem>
-              <DropdownMenuItem>Settings</DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem>Logout</DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        {/* User Profile Dropdown */}
+        <DropdownMenu>
+          <DropdownMenuTrigger>
+            <Button variant="ghost" className="relative h-9 w-9 rounded-full">
+              <UserCircle2 className="h-8 w-8 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel className="font-normal">
+              <div className="flex flex-col space-y-1">
+                <p className="text-sm font-medium leading-none">{user.name}</p>
+                <p className="text-xs leading-none text-muted-foreground">
+                  {user.role}
+                </p>
+              </div>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>Profile</DropdownMenuItem>
+            <DropdownMenuItem>Settings</DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem>Logout</DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
 
-        {/* Page Content */}
-        {children}
-      </main>
+      {/* Page Content */}
+      {children}
     </div>
   );
 }
