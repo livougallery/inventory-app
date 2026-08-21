@@ -1,3 +1,12 @@
-export default function App() {
-  return <div className="p-8 text-sm text-muted-foreground">Frontend scaffold OK</div>;
+import { Routes, Route } from 'react-router-dom';
+import Login from './pages/Login';
+
+function App() {
+  return (
+    <Routes>
+      <Route path="/login" element={<Login />} />
+    </Routes>
+  );
 }
+
+export default App;
