@@ -12,15 +12,19 @@ const db = require('./db');
 
 function createApp(options = {}) {
   const app = express();
-  // Session store: pakai pool yang di-inject saat test (search_path sudah
-  // ter-pin ke schema `test` oleh tests/setup.js), buat PgSession baru
-  // untuk runtime.
-  const store = options.store || new PgSession({
-    conString: process.env.DATABASE_URL,
-    tableName: 'session'
-  });
 
-  // SPA middleware - MUST be early but AFTER session middleware
+  // Session middleware - MUST come BEFORE everything
+  app.use(session({
+    store: options.store || new PgSession({
+      conString: process.env.DATABASE_URL,
+      tableName: 'session'
+    }),
+    secret: process.env.SESSION_SECRET || 'inventory-secret-key-change-me',
+    resave: false,
+    saveUninitialized: false,
+    cookie: { secure: false } // set true in production with HTTPS
+  }));
+
   const MIGRATED_ROUTES = new Set([
     '/',
     '/login',
@@ -34,8 +38,18 @@ function createApp(options = {}) {
     '/hpp'
   ]);
 
-  // Share session user to all views (FIRST middleware after setup)
+  // SPA middleware - serves React build for migrated routes
   app.use((req, res, next) => {
+    const fs = require('fs');
+    const pathModule = require('path');
+    const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
+
+    if (fs.existsSync(distPath) && (MIGRATED_ROUTES.has(req.path) || MIGRATED_ROUTES.has(req.path + '/'))) {
+      console.log(`[SPA ROUTE] Serving React SPA at ${req.path}`);
+      return res.sendFile(distPath);
+    }
+
+    // Set locals for other routes
     res.locals.user = req.session.userId ? {
       id: req.session.userId,
       username: req.session.username,
@@ -44,16 +58,6 @@ function createApp(options = {}) {
     } : null;
     res.locals.currentPath = req.path;
 
-    // Check if this is a SPA route and serve it
-    if (MIGRATED_ROUTES.has(req.path) || MIGRATED_ROUTES.has(req.path + '/')) {
-      const fs = require('fs');
-      const pathModule = require('path');
-      const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
-      if (fs.existsSync(distPath)) {
-        console.log(`[SPA ROUTE] Serving React SPA at ${req.path}`);
-        return res.sendFile(distPath);
-      }
-    }
     next();
   });
 
