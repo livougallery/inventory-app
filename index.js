@@ -83,6 +83,14 @@ function createApp(options = {}) {
   // SPA middleware - serves React build for migrated routes ONLY
   // This must come AFTER login route but BEFORE dashboard route
   console.log('[createApp] About to add SPA middleware...');
+
+  // ADD HEALTH CHECK FIRST TO VERIFY EXPRESS IS WORKING
+  app.get('/health-check', (req, res) => {
+    console.log(`[HEALTH] Received request from ${req.ip} for /health-check`);
+    res.json({ healthy: true, routes: Array.from(MIGRATED_ROUTES) });
+  });
+  console.log('[createApp] Health check route added');
+
   app.use((req, res, next) => {
     const fs = require('fs');
     const pathModule = require('path');
