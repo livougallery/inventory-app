@@ -16,3 +16,6 @@ tmp/pg-data.sql
 
 # Runtime log (server berjalan via nohup)
 tmp/server.log
+
+# Frontend build output
+frontend/dist/

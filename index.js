@@ -59,6 +59,9 @@ function createApp(options = {}) {
   app.set('view engine', 'ejs');
   app.set('views', path.join(__dirname, 'views'));
 
+  // API routes (JSON endpoints)
+  app.use('/api', require('./routes/api'));
+
   // Routes
   app.use('/', require('./routes/auth'));
 
@@ -81,6 +84,18 @@ function createApp(options = {}) {
   app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).send('Terjadi kesalahan: ' + err.message);
+  });
+
+  // Toggle per route untuk migrate ke SPA React bertahap
+  const MIGRATED = new Set(['/login']);
+  app.use((req, res, next) => {
+    if (MIGRATED.has(req.path)) {
+      // Serve dari frontend/dist sebagai SPA
+      res.setHeader('Content-Type', 'text/html');
+      res.sendFile(path.join(__dirname, 'frontend', 'dist', 'index.html'));
+    } else {
+      next();
+    }
   });
 
   return app;
