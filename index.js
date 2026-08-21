@@ -80,6 +80,26 @@ function createApp(options = {}) {
   });
   console.log('[createApp] Login route registered');
 
+  // WORKAROUND: Explicit handlers for problematic routes that Express isn't routing properly
+  console.log('[createApp] Adding explicit catch-all handler for unmatched paths...');
+
+  const serveSPA = (req, res) => {
+    const fs = require('fs');
+    const pathModule = require('path');
+    const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
+
+    if (require('fs').existsSync(distPath)) {
+      console.log(`[EXPLICIT SERVE] Serving SPA for ${req.path}`);
+      return res.sendFile(distPath);
+    }
+    next();
+  };
+
+  // Add explicit handlers for failing routes
+  app.get('/cek-data', serveSPA);
+  app.get('/bom', serveSPA);
+  console.log('[createApp] Explicit handlers added for /cek-data and /bom');
+
   // SPA middleware - serves React build for migrated routes ONLY
   // This must come AFTER login route but BEFORE dashboard route
   console.log('[createApp] About to add SPA middleware...');
