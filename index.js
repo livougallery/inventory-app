@@ -84,28 +84,33 @@ function createApp(options = {}) {
   // This must come AFTER login route but BEFORE dashboard route
   console.log('[createApp] About to add SPA middleware...');
 
-  // ADD HEALTH CHECK FIRST TO VERIFY EXPRESS IS WORKING
-  app.get('/health-check', (req, res) => {
-    console.log(`[HEALTH] Received request from ${req.ip} for /health-check`);
-    res.json({ healthy: true, routes: Array.from(MIGRATED_ROUTES) });
-  });
-  console.log('[createApp] Health check route added');
-
   app.use((req, res, next) => {
+    console.log(`[SPA EXEC] Intercepted: ${req.method} ${req.path}`);
+
     const fs = require('fs');
     const pathModule = require('path');
     const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
 
-    console.log(`[SPA DEBUG] Path: ${req.path}, File exists: ${fs.existsSync(distPath)}, Is Migrated: ${MIGRATED_ROUTES.has(req.path) || MIGRATED_ROUTES.has(req.path + '/') || MIGRATED_ROUTES.has(req.path.replace(/\/$/, ''))}`);
+    if (!fs.existsSync(distPath)) {
+      console.log(`[SPA EXEC] ERROR: Cannot find dist at ${distPath}`);
+      return next();
+    }
 
-    // Only intercept if path is in migrated routes AND file exists
-    if (fs.existsSync(distPath) && (MIGRATED_ROUTES.has(req.path) || MIGRATED_ROUTES.has(req.path + '/') || MIGRATED_ROUTES.has(req.path.replace(/\/$/, '')))) {
-      console.log(`[SPA SERVING] ${req.path} -> React SPA`);
+    const isMigrated = MIGRATED_ROUTES.has(req.path) ||
+                      MIGRATED_ROUTES.has(req.path + '/') ||
+                      MIGRATED_ROUTES.has(req.path.replace(/\/$/, ''));
+
+    console.log(`[SPA EXEC] MIGRATED_ROUTES.size=${MIGRATED_ROUTES.size}, exact=${MIGRATED_ROUTES.has(req.path)}, withSlash=${MIGRATED_ROUTES.has(req.path + '/')}, strip=${MIGRATED_ROUTES.has(req.path.replace(/\/$/, ''))}`);
+
+    if (isMigrated) {
+      console.log(`[SPA SERVING] Sending ${req.path}`);
       return res.sendFile(distPath);
     }
 
+    console.log(`[SPA NOT MATCH] Passing to next()`);
     next();
   });
+
   console.log('[createApp] SPA middleware added SUCCESSFULLY');
 
   // Dashboard route (after SPA middleware so it doesn't intercept)
