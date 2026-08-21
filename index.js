@@ -67,9 +67,11 @@ function createApp(options = {}) {
     const pathModule = require('path');
     const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
 
+    console.log(`[SPA DEBUG] Path: ${req.path}, File exists: ${fs.existsSync(distPath)}, Is Migrated: ${MIGRATED_ROUTES.has(req.path) || MIGRATED_ROUTES.has(req.path + '/') || MIGRATED_ROUTES.has(req.path.replace(/\/$/, ''))}`);
+
     // Only intercept if path is in migrated routes AND file exists
     if (fs.existsSync(distPath) && (MIGRATED_ROUTES.has(req.path) || MIGRATED_ROUTES.has(req.path + '/') || MIGRATED_ROUTES.has(req.path.replace(/\/$/, '')))) {
-      console.log(`[SPA ROUTE] Serving React for ${req.path}`);
+      console.log(`[SPA SERVING] ${req.path} -> React SPA`);
       return res.sendFile(distPath);
     }
 
