@@ -1,9 +1,7 @@
 import type { ReactNode } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { cn } from '@/lib/utils';
-import { LayoutDashboard, Package, ShoppingCart, Hammer, FileText, Settings, UserCircle2, Users } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { LayoutDashboard, Package, ShoppingCart, Hammer, FileText, Users } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 
 interface NavItem {
@@ -26,7 +24,6 @@ const navItems: NavItem[] = [
 
 export function Shell({ children }: { children: ReactNode }) {
   const location = useLocation();
-  const user = { name: 'Admin Utama', role: 'Administrator' };
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -67,54 +64,25 @@ export function Shell({ children }: { children: ReactNode }) {
 
           <div className="px-3">
             <button className="flex items-center gap-3 w-full rounded-md px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-colors">
-              <Settings className="h-4 w-4" />
-              Settings
+              <span>Settings</span>
             </button>
           </div>
         </nav>
       </aside>
 
       {/* Mobile Header */}
-      <header className="md:hidden sticky top-0 z-50 h-14 flex items-center gap-4 border-b bg-card px-4">
+      <header className="md:hidden sticky top-0 z-50 h-14 flex items-center gap-2 border-b bg-card px-4">
         <div className="flex items-center gap-2 font-semibold">
           <ShoppingCart className="h-6 w-6 text-primary" />
           <span>Inventory</span>
         </div>
       </header>
 
-      {/* Top Bar in main content area */}
-      <div className="flex items-center justify-between mb-6 px-2">
-        <h1 className="text-xl md:text-2xl font-bold tracking-tight">
-          Inventory Dashboard
-        </h1>
-
-        {/* User Profile Dropdown */}
-        <DropdownMenu>
-          <DropdownMenuTrigger>
-            <Button variant="ghost" className="relative h-9 w-9 rounded-full">
-              <UserCircle2 className="h-8 w-8 text-muted-foreground" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <DropdownMenuLabel className="font-normal">
-              <div className="flex flex-col space-y-1">
-                <p className="text-sm font-medium leading-none">{user.name}</p>
-                <p className="text-xs leading-none text-muted-foreground">
-                  {user.role}
-                </p>
-              </div>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>Profile</DropdownMenuItem>
-            <DropdownMenuItem>Settings</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem>Logout</DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
-
-      {/* Page Content */}
-      {children}
+      {/* Main Content */}
+      <main className="md:ml-64 p-4 md:p-8 pt-14 md:pt-8">
+        {/* Page Content */}
+        {children}
+      </main>
     </div>
   );
 }
