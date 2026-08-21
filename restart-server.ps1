@@ -8,13 +8,15 @@ Write-Host "Wait 2 seconds..." -ForegroundColor Yellow
 Start-Sleep -Seconds 2
 
 Write-Host "Starting new server..." -ForegroundColor Green
+cd C:\Users\livou\inventory-app
 npm start
 
 Write-Host ""
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host "Server running at http://localhost:3000" -ForegroundColor Cyan
 Write-Host "Available routes:" -ForegroundColor Cyan
-Write-Host "  /           - Dashboard" -ForegroundColor White
+Write-Host "  /           - Dashboard (redirects from root)" -ForegroundColor White
+Write-Host "  /login      - Login page" -ForegroundColor White
 Write-Host "  /cek-data   - Master Data (ALL items)" -ForegroundColor White
 Write-Host "  /bom        - Bill of Materials" -ForegroundColor White
 Write-Host "  /vendors    - Vendor Management" -ForegroundColor White

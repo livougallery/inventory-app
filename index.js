@@ -38,62 +38,48 @@ function createApp(options = {}) {
     '/hpp'
   ]);
 
-  // SPA middleware - serves React build for migrated routes
-  app.use((req, res, next) => {
-    const fs = require('fs');
-    const pathModule = require('path');
-    const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
-
-    if (fs.existsSync(distPath) && (MIGRATED_ROUTES.has(req.path) || MIGRATED_ROUTES.has(req.path + '/'))) {
-      console.log(`[SPA ROUTE] Serving React SPA at ${req.path}`);
-      return res.sendFile(distPath);
-    }
-
-    // Set locals for other routes
-    res.locals.user = req.session.userId ? {
-      id: req.session.userId,
-      username: req.session.username,
-      role: req.session.role,
-      nama_lengkap: req.session.namaLengkap || req.session.username
-    } : null;
-    res.locals.currentPath = req.path;
-
-    next();
-  });
-
   const { generateToken } = require('./middleware/csrf');
   app.use(generateToken);
 
-  // Error view
+  // Error view setup - MUST come before any route handlers
   app.use(expressLayouts);
   app.set('layout', 'layout');
   app.set('layout extractScripts', true);
   app.set('view engine', 'ejs');
   app.set('views', path.join(__dirname, 'views'));
 
-  // API routes (JSON endpoints)
+  // API routes (JSON endpoints) - these should NOT be affected by SPA serving
   app.use('/api', require('./routes/api'));
 
-  // Catch-all for debugging - MUST be last
+  // Serve login page as EJS (auth redirect needs it)
+  app.get('/login', (req, res) => {
+    res.render('auth/login', {
+      user: null,
+      currentPath: '/login',
+      csrfToken: req.csrfToken ? req.csrfToken() : ''
+    });
+  });
+
+  // SPA middleware - serves React build for migrated routes ONLY
+  // This must come AFTER login route but BEFORE dashboard route
   app.use((req, res, next) => {
-    console.log('[DEBUG] Route matched:', req.method, req.path);
-    if (MIGRATED_ROUTES.has(req.path)) {
-      const fs = require('fs');
-      const pathModule = require('path');
-      const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
-      if (fs.existsSync(distPath)) {
-        console.log('[DEBUG] Serving React SPA for catch-all route:', req.path);
-        return res.sendFile(distPath);
-      }
+    const fs = require('fs');
+    const pathModule = require('path');
+    const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
+
+    // Only intercept if path is in migrated routes AND file exists
+    if (fs.existsSync(distPath) && (MIGRATED_ROUTES.has(req.path) || MIGRATED_ROUTES.has(req.path + '/') || MIGRATED_ROUTES.has(req.path.replace(/\/$/, '')))) {
+      console.log(`[SPA ROUTE] Serving React for ${req.path}`);
+      return res.sendFile(distPath);
     }
+
     next();
   });
 
-  // Routes
-  app.use('/', require('./routes/auth'));
+  // Dashboard route (after SPA middleware so it doesn't intercept)
+  app.use('/dashboard', require('./routes/dashboard'));
 
   // Backend EJS routes (fallback for non-migrated or API endpoints)
-  app.use('/dashboard', require('./routes/dashboard'));
   app.use('/purchase-imports', require('./routes/purchase-imports'));
   app.use('/validation', require('./routes/validation'));
   app.use('/reports', require('./routes/reports'));
