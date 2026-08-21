@@ -20,50 +20,40 @@ function createApp(options = {}) {
     tableName: 'session'
   });
 
-  // Create separate app instance for login SPA - NO MIDDLEWARE
-  const loginApp = require('express')();
-  const distPath = path.join(__dirname, 'frontend/dist/index.html');
+  // SPA middleware - MUST be early but AFTER session middleware
+  const MIGRATED_ROUTES = new Set([
+    '/',
+    '/login',
+    '/cek-data',
+    '/bom',
+    '/vendors',
+    '/products',
+    '/raw-materials',
+    '/purchase-orders',
+    '/production-batches',
+    '/hpp'
+  ]);
 
-  loginApp.get('/login', (req, res) => {
-    console.log('[LOGIN SPA] Serving React build');
-    return res.sendFile(distPath);
-  });
-
-  // Mount SPA app at root level with highest priority
+  // Share session user to all views (FIRST middleware after setup)
   app.use((req, res, next) => {
-    if (req.path === '/login' || req.path.startsWith('/login/')) {
-      console.log('[PRIORITY ROUTE] Serving React SPA at /login');
+    res.locals.user = req.session.userId ? {
+      id: req.session.userId,
+      username: req.session.username,
+      role: req.session.role,
+      nama_lengkap: req.session.namaLengkap || req.session.username
+    } : null;
+    res.locals.currentPath = req.path;
+
+    // Check if this is a SPA route and serve it
+    if (MIGRATED_ROUTES.has(req.path) || MIGRATED_ROUTES.has(req.path + '/')) {
       const fs = require('fs');
       const pathModule = require('path');
       const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
       if (fs.existsSync(distPath)) {
+        console.log(`[SPA ROUTE] Serving React SPA at ${req.path}`);
         return res.sendFile(distPath);
       }
     }
-    next();
-  });
-
-  // Share session user to all views
-  app.use((req, res, next) => {
-    res.locals.user = req.session.userId ? {
-      id: req.session.userId,
-      username: req.session.username,
-      role: req.session.role,
-      nama_lengkap: req.session.namaLengkap || req.session.username
-    } : null;
-    res.locals.currentPath = req.path;
-    next();
-  });
-
-  // Share session user to all views
-  app.use((req, res, next) => {
-    res.locals.user = req.session.userId ? {
-      id: req.session.userId,
-      username: req.session.username,
-      role: req.session.role,
-      nama_lengkap: req.session.namaLengkap || req.session.username
-    } : null;
-    res.locals.currentPath = req.path;
     next();
   });
 
@@ -93,44 +83,6 @@ function createApp(options = {}) {
 
   // Routes
   app.use('/', require('./routes/auth'));
-
-  // Serve React SPA for migrated routes - HIGHEST PRIORITY
-  const MIGRATED_ROUTES = new Set([
-    '/login',
-    '/cek-data',
-    '/bom',
-    '/vendors',
-    '/products',
-    '/raw-materials',
-    '/purchase-orders',
-    '/production-batches',
-    '/hpp'
-  ]);
-
-  app.use((req, res, next) => {
-    if (MIGRATED_ROUTES.has(req.path) || MIGRATED_ROUTES.has(req.path + '/')) {
-      const fs = require('fs');
-      const pathModule = require('path');
-      const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
-      if (fs.existsSync(distPath)) {
-        console.log(`[SPA ROUTE] Serving React SPA at ${req.path}`);
-        return res.sendFile(distPath);
-      }
-    }
-    next();
-  });
-
-  // Root route - serves React SPA Dashboard
-  app.get('/', (req, res) => {
-    const fs = require('fs');
-    const pathModule = require('path');
-    const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
-    if (fs.existsSync(distPath)) {
-      console.log('[SPA ROUTE] Serving React SPA at root / (Dashboard)');
-      return res.sendFile(distPath);
-    }
-    res.redirect('/dashboard');
-  });
 
   // Backend EJS routes (fallback for non-migrated or API endpoints)
   app.use('/dashboard', require('./routes/dashboard'));
