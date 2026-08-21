@@ -43,20 +43,34 @@ function createApp(options = {}) {
   ]);
   console.log('[createApp] MIGRATED_ROUTES created with size:', MIGRATED_ROUTES.size);
 
-  const { generateToken } = require('./middleware/csrf');
-  app.use(generateToken);
+  console.log('[createApp] About to load CSRF middleware...');
+
+  try {
+    const { generateToken } = require('./middleware/csrf');
+    console.log('[createApp] CSRF loaded successfully');
+    app.use(generateToken);
+    console.log('[createApp] CSRF middleware applied');
+  } catch (e) {
+    console.error('[createApp] CSRF ERROR:', e.message);
+    throw e;
+  }
 
   // Error view setup - MUST come before any route handlers
+  console.log('[createApp] Setting up EJS layouts...');
   app.use(expressLayouts);
   app.set('layout', 'layout');
   app.set('layout extractScripts', true);
   app.set('view engine', 'ejs');
   app.set('views', path.join(__dirname, 'views'));
+  console.log('[createApp] EJS layout setup complete');
 
   // API routes (JSON endpoints) - these should NOT be affected by SPA serving
+  console.log('[createApp] Loading API routes...');
   app.use('/api', require('./routes/api'));
+  console.log('[createApp] API routes registered');
 
   // Serve login page as EJS (auth redirect needs it)
+  console.log('[createApp] Registering /login route...');
   app.get('/login', (req, res) => {
     res.render('auth/login', {
       user: null,
@@ -64,9 +78,11 @@ function createApp(options = {}) {
       csrfToken: req.csrfToken ? req.csrfToken() : ''
     });
   });
+  console.log('[createApp] Login route registered');
 
   // SPA middleware - serves React build for migrated routes ONLY
   // This must come AFTER login route but BEFORE dashboard route
+  console.log('[createApp] About to add SPA middleware...');
   app.use((req, res, next) => {
     const fs = require('fs');
     const pathModule = require('path');
@@ -82,9 +98,12 @@ function createApp(options = {}) {
 
     next();
   });
+  console.log('[createApp] SPA middleware added SUCCESSFULLY');
 
   // Dashboard route (after SPA middleware so it doesn't intercept)
+  console.log('[createApp] Loading dashboard route...');
   app.use('/dashboard', require('./routes/dashboard'));
+  console.log('[createApp] Dashboard route registered');
 
   // Backend EJS routes (fallback for non-migrated or API endpoints)
   app.use('/purchase-imports', require('./routes/purchase-imports'));
