@@ -1,3 +1,5 @@
+console.log('=== INDEX.JS START ===');
+
 const express = require('express');
 const session = require('express-session');
 const PgSession = require('connect-pg-simple')(session);
@@ -11,6 +13,7 @@ const PORT = process.env.PORT || 3000;
 const db = require('./db');
 
 function createApp(options = {}) {
+  console.log('[createApp] Starting');
   const app = express();
 
   // Session middleware - MUST come BEFORE everything
