@@ -94,30 +94,39 @@ function createApp(options = {}) {
   // Routes
   app.use('/', require('./routes/auth'));
 
-  // Serve React SPA at / for migrated pages (will expand Phase 2)
-  app.get('/', (req, res) => {
-    const fs = require('fs');
-    const pathModule = require('path');
-    const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
-    if (fs.existsSync(distPath)) {
-      console.log('[SPA ROUTE] Serving React SPA at root /');
-      return res.sendFile(distPath);
+  // Serve React SPA for migrated routes - HIGHEST PRIORITY
+  const MIGRATED_ROUTES = new Set([
+    '/',
+    '/login',
+    '/cek-data',
+    '/bom',
+    '/vendors',
+    '/products',
+    '/raw-materials',
+    '/purchase-orders',
+    '/production-batches',
+    '/hpp'
+  ]);
+
+  app.use((req, res, next) => {
+    if (MIGRATED_ROUTES.has(req.path) || MIGRATED_ROUTES.has(req.path + '/')) {
+      const fs = require('fs');
+      const pathModule = require('path');
+      const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
+      if (fs.existsSync(distPath)) {
+        console.log(`[SPA ROUTE] Serving React SPA at ${req.path}`);
+        return res.sendFile(distPath);
+      }
     }
-    // Fallback: redirect to dashboard (EJS)
-    res.redirect('/dashboard');
+    next();
   });
+
+  // Backend EJS routes (fallback for non-migrated or API endpoints)
   app.use('/dashboard', require('./routes/dashboard'));
-  app.use('/vendors', require('./routes/vendors'));
-  app.use('/products', require('./routes/products'));
-  app.use('/raw-materials', require('./routes/raw-materials'));
-  app.use('/purchase-orders', require('./routes/purchase-orders'));
-  app.use('/production-batches', require('./routes/production-batches'));
   app.use('/purchase-imports', require('./routes/purchase-imports'));
-  app.use('/hpp', require('./routes/hpp'));
   app.use('/validation', require('./routes/validation'));
   app.use('/reports', require('./routes/reports'));
   app.use('/admin/currencies', require('./routes/currencies'));
-  app.use('/cek-data', require('./routes/cek-data'));
 
   // Error handler
   app.use((err, req, res, next) => {
