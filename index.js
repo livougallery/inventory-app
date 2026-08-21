@@ -43,9 +43,18 @@ function createApp(options = {}) {
       nama_lengkap: req.session.namaLengkap || req.session.username
     } : null;
     res.locals.currentPath = req.path;
-    // Mode presentasi: bendera global untuk layout & view (tanpa label UI apa pun).
-    // Ubah ke false untuk tampilan normal.
-    res.locals.modePresentasi = true;
+    next();
+  });
+
+  // Share session user to all views
+  app.use((req, res, next) => {
+    res.locals.user = req.session.userId ? {
+      id: req.session.userId,
+      username: req.session.username,
+      role: req.session.role,
+      nama_lengkap: req.session.namaLengkap || req.session.username
+    } : null;
+    res.locals.currentPath = req.path;
     next();
   });
 
@@ -65,8 +74,8 @@ function createApp(options = {}) {
   // Routes
   app.use('/', require('./routes/auth'));
 
-  // Mode presentasi: root "/" langsung tampilkan kanban produksi
-  app.get('/', (req, res) => res.redirect('/production-batches'));
+  // Root redirect to dashboard (normal mode)
+  app.get('/', (req, res) => res.redirect('/dashboard'));
   app.use('/dashboard', require('./routes/dashboard'));
   app.use('/vendors', require('./routes/vendors'));
   app.use('/products', require('./routes/products'));
@@ -84,18 +93,6 @@ function createApp(options = {}) {
   app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).send('Terjadi kesalahan: ' + err.message);
-  });
-
-  // Toggle per route untuk migrate ke SPA React bertahap
-  const MIGRATED = new Set(['/login']);
-  app.use((req, res, next) => {
-    if (MIGRATED.has(req.path)) {
-      // Serve dari frontend/dist sebagai SPA
-      res.setHeader('Content-Type', 'text/html');
-      res.sendFile(path.join(__dirname, 'frontend', 'dist', 'index.html'));
-    } else {
-      next();
-    }
   });
 
   return app;

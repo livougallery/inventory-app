@@ -4,7 +4,7 @@ const bcrypt = require('bcryptjs');
 const db = require('../db');
 const { isGuest, isAuthenticated } = require('../middleware/auth');
 
-router.get('/login', isGuest, async (req, res) => {
+router.get('/login', (req, res) => {
   res.render('auth/login', { error: null, layout: false });
 });
 
