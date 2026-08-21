@@ -83,7 +83,7 @@ function createApp(options = {}) {
   // WORKAROUND: Explicit handlers for problematic routes that Express isn't routing properly
   console.log('[createApp] Adding explicit catch-all handler for unmatched paths...');
 
-  const serveSPA = (req, res) => {
+  const serveSPA = (req, res, next) => {
     const fs = require('fs');
     const pathModule = require('path');
     const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
@@ -92,7 +92,7 @@ function createApp(options = {}) {
       console.log(`[EXPLICIT SERVE] Serving SPA for ${req.path}`);
       return res.sendFile(distPath);
     }
-    next();
+    next(req, res, next);
   };
 
   // Add explicit handlers for failing routes
@@ -144,7 +144,31 @@ function createApp(options = {}) {
   app.use('/reports', require('./routes/reports'));
   app.use('/admin/currencies', require('./routes/currencies'));
 
-  // Error handler
+  // CATCH-ALL: Serve SPA for any unmatched route that's in MIGRATED_ROUTES
+  // This MUST come AFTER all explicit routes to avoid blocking API endpoints
+  app.use((req, res, next) => {
+    console.log(`[CATCH-ALL] ${req.method} ${req.path}`);
+
+    const fs = require('fs');
+    const pathModule = require('path');
+    const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
+
+    if (fs.existsSync(distPath)) {
+      // Only serve SPA if it's a migrated route
+      const isMigrated = MIGRATED_ROUTES.has(req.path) ||
+                        MIGRATED_ROUTES.has(req.path + '/') ||
+                        MIGRATED_ROUTES.has(req.path.replace(/\/$/, ''));
+
+      if (isMigrated) {
+        console.log(`[CATCH-ALL SERVING SPA] ${req.path}`);
+        return res.sendFile(distPath);
+      }
+    }
+
+    next();
+  });
+
+  // Error handler (MUST be last)
   app.use((err, req, res, next) => {
     console.error(err.stack);
     res.status(500).send('Terjadi kesalahan: ' + err.message);
