@@ -96,7 +96,6 @@ function createApp(options = {}) {
 
   // Serve React SPA for migrated routes - HIGHEST PRIORITY
   const MIGRATED_ROUTES = new Set([
-    '/',
     '/login',
     '/cek-data',
     '/bom',
@@ -119,6 +118,18 @@ function createApp(options = {}) {
       }
     }
     next();
+  });
+
+  // Root route - serves React SPA Dashboard
+  app.get('/', (req, res) => {
+    const fs = require('fs');
+    const pathModule = require('path');
+    const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
+    if (fs.existsSync(distPath)) {
+      console.log('[SPA ROUTE] Serving React SPA at root / (Dashboard)');
+      return res.sendFile(distPath);
+    }
+    res.redirect('/dashboard');
   });
 
   // Backend EJS routes (fallback for non-migrated or API endpoints)
