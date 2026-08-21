@@ -144,14 +144,29 @@ function createApp(options = {}) {
   app.use('/reports', require('./routes/reports'));
   app.use('/admin/currencies', require('./routes/currencies'));
 
+  // Serve Vite static assets BEFORE catch-all (MUST have correct MIME types)
+  app.use('/assets', express.static(path.join(__dirname, 'frontend/dist/assets')));
+
   // CATCH-ALL: Serve SPA for any unmatched route that's in MIGRATED_ROUTES
-  // This MUST come AFTER all explicit routes to avoid blocking API endpoints
+  // This MUST come AFTER all explicit routes including static assets
   app.use((req, res, next) => {
     console.log(`[CATCH-ALL] ${req.method} ${req.path}`);
 
     const fs = require('fs');
     const pathModule = require('path');
     const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
+
+    if (fs.existsSync(distPath)) {
+      // Only serve SPA if it's a migrated route
+      const isMigrated = MIGRATED_ROUTES.has(req.path) ||
+                        MIGRATED_ROUTES.has(req.path + '/') ||
+                        MIGRATED_ROUTES.has(req.path.replace(/\/$/, ''));
+
+      if (isMigrated) {
+        console.log(`[CATCH-ALL SERVING SPA] ${req.path}`);
+        return res.sendFile(distPath);
+      }
+    }
 
     if (fs.existsSync(distPath)) {
       // Only serve SPA if it's a migrated route
