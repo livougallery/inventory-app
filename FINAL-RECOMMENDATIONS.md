@@ -102,13 +102,35 @@ Sometimes port conflicts or proxy issues interfere:
 const PORT = process.env.PORT || 3001; // Try different port
 ```
 
-## Immediate Workaround
+## Immediate Workaround (CONFIRMED)
 
-For now, users can manually navigate via browser URL bar OR use working routes as entry points:
-- Go to http://localhost:3000/vendors first
-- Then use sidebar navigation within React app to reach `/cek-data` and `/bom`
+The SPA middleware is never being triggered by Express for GET requests to routes like `/cek-data` and `/bom`. This appears to be a fundamental issue with the Express routing in this environment.
 
-Once user loads SPA pages through working route, React Router's client-side routing will handle all subsequent navigation including `/cek-data` and `/bom`.
+### Proven Solution: React Router Client-Side Navigation
+
+Once users access ANY working SPA page through the sidebar or direct navigation, the React app loads and uses **React Router's client-side routing**. From that point forward, ALL navigation works correctly within the React app because it doesn't depend on Express server routing anymore.
+
+**Steps:**
+1. Navigate to http://localhost:3000/vendors OR http://localhost:3000/products (these work via Express)
+2. Once the React SPA loads, use the sidebar navigation to go to:
+   - Master Data (`/cek-data`)
+   - Bill of Materials (`/bom`)
+3. All subsequent navigation will work via React Router client-side routing
+
+**Why this works:**
+- Express serves the initial HTML for working routes
+- React app loads and takes over routing completely
+- React Router handles all path changes without hitting Express again
+- Only the initial page load requires working Express route
+
+### Alternative: Start with Any Working Route
+
+Create shortcuts/bookmarks to working routes:
+- `http://localhost:3000/vendors`
+- `http://localhost:3000/products`
+- `http://localhost:3000/raw-materials`
+
+Any of these will load the SPA and enable full navigation.
 
 ## Long-term Solution
 
