@@ -19,3 +19,15 @@ tmp/server.log
 
 # Frontend build output
 frontend/dist/
+
+# Local debug artifacts (server logs, curl output, throwaway tests) — jangan commit
+*.log
+/body.html
+/response.html
+/headers.txt
+/cookies.txt
+/test-minimal.js
+/test-sidebar.html
+/frontend/nul
+/.claude.json
+/graphify-out/
