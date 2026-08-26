@@ -13,11 +13,10 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { path: '/', label: 'Dashboard', icon: LayoutDashboard },
-  { path: '/cek-data', label: 'Master Data', icon: Package, roles: ['admin'] },
+  { path: '/master-data', label: 'Master Data', icon: Package },
   { path: '/bom', label: 'Bill of Materials', icon: FileText, roles: ['admin', 'production'] },
   { path: '/vendors', label: 'Vendor Management', icon: Users, roles: ['admin', 'purchasing'] },
   { path: '/products', label: 'Products', icon: Package, roles: ['admin', 'production'] },
-  { path: '/raw-materials', label: 'Raw Materials', icon: Package, roles: ['admin', 'production'] },
   { path: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingCart, roles: ['admin', 'purchasing'] },
   { path: '/production-batches', label: 'Production Batches', icon: Hammer, roles: ['admin', 'production'] },
   { path: '/hpp', label: 'HPP & Reports', icon: FileText, roles: ['admin', 'finance'] },

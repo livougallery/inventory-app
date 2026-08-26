@@ -3,8 +3,7 @@ import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Vendors from './pages/Vendors';
 import Products from './pages/Products';
-import RawMaterials from './pages/RawMaterials';
-import MaterialAndProducts from './pages/MaterialAndProducts';
+import MasterData from './pages/MasterData';
 import PurchaseOrders from './pages/PurchaseOrders';
 import ProductionBatches from './pages/ProductionBatches';
 import BOM from './pages/BOM';
@@ -23,9 +22,9 @@ function App() {
           <Dashboard />
         </Shell>
       } />
-      <Route path="/cek-data" element={
+      <Route path="/master-data" element={
         <Shell>
-          <MaterialAndProducts />
+          <MasterData />
         </Shell>
       } />
       <Route path="/vendors" element={
@@ -36,11 +35,6 @@ function App() {
       <Route path="/products" element={
         <Shell>
           <Products />
-        </Shell>
-      } />
-      <Route path="/raw-materials" element={
-        <Shell>
-          <RawMaterials />
         </Shell>
       } />
       <Route path="/purchase-orders" element={

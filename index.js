@@ -49,11 +49,10 @@ function createApp(options = {}) {
   // SPA routes only - exclude login (handled by EJS forms + auth routes)
   const SPA_ROUTES = new Set([
     '/',
-    '/cek-data',
+    '/master-data',
     '/bom',
     '/vendors',
     '/products',
-    '/raw-materials',
     '/purchase-orders',
     '/production-batches',
     '/hpp'
@@ -123,10 +122,10 @@ function createApp(options = {}) {
   };
 
   // Add explicit handlers for failing routes
-  app.get('/cek-data', serveSPA);
+  app.get('/master-data', serveSPA);
   app.get('/bom', serveSPA);
   app.get('/dashboard', serveSPA); // Add dashboard to serve SPA
-  console.log('[createApp] Explicit handlers added for /cek-data, /bom, and /dashboard');
+  console.log('[createApp] Explicit handlers added for /master-data, /bom, and /dashboard');
 
   // SPA middleware - serves React build for migrated routes ONLY
   // This must come AFTER login route but BEFORE dashboard route
