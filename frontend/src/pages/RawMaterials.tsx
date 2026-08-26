@@ -1,4 +1,3 @@
-import { Shell } from '@/components/Shell';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -41,7 +40,7 @@ export default function RawMaterials() {
   const lowStockCount = filteredMaterials.filter(m => m.status === 'low_stock' || m.status === 'out_of_stock').length;
 
   return (
-    <Shell>
+    <>
       {/* Page Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Raw Materials</h1>
@@ -169,6 +168,6 @@ export default function RawMaterials() {
           </Table>
         </CardContent>
       </Card>
-    </Shell>
+    </>
   );
 }

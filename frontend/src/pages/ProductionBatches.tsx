@@ -1,4 +1,3 @@
-import { Shell } from '@/components/Shell';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -38,7 +37,7 @@ export default function ProductionBatches() {
   ];
 
   return (
-    <Shell>
+    <>
       {/* Page Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Production Batches</h1>
@@ -224,6 +223,6 @@ export default function ProductionBatches() {
           </Card>
         </TabsContent>
       </Tabs>
-    </Shell>
+    </>
   );
 }

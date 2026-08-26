@@ -1,4 +1,3 @@
-import { Shell } from '@/components/Shell';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -38,7 +37,7 @@ export default function Vendors() {
   );
 
   return (
-    <Shell>
+    <>
       {/* Page Header */}
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-2xl font-bold tracking-tight">Vendor Management</h1>
@@ -114,6 +113,6 @@ export default function Vendors() {
           </Table>
         </CardContent>
       </Card>
-    </Shell>
+    </>
   );
 }

@@ -1,4 +1,3 @@
-import { Shell } from '@/components/Shell';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Users, Package, ShoppingCart, Hammer, DollarSign, AlertCircle } from 'lucide-react';
 
@@ -14,7 +13,7 @@ export default function Dashboard() {
   ];
 
   return (
-    <Shell>
+    <>
       {/* Stats Overview */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-6">
         {stats.map((stat) => (
@@ -87,6 +86,6 @@ export default function Dashboard() {
           </CardContent>
         </Card>
       </div>
-    </Shell>
+    </>
   );
 }
