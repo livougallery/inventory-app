@@ -31,3 +31,6 @@ frontend/dist/
 /frontend/nul
 /.claude.json
 /graphify-out/
+
+# Local worktrees (isolated workspaces)
+.worktrees/
