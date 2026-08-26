@@ -29,14 +29,35 @@ async function autoLogin(req, res) {
 
 module.exports = {
   isAuthenticated: async (req, res, next) => {
-    if (req.session && req.session.userId) return next();
+    console.log('[isAuthenticated] *** START *** sessionId:', req.sessionID);
+    console.log('[isAuthenticated] Session keys:', Object.keys(req.session || {}));
+    console.log('[isAuthenticated] userId in session:', req.session?.userId);
+    console.log('[isAuthenticated] Request path:', req.path);
+
+    if (req.session && req.session.userId) {
+      req.user = {
+        id: req.session.userId,
+        username: req.session.username,
+        role: req.session.role,
+        nama_lengkap: req.session.namaLengkap,
+      };
+      console.log('[isAuthenticated] ✅ User populated:', req.user);
+      return next();
+    }
+
     if (process.env.AUTO_LOGIN === 'true') {
       try {
-        if (await autoLogin(req, res)) return next();
+        console.log('[isAuthenticated] AUTO_LOGIN enabled, checking...');
+        if (await autoLogin(req, res)) {
+          console.log('[isAuthenticated] ✅ Auto-login success');
+          return next();
+        }
       } catch (err) {
-        // DB gagal — jatuh ke redirect login seperti biasa
+        console.error('[isAuthenticated] Auto-login failed:', err.message);
       }
     }
+
+    console.log('[isAuthenticated] ❌ No session/user, redirecting to /login');
     res.redirect('/login');
   },
   isGuest: async (req, res, next) => {

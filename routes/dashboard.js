@@ -4,6 +4,9 @@ const db = require('../db');
 const { isAuthenticated } = require('../middleware/auth');
 
 router.get('/', isAuthenticated, async (req, res) => {
+  console.log('[Dashboard Route] req.user:', req.user);
+  console.log('[Dashboard Route] req.session:', req.session);
+
   const totalBahanRow = await db.one('SELECT COUNT(*)::int as c FROM raw_materials');
   const totalBahan = totalBahanRow ? totalBahanRow.c : 0;
   const stokBahanRow = await db.one('SELECT SUM(stok)::real as s FROM raw_materials');
@@ -44,6 +47,7 @@ router.get('/', isAuthenticated, async (req, res) => {
   const hasUrgent = urgentPOs.length > 0 || lowStock.length > 0;
 
   res.render('dashboard/index', {
+    user: req.user, // Pass user from session
     title: 'Dashboard',
     totalBahan, stokBahan,
     bahanMenipis, produksiBerjalan,

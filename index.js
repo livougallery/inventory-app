@@ -1,4 +1,10 @@
 console.log('=== INDEX.JS START ===');
+// Clear module cache to force reload after code changes
+console.log('[INIT] Clearing require cache...');
+for (const key in require.cache) {
+  delete require.cache[key];
+}
+console.log('[INIT] Cache cleared, reloading modules...');
 
 const express = require('express');
 const session = require('express-session');
@@ -16,6 +22,17 @@ function createApp(options = {}) {
   console.log('[createApp] Starting');
   const app = express();
 
+  // DEBUG: Log ALL requests for debugging
+  app.use((req, res, next) => {
+    console.log(`⚡ ${req.method} ${req.path}`);
+    next();
+  });
+
+  // Body parsing middleware (MUST be before auth routes)
+  app.use(express.urlencoded({ extended: true }));
+  app.use(express.json());
+  console.log('[createApp] Body parsing middleware added');
+
   // Session middleware - MUST come BEFORE everything
   app.use(session({
     store: options.store || new PgSession({
@@ -29,9 +46,9 @@ function createApp(options = {}) {
   }));
   console.log('[createApp] Session middleware added');
 
-  const MIGRATED_ROUTES = new Set([
+  // SPA routes only - exclude login (handled by EJS forms + auth routes)
+  const SPA_ROUTES = new Set([
     '/',
-    '/login',
     '/cek-data',
     '/bom',
     '/vendors',
@@ -41,7 +58,9 @@ function createApp(options = {}) {
     '/production-batches',
     '/hpp'
   ]);
-  console.log('[createApp] MIGRATED_ROUTES created with size:', MIGRATED_ROUTES.size);
+  console.log('[createApp] SPA_ROUTES created (no /login):', SPA_ROUTES.size);
+  console.log('[createApp] SPA_ROUTES created (no /login):', SPA_ROUTES.size);
+  console.log('[createApp] /dashboard in SPA_ROUTES?', SPA_ROUTES.has('/dashboard'));
 
   console.log('[createApp] About to load CSRF middleware...');
 
@@ -69,8 +88,15 @@ function createApp(options = {}) {
   app.use('/api', require('./routes/api'));
   console.log('[createApp] API routes registered');
 
-  // Serve login page as EJS (auth redirect needs it)
-  console.log('[createApp] Registering /login route...');
+  // Authentication routes (handles login/register/logout)
+  // MUST come before SPA middleware to handle form submissions
+  console.log('[createApp] Registering auth routes...');
+  const authRoutes = require('./routes/auth');
+  app.use(authRoutes);
+  console.log('[createApp] ✅ Auth routes registered with router:', typeof authRoutes);
+
+  // Serve login page as EJS (alternative to mounted route if needed)
+  console.log('[createApp] Setting up login route...');
   app.get('/login', (req, res) => {
     res.render('auth/login', {
       user: null,
@@ -98,7 +124,8 @@ function createApp(options = {}) {
   // Add explicit handlers for failing routes
   app.get('/cek-data', serveSPA);
   app.get('/bom', serveSPA);
-  console.log('[createApp] Explicit handlers added for /cek-data and /bom');
+  app.get('/dashboard', serveSPA); // Add dashboard to serve SPA
+  console.log('[createApp] Explicit handlers added for /cek-data, /bom, and /dashboard');
 
   // SPA middleware - serves React build for migrated routes ONLY
   // This must come AFTER login route but BEFORE dashboard route
@@ -116,11 +143,11 @@ function createApp(options = {}) {
       return next();
     }
 
-    const isMigrated = MIGRATED_ROUTES.has(req.path) ||
-                      MIGRATED_ROUTES.has(req.path + '/') ||
-                      MIGRATED_ROUTES.has(req.path.replace(/\/$/, ''));
+    const isMigrated = SPA_ROUTES.has(req.path) ||
+                      SPA_ROUTES.has(req.path + '/') ||
+                      SPA_ROUTES.has(req.path.replace(/\/$/, ''));
 
-    console.log(`[SPA EXEC] MIGRATED_ROUTES.size=${MIGRATED_ROUTES.size}, exact=${MIGRATED_ROUTES.has(req.path)}, withSlash=${MIGRATED_ROUTES.has(req.path + '/')}, strip=${MIGRATED_ROUTES.has(req.path.replace(/\/$/, ''))}`);
+    console.log(`[SPA EXEC] SPA_ROUTES.size=${SPA_ROUTES.size}, exact=${SPA_ROUTES.has(req.path)}, withSlash=${SPA_ROUTES.has(req.path + '/')}, strip=${SPA_ROUTES.has(req.path.replace(/\/$/, ''))}`);
 
     if (isMigrated) {
       console.log(`[SPA SERVING] Sending ${req.path}`);
@@ -133,10 +160,9 @@ function createApp(options = {}) {
 
   console.log('[createApp] SPA middleware added SUCCESSFULLY');
 
-  // Dashboard route (after SPA middleware so it doesn't intercept)
-  console.log('[createApp] Loading dashboard route...');
-  app.use('/dashboard', require('./routes/dashboard'));
-  console.log('[createApp] Dashboard route registered');
+  // DASHBOARD ROUTE REMOVED - All routes now handled by React SPA
+  console.log('[createApp] Dashboard EJS route REMOVED - served by React SPA only');
+  // app.use('/dashboard', require('./routes/dashboard')); // DISABLED
 
   // Backend EJS routes (fallback for non-migrated or API endpoints)
   app.use('/purchase-imports', require('./routes/purchase-imports'));
@@ -147,7 +173,7 @@ function createApp(options = {}) {
   // Serve Vite static assets BEFORE catch-all (MUST have correct MIME types)
   app.use('/assets', express.static(path.join(__dirname, 'frontend/dist/assets')));
 
-  // CATCH-ALL: Serve SPA for any unmatched route that's in MIGRATED_ROUTES
+  // CATCH-ALL: Serve SPA for any unmatched route that's in SPA_ROUTES
   // This MUST come AFTER all explicit routes including static assets
   app.use((req, res, next) => {
     console.log(`[CATCH-ALL] ${req.method} ${req.path}`);
@@ -158,9 +184,9 @@ function createApp(options = {}) {
 
     if (fs.existsSync(distPath)) {
       // Only serve SPA if it's a migrated route
-      const isMigrated = MIGRATED_ROUTES.has(req.path) ||
-                        MIGRATED_ROUTES.has(req.path + '/') ||
-                        MIGRATED_ROUTES.has(req.path.replace(/\/$/, ''));
+      const isMigrated = SPA_ROUTES.has(req.path) ||
+                        SPA_ROUTES.has(req.path + '/') ||
+                        SPA_ROUTES.has(req.path.replace(/\/$/, ''));
 
       if (isMigrated) {
         console.log(`[CATCH-ALL SERVING SPA] ${req.path}`);
@@ -170,9 +196,9 @@ function createApp(options = {}) {
 
     if (fs.existsSync(distPath)) {
       // Only serve SPA if it's a migrated route
-      const isMigrated = MIGRATED_ROUTES.has(req.path) ||
-                        MIGRATED_ROUTES.has(req.path + '/') ||
-                        MIGRATED_ROUTES.has(req.path.replace(/\/$/, ''));
+      const isMigrated = SPA_ROUTES.has(req.path) ||
+                        SPA_ROUTES.has(req.path + '/') ||
+                        SPA_ROUTES.has(req.path.replace(/\/$/, ''));
 
       if (isMigrated) {
         console.log(`[CATCH-ALL SERVING SPA] ${req.path}`);
