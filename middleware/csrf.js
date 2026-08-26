@@ -9,7 +9,7 @@ module.exports = {
     next();
   },
   validateToken: (req, res, next) => {
-    const token = req.body._csrf || req.headers['x-csrf-token'];
+    const token = (req.body && req.body._csrf) || req.headers['x-csrf-token'];
     if (token && token === req.session.csrfToken) {
       req.session.csrfToken = crypto.randomBytes(32).toString('hex');
       return next();
