@@ -50,6 +50,8 @@ function createApp(options = {}) {
   const SPA_ROUTES = new Set([
     '/',
     '/master-data',
+    '/stok-material',
+    '/pembelian-material',
     '/bom',
     '/vendors',
     '/products',
@@ -118,11 +120,13 @@ function createApp(options = {}) {
       console.log(`[EXPLICIT SERVE] Serving SPA for ${req.path}`);
       return res.sendFile(distPath);
     }
-    next(req, res, next);
+    next();
   };
 
   // Add explicit handlers for failing routes
   app.get('/master-data', serveSPA);
+  app.get('/stok-material', serveSPA);
+  app.get('/pembelian-material', serveSPA);
   app.get('/bom', serveSPA);
   app.get('/dashboard', serveSPA); // Add dashboard to serve SPA
   console.log('[createApp] Explicit handlers added for /master-data, /bom, and /dashboard');

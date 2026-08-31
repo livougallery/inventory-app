@@ -1,9 +1,10 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Vendors from './pages/Vendors';
 import Products from './pages/Products';
-import MasterData from './pages/MasterData';
+import StokMaterial from './pages/StokMaterial';
+import PembelianMaterial from './pages/PembelianMaterial';
 import PurchaseOrders from './pages/PurchaseOrders';
 import ProductionBatches from './pages/ProductionBatches';
 import BOM from './pages/BOM';
@@ -22,11 +23,18 @@ function App() {
           <Dashboard />
         </Shell>
       } />
-      <Route path="/master-data" element={
+      <Route path="/stok-material" element={
         <Shell>
-          <MasterData />
+          <StokMaterial />
         </Shell>
       } />
+      <Route path="/pembelian-material" element={
+        <Shell>
+          <PembelianMaterial />
+        </Shell>
+      } />
+      {/* URL lama era satu halaman Master Data → sekarang halaman Stok Material */}
+      <Route path="/master-data" element={<Navigate to="/stok-material" replace />} />
       <Route path="/vendors" element={
         <Shell>
           <Vendors />
