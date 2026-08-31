@@ -7,7 +7,7 @@
 const express = require('express');
 const db = require('../../../db');
 const { validateToken } = require('../../../middleware/csrf');
-const { autoLogin } = require('../../../middleware/auth');
+const { requireAuth } = require('../../../middleware/apiAuth');
 
 const router = express.Router();
 
@@ -21,20 +21,6 @@ const TIPE_LABEL = {
 
 // Field deskriptif yang boleh dibuat/diubah via API. stok sengaja tak masuk.
 const EDITABLE_FIELDS = ['kode_bahan', 'nama', 'tipe', 'satuan', 'stok_minimum'];
-
-// Auth untuk JSON API: 401 alih-alih redirect ke /login, tapi tetap
-// menghormati AUTO_LOGIN (mode presentasi) seperti isAuthenticated.
-async function requireAuth(req, res, next) {
-  if (req.session && req.session.userId) return next();
-  if (process.env.AUTO_LOGIN === 'true') {
-    try {
-      if (await autoLogin(req)) return next();
-    } catch (err) {
-      console.error('[materialsApi] AUTO_LOGIN gagal:', err.message);
-    }
-  }
-  return res.status(401).json({ ok: false, error: 'Unauthorized' });
-}
 
 // GET /api/materials — list + join varian/harga terakhir/foto.
 // SQL identik dengan halaman cek-data lama (routes/cek-data.js sebelum dihapus).
