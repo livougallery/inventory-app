@@ -55,12 +55,12 @@ router.post('/cost/:id/reject', isAuthenticated, role('finance'), async (req, re
 
 router.post('/import/:id/approve', isAuthenticated, role('finance'), async (req, res) => {
   await ValidationService.approvePurchaseImport(req.params.id, req.session.userId);
-  res.redirect('/validation?success=Pembelian import berhasil divalidasi');
+  res.redirect('/validation?success=Pembelian White Label berhasil divalidasi');
 });
 
 router.post('/import/:id/reject', isAuthenticated, role('finance'), async (req, res) => {
   await ValidationService.rejectPurchaseImport(req.params.id, req.session.userId, req.body.catatan || '');
-  res.redirect('/validation?success=Pembelian import ditolak');
+  res.redirect('/validation?success=Pembelian White Label ditolak');
 });
 
 module.exports = router;
