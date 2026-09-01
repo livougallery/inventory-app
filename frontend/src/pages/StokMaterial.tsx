@@ -10,6 +10,7 @@ import {
   type ColumnDef,
 } from '@/components/DataTableToolbar';
 import { apiJson } from '@/lib/api';
+import { rupiah, toNum } from '@/lib/format';
 
 // ===== Tipe data (mengikuti JSON /api/materials) =====
 
@@ -27,11 +28,6 @@ export interface Material {
   foto_path: string;
   updated_at: string | null;
 }
-
-const rupiah = (v: number) =>
-  new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(v);
-
-const toNum = (v: number | string | null) => (v === null ? null : Number(v));
 
 // ===== Halaman Stok Material =====
 

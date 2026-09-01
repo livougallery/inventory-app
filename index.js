@@ -89,6 +89,7 @@ function createApp(options = {}) {
   app.use('/api/materials', require('./features/material/backend/routes'));
   app.use('/api/negara', require('./features/negara/backend/routes'));
   app.use('/api/vendors', require('./features/vendor/backend/routes'));
+  app.use('/api/purchase-orders', require('./features/purchase-order/backend/routes'));
   app.use('/api', require('./routes/api'));
   console.log('[createApp] API routes registered');
 
