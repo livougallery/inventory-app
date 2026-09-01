@@ -18,7 +18,12 @@ router.get('/', isAuthenticated, async (req, res) => {
 });
 
 router.get('/create', isAuthenticated, role('admin'), async (req, res) => {
-  const vendors = (await db.query("SELECT * FROM vendors WHERE tipe IN ('bahan_baku','import') ORDER BY nama")).rows;
+  // Vendor white label (tipe `import`) sengaja tidak ditawarkan di PO bahan
+  // baku (tiket 04). Aman: 8/8 PO di live DB memakai vendor bahan_baku.
+  //
+  // PERHATIAN: rute ini tidak di-mount di index.js — /purchase-orders dilayani
+  // React (SPA_ROUTES), jadi create.ejs tidak bisa dijangkau.
+  const vendors = (await db.query("SELECT * FROM vendors WHERE tipe = 'bahan_baku' ORDER BY nama")).rows;
   const materials = (await db.query('SELECT * FROM raw_materials ORDER BY nama')).rows;
   const currencies = (await db.query('SELECT * FROM currencies WHERE is_active = 1 ORDER BY kode')).rows;
   res.render('purchase-orders/create', { title: 'Buat Purchase Order', vendors, materials, currencies, error: null });
