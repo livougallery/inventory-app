@@ -87,6 +87,7 @@ function createApp(options = {}) {
   // API routes (JSON endpoints) - these should NOT be affected by SPA serving
   console.log('[createApp] Loading API routes...');
   app.use('/api/materials', require('./features/material/backend/routes'));
+  app.use('/api/negara', require('./features/negara/backend/routes'));
   app.use('/api', require('./routes/api'));
   console.log('[createApp] API routes registered');
 
