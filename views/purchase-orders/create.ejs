@@ -60,14 +60,14 @@
 let ii = 1;
 document.getElementById('add-item')?.addEventListener('click', () => {
   const html = `<div class="item-row flex gap-2 mb-2">
-    <select name="items[\${ii}][raw_material_id]" class="border rounded p-2 flex-1" required>
+    <select name="items[${ii}][raw_material_id]" class="border rounded p-2 flex-1" required>
       <option value="">Pilih Bahan</option>
       <% materials.forEach(m => { %>
       <option value="<%= m.id %>"><%= m.nama %></option>
       <% }) %>
     </select>
-    <input name="items[\${ii}][qty]" placeholder="Qty" step="any" class="border rounded p-2 w-20" required>
-    <input name="items[\${ii}][harga_satuan]" placeholder="Harga" step="any" class="border rounded p-2 w-32" required>
+    <input name="items[${ii}][qty]" placeholder="Qty" step="any" class="border rounded p-2 w-20" required>
+    <input name="items[${ii}][harga_satuan]" placeholder="Harga" step="any" class="border rounded p-2 w-32" required>
     <button type="button" class="remove-item text-red-500 px-2 font-bold"><i data-lucide="x"></i></button>
   </div>`;
   document.getElementById('items-container').insertAdjacentHTML('beforeend', html);

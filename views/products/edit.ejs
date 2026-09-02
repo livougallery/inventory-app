@@ -46,9 +46,9 @@
 let vi = <%= vi %>;
 document.getElementById('add-variant')?.addEventListener('click', () => {
   const html = `<div class="variant-row flex gap-2 mb-2">
-    <input name="variants[\${vi}][warna]" placeholder="Warna" class="border p-2 rounded flex-1">
-    <input name="variants[\${vi}][size]" placeholder="Size" class="border p-2 rounded w-20">
-    <input name="variants[\${vi}][sku]" placeholder="SKU" class="border p-2 rounded flex-1">
+    <input name="variants[${vi}][warna]" placeholder="Warna" class="border p-2 rounded flex-1">
+    <input name="variants[${vi}][size]" placeholder="Size" class="border p-2 rounded w-20">
+    <input name="variants[${vi}][sku]" placeholder="SKU" class="border p-2 rounded flex-1">
     <button type="button" class="remove-variant text-red-500 px-2 font-bold"><i data-lucide="x"></i></button>
   </div>`;
   document.getElementById('variants-container').insertAdjacentHTML('beforeend', html);

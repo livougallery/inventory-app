@@ -20,6 +20,18 @@ tmp/pg-data.sql
 # Runtime log (server berjalan via nohup)
 tmp/server.log
 
+# Artefak probe/screenshot debug & PID server lokal di tmp/
+tmp/probe-*
+tmp/*.pid
+
+# Skrip smoke test & inspeksi DB sekali pakai di tmp/
+# (tmp/dump-postgres.js sengaja TIDAK masuk: itu alat backup yang dipakai rutin)
+tmp/smoke/
+tmp/smoke-*.cjs
+tmp/check-*.js
+tmp/reset-*.js
+tmp/*.patch
+
 # Frontend build output
 frontend/dist/
 
@@ -37,3 +49,7 @@ frontend/dist/
 
 # Local worktrees (isolated workspaces)
 .worktrees/
+
+# Isu/spec lokal (mattpocock-skills) — berisi harga supplier, HPP, skema white label.
+# Repo ini publik, jadi jangan sampai ikut ter-commit.
+.scratch/

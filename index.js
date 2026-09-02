@@ -49,11 +49,12 @@ function createApp(options = {}) {
   // SPA routes only - exclude login (handled by EJS forms + auth routes)
   const SPA_ROUTES = new Set([
     '/',
-    '/cek-data',
+    '/master-data',
+    '/stok-material',
+    '/pembelian-material',
     '/bom',
     '/vendors',
     '/products',
-    '/raw-materials',
     '/purchase-orders',
     '/production-batches',
     '/hpp'
@@ -85,6 +86,11 @@ function createApp(options = {}) {
 
   // API routes (JSON endpoints) - these should NOT be affected by SPA serving
   console.log('[createApp] Loading API routes...');
+  app.use('/api/materials', require('./features/material/backend/routes'));
+  app.use('/api/negara', require('./features/negara/backend/routes'));
+  app.use('/api/vendors', require('./features/vendor/backend/routes'));
+  app.use('/api/purchase-orders', require('./features/purchase-order/backend/routes'));
+  app.use('/api/currencies', require('./features/currency/backend/routes'));
   app.use('/api', require('./routes/api'));
   console.log('[createApp] API routes registered');
 
@@ -118,14 +124,16 @@ function createApp(options = {}) {
       console.log(`[EXPLICIT SERVE] Serving SPA for ${req.path}`);
       return res.sendFile(distPath);
     }
-    next(req, res, next);
+    next();
   };
 
   // Add explicit handlers for failing routes
-  app.get('/cek-data', serveSPA);
+  app.get('/master-data', serveSPA);
+  app.get('/stok-material', serveSPA);
+  app.get('/pembelian-material', serveSPA);
   app.get('/bom', serveSPA);
   app.get('/dashboard', serveSPA); // Add dashboard to serve SPA
-  console.log('[createApp] Explicit handlers added for /cek-data, /bom, and /dashboard');
+  console.log('[createApp] Explicit handlers added for /master-data, /bom, and /dashboard');
 
   // SPA middleware - serves React build for migrated routes ONLY
   // This must come AFTER login route but BEFORE dashboard route

@@ -29,11 +29,11 @@ const TABLES = [
   'session',
   'delivery_expenses', 'variant_prices', 'product_photos', 'hpp_batch_config',
   'hpp_formula_templates', 'stock_movements', 'material_batches',
-  'shipment_invoices', 'shipments', 'purchase_imports', 'hpp_history',
+  'shipment_invoices', 'shipments', 'purchase_imports', 'negara', 'hpp_history',
   'production_deliveries', 'production_costs', 'production_batches',
   'purchase_order_photos', 'purchase_order_items', 'purchase_orders',
-  'currencies', 'raw_material_variants', 'raw_materials', 'categories',
-  'product_variants', 'products', 'vendors', 'users',
+  'currencies', 'raw_material_photos', 'raw_material_variants', 'raw_materials',
+  'categories', 'product_bom', 'product_variants', 'products', 'vendors', 'users',
 ];
 
 // Pin search_path = test on every connection the pool hands out. This runs

@@ -28,6 +28,7 @@ async function autoLogin(req, res) {
 }
 
 module.exports = {
+  autoLogin,
   isAuthenticated: async (req, res, next) => {
     console.log('[isAuthenticated] *** START *** sessionId:', req.sessionID);
     console.log('[isAuthenticated] Session keys:', Object.keys(req.session || {}));

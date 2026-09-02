@@ -1,10 +1,10 @@
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import Vendors from './pages/Vendors';
 import Products from './pages/Products';
-import RawMaterials from './pages/RawMaterials';
-import MaterialAndProducts from './pages/MaterialAndProducts';
+import StokMaterial from './pages/StokMaterial';
+import PembelianMaterial from './pages/PembelianMaterial';
 import PurchaseOrders from './pages/PurchaseOrders';
 import ProductionBatches from './pages/ProductionBatches';
 import BOM from './pages/BOM';
@@ -23,11 +23,18 @@ function App() {
           <Dashboard />
         </Shell>
       } />
-      <Route path="/cek-data" element={
+      <Route path="/stok-material" element={
         <Shell>
-          <MaterialAndProducts />
+          <StokMaterial />
         </Shell>
       } />
+      <Route path="/pembelian-material" element={
+        <Shell>
+          <PembelianMaterial />
+        </Shell>
+      } />
+      {/* URL lama era satu halaman Master Data → sekarang halaman Stok Material */}
+      <Route path="/master-data" element={<Navigate to="/stok-material" replace />} />
       <Route path="/vendors" element={
         <Shell>
           <Vendors />
@@ -36,11 +43,6 @@ function App() {
       <Route path="/products" element={
         <Shell>
           <Products />
-        </Shell>
-      } />
-      <Route path="/raw-materials" element={
-        <Shell>
-          <RawMaterials />
         </Shell>
       } />
       <Route path="/purchase-orders" element={

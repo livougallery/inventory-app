@@ -14,7 +14,7 @@ router.get('/', isAuthenticated, async (req, res) => {
     LEFT JOIN users u ON pi.created_by = u.id
     ORDER BY pi.created_at DESC
   `)).rows;
-  res.render('purchase-imports/index', { title: 'Pembelian Barang Jadi', imports, error: null });
+  res.render('purchase-imports/index', { title: 'White Label', imports, error: null });
 });
 
 router.get('/create', isAuthenticated, role('admin'), async (req, res) => {
@@ -23,7 +23,7 @@ router.get('/create', isAuthenticated, role('admin'), async (req, res) => {
     p.variants = (await db.query('SELECT * FROM product_variants WHERE product_id = $1 ORDER BY warna, size', [p.id])).rows;
   }
   const vendors = (await db.query("SELECT * FROM vendors WHERE tipe='import' ORDER BY nama")).rows;
-  res.render('purchase-imports/create', { title: 'Input Pembelian Import', products, vendors, error: null });
+  res.render('purchase-imports/create', { title: 'Input Pembelian White Label', products, vendors, error: null });
 });
 
 router.post('/', isAuthenticated, role('admin'), async (req, res) => {

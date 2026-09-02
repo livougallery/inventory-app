@@ -9,11 +9,11 @@ module.exports = {
     next();
   },
   validateToken: (req, res, next) => {
-    const token = req.body._csrf || req.headers['x-csrf-token'];
+    const token = (req.body && req.body._csrf) || req.headers['x-csrf-token'];
     if (token && token === req.session.csrfToken) {
       req.session.csrfToken = crypto.randomBytes(32).toString('hex');
       return next();
     }
-    res.status(403).send('CSRF token tidak valid');
+    res.status(403).json({ ok: false, error: 'CSRF token tidak valid' });
   }
 };

@@ -8,6 +8,10 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: { '@': path.resolve(import.meta.dirname, 'src') },
+    // Paksa satu salinan react/react-dom: repo punya node_modules di root DAN
+    // frontend; tanpa dedupe, sebagian import bisa teresolve ke salinan root
+    // sehingga bundle memuat 2 React dan hook crash ("reading 'useContext'").
+    dedupe: ['react', 'react-dom'],
   },
   server: {
     proxy: {

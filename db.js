@@ -195,6 +195,17 @@ async function bootstrapSchema(schemaName) {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- Lookup negara asal pembelian (white label). Mengikuti bentuk currencies:
+    -- id SERIAL, nama unik, flag aktif, timestamp. Nama unik supaya tidak ada
+    -- "China" / "CHINA" — keunikan itu ditegakkan case-insensitive lewat index
+    -- di bawah, bukan lewat UNIQUE biasa yang hanya membandingkan persis.
+    CREATE TABLE IF NOT EXISTS ${t('negara')} (
+      id SERIAL PRIMARY KEY,
+      nama TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS ${t('purchase_orders')} (
       id SERIAL PRIMARY KEY,
       vendor_id INTEGER NOT NULL REFERENCES ${t('vendors')}(id),
@@ -428,13 +439,28 @@ async function bootstrapSchema(schemaName) {
     CREATE INDEX IF NOT EXISTS idx_product_photos_product ON ${t('product_photos')}(product_id);
     CREATE INDEX IF NOT EXISTS idx_product_photos_variant ON ${t('product_photos')}(variant_id);
     CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON ${t('session')}(expire);
+
+    -- Keunikan nama negara tanpa mempermasalahkan huruf besar-kecil. Nama index
+    -- tidak boleh diawali skema: Postgres menolak nama index yang dikualifikasi,
+    -- dan letaknya sudah ditentukan oleh skema tabelnya.
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_negara_nama ON ${t('negara')}(LOWER(nama));
   `);
 
   // Migrasi kolom tambahan (idempotent) — untuk tabel yang sudah terlanjur dibuat
   // sebelum kolomnya ada. Nilai: Livou Transfer, Saldo Shopee, Reimbursement,
   // Deposit Cash, Saldo Lalamove.
+  //
+  // `ADD COLUMN IF NOT EXISTS`, bukan CREATE TABLE: tabel `purchase_imports`
+  // sudah ada di database produksi berisi 2 baris, dan CREATE TABLE IF NOT
+  // EXISTS tidak menambah kolom ke tabel yang sudah ada.
+  //
+  // `negara_id` sengaja NULLABLE dan tanpa backfill: dua baris historis tidak
+  // punya negara, dan keduanya cukup menyimpan NULL (lihat spesifikasi
+  // keputusan 7 — baris id 1 berstatus rejected dan dibiarkan apa adanya).
   await db.exec(`
     ALTER TABLE ${t('purchase_orders')} ADD COLUMN IF NOT EXISTS flow_transaksi TEXT DEFAULT '';
+    ALTER TABLE ${t('purchase_imports')}
+      ADD COLUMN IF NOT EXISTS negara_id INTEGER REFERENCES ${t('negara')}(id);
   `);
 }
 
