@@ -8,6 +8,7 @@ const express = require('express');
 const db = require('../../../db');
 const { validateToken } = require('../../../middleware/csrf');
 const { requireAuth } = require('../../../middleware/apiAuth');
+const { parseId } = require('../../../middleware/parseId');
 
 const router = express.Router();
 
@@ -126,8 +127,13 @@ router.post('/', requireAuth, validateToken, async (req, res) => {
 
 // PUT /api/materials/:id — ubah field deskriptif saja.
 router.put('/:id', requireAuth, validateToken, async (req, res) => {
+  const id = parseId(req.params.id);
+  if (id === null) {
+    return res.status(404).json({ ok: false, error: 'Material tidak ditemukan' });
+  }
+
   try {
-    const existing = (await db.query('SELECT id FROM raw_materials WHERE id = $1', [req.params.id])).rows[0];
+    const existing = (await db.query('SELECT id FROM raw_materials WHERE id = $1', [id])).rows[0];
     if (!existing) {
       return res.status(404).json({ ok: false, error: 'Material tidak ditemukan' });
     }
@@ -140,7 +146,7 @@ router.put('/:id', requireAuth, validateToken, async (req, res) => {
         sets.push(`${field} = $${params.length}`);
       }
     }
-    params.push(req.params.id);
+    params.push(id);
     const row = (await db.query(
       `UPDATE raw_materials SET ${sets.join(', ')}, updated_at = NOW() WHERE id = $${params.length} RETURNING *`,
       params
@@ -154,12 +160,17 @@ router.put('/:id', requireAuth, validateToken, async (req, res) => {
 
 // DELETE /api/materials/:id — tolak jika masih dipakai transaksi/BOM.
 router.delete('/:id', requireAuth, validateToken, async (req, res) => {
+  const id = parseId(req.params.id);
+  if (id === null) {
+    return res.status(404).json({ ok: false, error: 'Material tidak ditemukan' });
+  }
+
   try {
     const usage = (await db.query(`
       SELECT
         (SELECT COUNT(*) FROM material_batches WHERE raw_material_id = $1) AS batches,
         (SELECT COUNT(*) FROM product_bom WHERE raw_material_id = $1) AS bom
-    `, [req.params.id])).rows[0];
+    `, [id])).rows[0];
 
     if (Number(usage.batches) > 0) {
       return res.status(409).json({
@@ -174,7 +185,7 @@ router.delete('/:id', requireAuth, validateToken, async (req, res) => {
       });
     }
 
-    const deleted = (await db.query('DELETE FROM raw_materials WHERE id = $1 RETURNING id', [req.params.id])).rows[0];
+    const deleted = (await db.query('DELETE FROM raw_materials WHERE id = $1 RETURNING id', [id])).rows[0];
     if (!deleted) {
       return res.status(404).json({ ok: false, error: 'Material tidak ditemukan' });
     }

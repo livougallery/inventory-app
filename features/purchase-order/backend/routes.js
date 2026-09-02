@@ -12,6 +12,7 @@ const express = require('express');
 const db = require('../../../db');
 const { validateToken } = require('../../../middleware/csrf');
 const { requireAuth } = require('../../../middleware/apiAuth');
+const { parseId } = require('../../../middleware/parseId');
 
 const router = express.Router();
 
@@ -27,20 +28,9 @@ const STATUS_LABEL = {
 
 const labelStatus = (status) => STATUS_LABEL[status] || status;
 
-// id divalidasi sebelum dipakai: tanpa ini, '/abc' akan diteruskan ke Postgres
-// dan memicu 22P02 (invalid input syntax for integer) yang berujung 500,
-// padahal yang diminta klien adalah 404.
-//
-// Didefinisikan di sini, sebelum semua rute, supaya GET, PUT, dan DELETE
-// memakai aturan yang sama — dulu GET mengetiknya sendiri, jadi kalau aturan
-// berubah satu rute bisa ketinggalan.
-//
-// Regex dipakai sebelum Number() karena Number() meloloskan '1.0', ' 1 ', dan
-// '+1' sebagai id 1. Itu memberi satu PO beberapa ejaan URL yang berbeda.
-const parseId = (raw) => {
-  if (typeof raw !== 'string' || !/^[1-9]\d*$/.test(raw)) return null;
-  return Number(raw);
-};
+// parseId diimpor dari middleware/parseId — definisi yang sama dipakai negara,
+// vendor, dan material, supaya aturan "apa itu id yang sah" tidak punya empat
+// versi yang bisa berbeda pendapat.
 
 // `total` dihitung dengan COALESCE karena SUM atas nol baris menghasilkan NULL,
 // sedangkan klien mengharapkan angka — PO tanpa item harus 0, bukan null.

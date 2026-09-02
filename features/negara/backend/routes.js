@@ -11,6 +11,7 @@ const express = require('express');
 const db = require('../../../db');
 const { validateToken } = require('../../../middleware/csrf');
 const { requireAuth } = require('../../../middleware/apiAuth');
+const { parseId } = require('../../../middleware/parseId');
 
 const router = express.Router();
 
@@ -83,8 +84,13 @@ router.post('/', requireAuth, validateToken, async (req, res) => {
 
 // PUT /api/negara/:id — ubah nama negara.
 router.put('/:id', requireAuth, validateToken, async (req, res) => {
+  const id = parseId(req.params.id);
+  if (id === null) {
+    return res.status(404).json({ ok: false, error: 'Negara tidak ditemukan' });
+  }
+
   try {
-    const existing = (await db.query('SELECT id FROM negara WHERE id = $1', [req.params.id])).rows[0];
+    const existing = (await db.query('SELECT id FROM negara WHERE id = $1', [id])).rows[0];
     if (!existing) {
       return res.status(404).json({ ok: false, error: 'Negara tidak ditemukan' });
     }
@@ -96,14 +102,14 @@ router.put('/:id', requireAuth, validateToken, async (req, res) => {
 
     // Konflik hanya dihitung terhadap negara *lain* — rename ke namanya
     // sendiri bukan konflik.
-    const dupe = await findByName(nama, req.params.id);
+    const dupe = await findByName(nama, id);
     if (dupe) {
       return res.status(409).json({ ok: false, error: `Negara "${nama}" sudah ada` });
     }
 
     const row = (await db.query(
       'UPDATE negara SET nama = $1 WHERE id = $2 RETURNING *',
-      [nama, req.params.id]
+      [nama, id]
     )).rows[0];
     res.json({ ok: true, data: row });
   } catch (error) {
@@ -117,15 +123,20 @@ router.put('/:id', requireAuth, validateToken, async (req, res) => {
 
 // DELETE /api/negara/:id — tolak bila masih dipakai transaksi.
 router.delete('/:id', requireAuth, validateToken, async (req, res) => {
+  const id = parseId(req.params.id);
+  if (id === null) {
+    return res.status(404).json({ ok: false, error: 'Negara tidak ditemukan' });
+  }
+
   try {
-    const existing = (await db.query('SELECT id FROM negara WHERE id = $1', [req.params.id])).rows[0];
+    const existing = (await db.query('SELECT id FROM negara WHERE id = $1', [id])).rows[0];
     if (!existing) {
       return res.status(404).json({ ok: false, error: 'Negara tidak ditemukan' });
     }
 
     const usage = (await db.query(
       'SELECT COUNT(*)::int AS c FROM purchase_imports WHERE negara_id = $1',
-      [req.params.id]
+      [id]
     )).rows[0];
 
     if (Number(usage.c) > 0) {
@@ -137,7 +148,7 @@ router.delete('/:id', requireAuth, validateToken, async (req, res) => {
       });
     }
 
-    await db.query('DELETE FROM negara WHERE id = $1', [req.params.id]);
+    await db.query('DELETE FROM negara WHERE id = $1', [id]);
     res.json({ ok: true });
   } catch (error) {
     console.error('[negaraApi] DELETE error:', error.message);

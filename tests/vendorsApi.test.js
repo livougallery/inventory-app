@@ -304,6 +304,26 @@ describe('JSON API /api/vendors', () => {
       expect(row.tipe).toBe('produksi');
     });
 
+    // id harus divalidasi sebelum dipakai: '/abc' diteruskan ke Postgres dan
+    // memicu 22P02 yang berujung 500, padahal yang diminta klien 404. Pola
+    // yang sama dengan negara dan purchase-order.
+    test('id bukan angka → 404, bukan 500', async () => {
+      const token = await getToken();
+      const { status } = await call('PUT', '/vendors/abc', {
+        body: { nama: 'Hantu' },
+        headers: { 'x-csrf-token': token },
+      });
+      expect(status).toBe(404);
+    });
+
+    test('hapus dengan id bukan angka → 404, bukan 500', async () => {
+      const token = await getToken();
+      const { status } = await call('DELETE', '/vendors/abc', {
+        headers: { 'x-csrf-token': token },
+      });
+      expect(status).toBe(404);
+    });
+
     test('field yang tidak dikirim tidak dikosongkan', async () => {
       await db.query(
         `INSERT INTO vendors (nama, alamat, kontak, tipe)

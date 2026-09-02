@@ -266,6 +266,27 @@ describe('JSON API /api/negara', () => {
       expect(body.ok).toBe(false);
     });
 
+    // id tidak divalidasi sebelum dipakai, jadi '/abc' diteruskan ke Postgres
+    // dan memicu 22P02 (invalid input syntax for integer) yang berujung 500.
+    // Diverifikasi dengan menjalankan query-nya langsung: 22P02 sungguh
+    // dilempar, jadi ini bukan masalah khayalan.
+    test('id bukan angka → 404, bukan 500', async () => {
+      const token = await getToken();
+      const { status } = await call('PUT', '/negara/abc', {
+        body: { nama: 'Hantu' },
+        headers: { 'x-csrf-token': token },
+      });
+      expect(status).toBe(404);
+    });
+
+    test('hapus dengan id bukan angka → 404, bukan 500', async () => {
+      const token = await getToken();
+      const { status } = await call('DELETE', '/negara/abc', {
+        headers: { 'x-csrf-token': token },
+      });
+      expect(status).toBe(404);
+    });
+
     test('rename ke nama yang sudah dipakai negara lain → 409', async () => {
       await seedNegara(['China', 'Thailand']);
       const token = await getToken();

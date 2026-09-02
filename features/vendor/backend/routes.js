@@ -12,6 +12,7 @@ const express = require('express');
 const db = require('../../../db');
 const { validateToken } = require('../../../middleware/csrf');
 const { requireAuth } = require('../../../middleware/apiAuth');
+const { parseId } = require('../../../middleware/parseId');
 
 const router = express.Router();
 
@@ -94,8 +95,13 @@ router.post('/', requireAuth, validateToken, async (req, res) => {
 // PUT /api/vendors/:id — ubah vendor. Field yang tidak dikirim dibiarkan
 // (bukan dikosongkan), supaya edit parsial tidak menghapus data.
 router.put('/:id', requireAuth, validateToken, async (req, res) => {
+  const id = parseId(req.params.id);
+  if (id === null) {
+    return res.status(404).json({ ok: false, error: 'Vendor tidak ditemukan' });
+  }
+
   try {
-    const existing = (await db.query('SELECT id FROM vendors WHERE id = $1', [req.params.id])).rows[0];
+    const existing = (await db.query('SELECT id FROM vendors WHERE id = $1', [id])).rows[0];
     if (!existing) {
       return res.status(404).json({ ok: false, error: 'Vendor tidak ditemukan' });
     }
@@ -124,7 +130,7 @@ router.put('/:id', requireAuth, validateToken, async (req, res) => {
       return res.status(400).json({ ok: false, error: 'Tidak ada field yang diubah' });
     }
 
-    params.push(req.params.id);
+    params.push(id);
     const row = (await db.query(
       `UPDATE vendors SET ${sets.join(', ')}, updated_at = NOW()
        WHERE id = $${params.length}
@@ -141,8 +147,13 @@ router.put('/:id', requireAuth, validateToken, async (req, res) => {
 
 // DELETE /api/vendors/:id — tolak bila masih dipakai transaksi.
 router.delete('/:id', requireAuth, validateToken, async (req, res) => {
+  const id = parseId(req.params.id);
+  if (id === null) {
+    return res.status(404).json({ ok: false, error: 'Vendor tidak ditemukan' });
+  }
+
   try {
-    const existing = (await db.query('SELECT id FROM vendors WHERE id = $1', [req.params.id])).rows[0];
+    const existing = (await db.query('SELECT id FROM vendors WHERE id = $1', [id])).rows[0];
     if (!existing) {
       return res.status(404).json({ ok: false, error: 'Vendor tidak ditemukan' });
     }
@@ -154,7 +165,7 @@ router.delete('/:id', requireAuth, validateToken, async (req, res) => {
         (SELECT COUNT(*) FROM purchase_orders   WHERE vendor_id = $1) AS po,
         (SELECT COUNT(*) FROM purchase_imports  WHERE vendor_id = $1) AS impor,
         (SELECT COUNT(*) FROM production_batches WHERE vendor_id = $1) AS batch
-    `, [req.params.id])).rows[0];
+    `, [id])).rows[0];
 
     const po = Number(usage.po);
     const impor = Number(usage.impor);
@@ -173,7 +184,7 @@ router.delete('/:id', requireAuth, validateToken, async (req, res) => {
       });
     }
 
-    await db.query('DELETE FROM vendors WHERE id = $1', [req.params.id]);
+    await db.query('DELETE FROM vendors WHERE id = $1', [id]);
     res.json({ ok: true });
   } catch (error) {
     console.error('[vendorsApi] DELETE error:', error.message);
