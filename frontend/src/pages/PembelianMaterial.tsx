@@ -9,7 +9,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ShoppingCart, LoaderCircle, TriangleAlert, Receipt, Plus } from 'lucide-react';
+import { ShoppingCart, LoaderCircle, TriangleAlert, Receipt, Plus, Pencil, Trash2 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   DataTableToolbar,
@@ -17,19 +17,20 @@ import {
   type ColumnDef,
 } from '@/components/DataTableToolbar';
 import CreatePoDialog from '@/components/CreatePoDialog';
-import { apiJson } from '@/lib/api';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { apiJson, withCsrf } from '@/lib/api';
 import { rupiah, toNum } from '@/lib/format';
 
 // ===== Tipe data (mengikuti JSON /api/purchase-orders) =====
-
-interface PurchaseOrderItem {
-  id: number;
-  qty: number;
-  harga_satuan: number;
-  subtotal: number;
-  material_nama: string | null;
-  satuan: string | null;
-}
 
 interface PurchaseOrder {
   id: number;
@@ -43,9 +44,24 @@ interface PurchaseOrder {
 }
 
 // Detail: PO lengkap dengan baris itemnya. Field validasi (catatan_reject,
-// validator_name) sengaja tidak diminta — itu ranah tiket 07.
+// validator_name) sengaja tidak diminta — itu ranah tiket 08.
+//
+// vendor_id, currency_id, dan kurs_amount ikut dikirim GET /:id supaya form
+// ubah (tiket 07) bisa mengisi nilai yang sudah tersimpan tanpa menebak-nebak.
 interface PurchaseOrderDetail extends PurchaseOrder {
-  items: PurchaseOrderItem[];
+  vendor_id: number | null;
+  currency_id?: number | null;
+  kurs_amount?: number | string | null;
+  items: Array<{
+    id: number;
+    qty: number | string;
+    harga_satuan: number | string;
+    subtotal: number | string;
+    material_nama: string | null;
+    satuan: string | null;
+    raw_material_id?: number | null;
+    variant_id?: number | null;
+  }>;
 }
 
 // Hanya WARNA badge yang hidup di klien; labelnya datang dari `status_label`
@@ -80,6 +96,22 @@ export default function PembelianMaterial() {
 
   // Dialog buat PO (tiket 06).
   const [createOpen, setCreateOpen] = useState(false);
+
+  // Ubah & hapus PO (tiket 07).
+  //
+  // Hanya PO berstatus `pending` yang boleh diubah atau dihapus — yang sudah
+  // divalidasi barangnya sudah masuk stok. Penjagaan yang sesungguhnya ada di
+  // server (409); penyembunyian tombol di sini hanya kenyamanan, bukan
+  // pengaman. Halaman yang sudah terbuka bisa saja basi.
+  const [editPo, setEditPo] = useState<PurchaseOrderDetail | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+
+  const [deleteTarget, setDeleteTarget] = useState<PurchaseOrder | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  // Gagal mengambil detail saat tombol Ubah ditekan — ditampilkan di daftar,
+  // karena dialog belum terbuka.
+  const [editError, setEditError] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -119,12 +151,49 @@ export default function PembelianMaterial() {
     setDetailError(null);
   };
 
+  // Ubah: detail PO diambil dulu supaya form bisa mengisi nilai yang sudah
+  // tersimpan (termasuk vendor_id dan per-baris item). Daftar tidak mengirim
+  // itu semua, jadi harus dibaca ulang.
+  const openEdit = useCallback(async (o: PurchaseOrder) => {
+    setEditError(null);
+    try {
+      const json = await apiJson<{ data: PurchaseOrderDetail }>(`/api/purchase-orders/${o.id}`);
+      setEditPo(json.data);
+      setEditOpen(true);
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : 'Gagal memuat data PO');
+    }
+  }, []);
+
+  // Hapus. Pesan penolakan dari server ditampilkan apa adanya — misalnya
+  // "barangnya sudah tercatat di stok" jauh lebih berguna dari "gagal".
+  const confirmDelete = useCallback(async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const init = await withCsrf({ method: 'DELETE' });
+      await apiJson(`/api/purchase-orders/${deleteTarget.id}`, init);
+      setDeleteTarget(null);
+      // Muat ulang daftar sekaligus menutup dialog detail kalau PO yang
+      // dihapus sedang terbuka di situ.
+      if (detailId === deleteTarget.id) closeDetail();
+      await loadOrders();
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : 'Gagal menghapus purchase order');
+    } finally {
+      setDeleting(false);
+    }
+  }, [deleteTarget, detailId, loadOrders]);
+
   // Opsi filter status: nilai unik dari data, dihitung sekali per perubahan data.
   const statusOptions = useMemo(
     () => [...new Set(orders.map((o) => o.status_label))].sort((a, b) => a.localeCompare(b, 'id')),
     [orders]
   );
 
+  // Kolom aksi hanya berisi untuk PO pending. Kolomnya tetap dikirim untuk
+  // semua baris supaya lebar tabel tidak berubah-ubah; isinya yang kosong.
   const columns: ColumnDef<PurchaseOrder>[] = useMemo(
     () => [
       { key: 'no_po', label: 'No. PO', value: (o) => o.no_po },
@@ -138,6 +207,7 @@ export default function PembelianMaterial() {
         filterOptions: statusOptions,
       },
       { key: 'creator', label: 'Dibuat Oleh', value: (o) => o.creator_name ?? '' },
+      { key: 'aksi', label: 'Aksi', value: () => '' },
     ],
     [statusOptions]
   );
@@ -180,6 +250,41 @@ export default function PembelianMaterial() {
         );
       case 'creator':
         return <TableCell key={key} className="text-muted-foreground">{o.creator_name || '—'}</TableCell>;
+      case 'aksi':
+        return (
+          <TableCell key={key} className="text-right">
+            {o.status === 'pending' ? (
+              <div className="flex justify-end gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  // stopPropagation WAJIB: baris tabel membuka dialog detail
+                  // pada klik. Tanpa ini satu klik memicu dua dialog
+                  // bertumpuk — edit sekaligus detail.
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openEdit(o);
+                  }}
+                  aria-label={`Ubah ${o.no_po}`}
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDeleteError(null);
+                    setDeleteTarget(o);
+                  }}
+                  aria-label={`Hapus ${o.no_po}`}
+                >
+                  <Trash2 className="h-4 w-4 text-red-600" />
+                </Button>
+              </div>
+            ) : null}
+          </TableCell>
+        );
       default:
         return null;
     }
@@ -410,6 +515,14 @@ export default function PembelianMaterial() {
         </DialogContent>
       </Dialog>
 
+      {/* Gagal mengambil detail saat tombol Ubah ditekan. Ditampilkan di sini
+          karena dialog belum terbuka, jadi pesannya tidak boleh hilang diam-diam. */}
+      {editError && (
+        <p className="mb-4 text-sm text-red-600" role="alert">
+          {editError}
+        </p>
+      )}
+
       {/* Dialog buat PO. Daftar dimuat ulang setelah berhasil, supaya PO baru
           langsung muncul di tabel tanpa reload halaman. */}
       <CreatePoDialog
@@ -417,6 +530,61 @@ export default function PembelianMaterial() {
         onOpenChange={setCreateOpen}
         onCreated={loadOrders}
       />
+
+      {/* Dialog ubah PO — komponen yang sama dengan create, dibedakan oleh
+          prop editPo. Sengaja tidak dibuat komponen terpisah: validasi dan
+          hitung subtotal tidak boleh punya dua versi. */}
+      <CreatePoDialog
+        open={editOpen}
+        onOpenChange={(v) => {
+          setEditOpen(v);
+          if (!v) setEditPo(null);
+        }}
+        onCreated={loadOrders}
+        editPo={editPo}
+      />
+
+      {/* Konfirmasi hapus. Nomor PO disebut di kalimat konfirmasinya, karena
+          menghapus PO yang salah tidak bisa dibatalkan. */}
+      <AlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(v) => {
+          if (!v) setDeleteTarget(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Hapus purchase order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Purchase order{' '}
+              <span className="font-mono font-medium">{deleteTarget?.no_po}</span>{' '}
+              akan dihapus beserta seluruh itemnya. Tindakan ini tidak bisa
+              dibatalkan.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          {deleteError && (
+            <p className="text-sm text-red-600" role="alert">
+              {deleteError}
+            </p>
+          )}
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                // Cegah dialog menutup sendiri sebelum penghapusan selesai:
+                // kalau server menolak, pesannya harus tetap terlihat.
+                e.preventDefault();
+                confirmDelete();
+              }}
+              disabled={deleting}
+            >
+              {deleting ? 'Menghapus…' : 'Hapus'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

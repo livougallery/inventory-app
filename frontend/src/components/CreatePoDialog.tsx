@@ -87,14 +87,38 @@ const formatMoney = (amount: number, currency: Currency | null) => {
 
 // ===== Komponen =====
 
+// Satu komponen menangani create DAN edit (tiket 06 dan 07). Sengaja tidak
+// dipisah: validasi, hitung subtotal, dan render baris item tidak boleh punya
+// dua versi yang bisa berbeda pendapat. Yang membedakan hanya sumber nilai
+// awal dan endpoint yang dipanggil saat menyimpan.
+export interface EditablePo {
+  id: number;
+  vendor_id: number | null;
+  no_po: string;
+  tgl_beli: string;
+  currency_id?: number | null;
+  kurs_amount?: number | string | null;
+  items?: Array<{
+    // Sengaja boleh undefined: baris dari API bisa saja tidak mengirim field
+    // ini, dan form harus tetap terbuka dengan dropdown kosong daripada crash.
+    raw_material_id?: number | null;
+    variant_id?: number | null;
+    qty?: number | string | null;
+    harga_satuan?: number | string | null;
+  }>;
+}
+
 interface CreatePoDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Dipanggil setelah PO tersimpan, supaya daftar dimuat ulang. */
   onCreated: () => void;
+  /** Kalau diisi, dialog jadi mode ubah untuk PO ini. */
+  editPo?: EditablePo | null;
 }
 
-export default function CreatePoDialog({ open, onOpenChange, onCreated }: CreatePoDialogProps) {
+export default function CreatePoDialog({ open, onOpenChange, onCreated, editPo = null }: CreatePoDialogProps) {
+  const isEdit = editPo !== null;
   const [vendors, setVendors] = useState<Vendor[]>([]);
   const [materials, setMaterials] = useState<Material[]>([]);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
@@ -150,19 +174,45 @@ export default function CreatePoDialog({ open, onOpenChange, onCreated }: Create
     if (open) loadOptions();
   }, [open, loadOptions]);
 
-  // Form dikosongkan tiap kali dibuka, supaya PO berikutnya tidak mewarisi
-  // isian sebelumnya.
+  // Form diisi ulang tiap kali dibuka: kosong untuk PO baru, atau nilai PO
+  // yang ada untuk mode ubah. Tanpa ini, PO berikutnya akan mewarisi isian
+  // sebelumnya.
   useEffect(() => {
     if (!open) return;
-    setVendorId(null);
-    setNoPo('');
-    setTglBeli(new Date().toISOString().split('T')[0]);
-    setCurrencyId(null);
-    setKurs('1');
-    setRows([newRow()]);
+
+    if (editPo) {
+      setVendorId(editPo.vendor_id);
+      setNoPo(editPo.no_po ?? '');
+      setTglBeli(editPo.tgl_beli ?? '');
+      setCurrencyId(editPo.currency_id ?? null);
+      setKurs(editPo.kurs_amount != null ? String(editPo.kurs_amount) : '1');
+      // Baris item dari detail PO. Dezimal dari Postgres dikembalikan sebagai
+      // string oleh pg, jadi ditampilkan apa adanya tanpa diubah ke angka.
+      setRows(
+        editPo.items && editPo.items.length > 0
+          ? editPo.items.map((it) => ({
+              key: nextKey++,
+              // `?? null`, bukan nilai apa adanya: field bisa saja tidak
+              // dikirim, dan ItemRow menuntut null bukan undefined supaya
+              // perbandingan di bawahnya tidak perlu menangani dua keadaan.
+              rawMaterialId: it.raw_material_id ?? null,
+              variantId: it.variant_id ?? null,
+              qty: it.qty != null ? String(it.qty) : '',
+              hargaSatuan: it.harga_satuan != null ? String(it.harga_satuan) : '',
+            }))
+          : [newRow()]
+      );
+    } else {
+      setVendorId(null);
+      setNoPo('');
+      setTglBeli(new Date().toISOString().split('T')[0]);
+      setCurrencyId(null);
+      setKurs('1');
+      setRows([newRow()]);
+    }
     setFormError(null);
     setSubmitted(false);
-  }, [open]);
+  }, [open, editPo]);
 
   // ===== Baris item =====
 
@@ -234,7 +284,7 @@ export default function CreatePoDialog({ open, onOpenChange, onCreated }: Create
     setFormError(null);
     try {
       const init = await withCsrf({
-        method: 'POST',
+        method: isEdit ? 'PUT' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           vendor_id: vendorId,
@@ -252,10 +302,16 @@ export default function CreatePoDialog({ open, onOpenChange, onCreated }: Create
         }),
       });
 
-      await apiJson('/api/purchase-orders', init);
+      await apiJson(
+        isEdit ? `/api/purchase-orders/${editPo.id}` : '/api/purchase-orders',
+        init
+      );
       onOpenChange(false);
       onCreated();
     } catch (e) {
+      // Pesan dari server ditampilkan apa adanya. Tiket 07 mensyaratkan ini:
+      // penolakan karena PO sudah divalidasi harus menjelaskan alasannya
+      // (stok sudah tercatat), bukan diganti pesan generik.
       setFormError(e instanceof Error ? e.message : 'Gagal menyimpan purchase order');
     } finally {
       setSaving(false);
@@ -268,9 +324,11 @@ export default function CreatePoDialog({ open, onOpenChange, onCreated }: Create
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Buat Purchase Order</DialogTitle>
+          <DialogTitle>{isEdit ? `Ubah ${editPo.no_po}` : 'Buat Purchase Order'}</DialogTitle>
           <DialogDescription>
-            Catat pembelian bahan baku. Subtotal tiap baris dihitung server.
+            {isEdit
+              ? 'Ubah catatan pembelian bahan baku. Item diganti sebagai satu set.'
+              : 'Catat pembelian bahan baku. Subtotal tiap baris dihitung server.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -601,7 +659,7 @@ export default function CreatePoDialog({ open, onOpenChange, onCreated }: Create
                 Batal
               </Button>
               <Button type="submit" disabled={saving}>
-                {saving ? 'Menyimpan…' : 'Simpan'}
+                {saving ? 'Menyimpan…' : isEdit ? 'Simpan Perubahan' : 'Simpan'}
               </Button>
             </DialogFooter>
           </form>
