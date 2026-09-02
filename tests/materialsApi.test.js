@@ -140,6 +140,86 @@ describe('JSON API /api/materials', () => {
     });
   });
 
+  // Struktur `variants` ditambahkan untuk tiket 06 (dropdown varian per baris
+  // item PO). `varian_list` tetap ada untuk tampilan tabel lama, tapi ia hanya
+  // string agregat — tidak bisa dipakai mengisi dropdown, dan tiket 06 melarang
+  // menguraikan string itu.
+  describe('GET /materials — variants terstruktur', () => {
+    const seedMaterialOnly = (kode, nama) =>
+      db.query(
+        `INSERT INTO raw_materials (kode_bahan, nama, tipe, satuan, stok)
+         VALUES ($1, $2, 'kain_roll', 'Roll', 0)`,
+        [kode, nama]
+      );
+
+    const seedVariant = (materialId, nama, stok, satuan = 'Roll') =>
+      db.query(
+        `INSERT INTO raw_material_variants (raw_material_id, nama_varian, stok, satuan)
+         VALUES ($1, $2, $3, $4)`,
+        [materialId, nama, stok, satuan]
+      );
+
+    test('tiap material membawa array variants berisi id dan nama_varian', async () => {
+      await seedMaterialOnly('KB-010', 'Kain A');
+      await seedVariant(1, 'Hitam', 3);
+      await seedVariant(1, 'Putih', 5);
+
+      const { body } = await call('GET', '/materials');
+      const row = body.data.find((r) => r.kode_bahan === 'KB-010');
+      expect(Array.isArray(row.variants)).toBe(true);
+      expect(row.variants).toHaveLength(2);
+      // Bentuk yang dibutuhkan dropdown: id untuk value, nama_varian untuk teks.
+      expect(row.variants.map((v) => v.nama_varian)).toEqual(['Hitam', 'Putih']);
+      expect(row.variants.every((v) => typeof v.id === 'number')).toBe(true);
+    });
+
+    test('varian terurut alfabetis, bukan mengikuti urutan insert', async () => {
+      await seedMaterialOnly('KB-011', 'Kain B');
+      await seedVariant(1, 'Zebra', 1);
+      await seedVariant(1, 'Abu', 2);
+      await seedVariant(1, 'Merah', 3);
+
+      const { body } = await call('GET', '/materials');
+      const row = body.data.find((r) => r.kode_bahan === 'KB-011');
+      // Diurutkan supaya dropdown tidak berubah-ubah urutannya tiap dimuat.
+      expect(row.variants.map((v) => v.nama_varian)).toEqual(['Abu', 'Merah', 'Zebra']);
+    });
+
+    test('varian membawa satuan dan stoknya sendiri', async () => {
+      await seedMaterialOnly('KB-012', 'Kain C');
+      await seedVariant(1, 'Navy', 7, 'Meter');
+
+      const { body } = await call('GET', '/materials');
+      const row = body.data.find((r) => r.kode_bahan === 'KB-012');
+      expect(row.variants[0].satuan).toBe('Meter');
+      expect(Number(row.variants[0].stok)).toBe(7);
+    });
+
+    test('material tanpa varian → variants array kosong, bukan null dan bukan undefined', async () => {
+      // Kasus NORMAL, bukan edge case: semua 7 material di live DB punya nol
+      // varian. Klien mengandalkan array kosong ini untuk menonaktifkan
+      // dropdown varian tanpa pemeriksaan khusus.
+      await seedMaterialOnly('KB-013', 'Kain Tanpa Varian');
+
+      const { body } = await call('GET', '/materials');
+      const row = body.data.find((r) => r.kode_bahan === 'KB-013');
+      expect(row.variants).toEqual([]);
+      expect(row.variants).not.toBeNull();
+    });
+
+    test('varian tidak bocor ke material lain', async () => {
+      await seedMaterialOnly('KB-014', 'Kain Punya Varian');
+      await seedMaterialOnly('KB-015', 'Kain Kosong');
+      await seedVariant(1, 'Putih', 5);
+
+      const { body } = await call('GET', '/materials');
+      const punya = body.data.find((r) => r.kode_bahan === 'KB-014');
+      const kosong = body.data.find((r) => r.kode_bahan === 'KB-015');
+      expect(punya.variants).toHaveLength(1);
+      expect(kosong.variants).toEqual([]);
+    });
+  });
+
   describe('POST /materials', () => {
     test('tanpa header CSRF → 403', async () => {
       const { status } = await call('POST', '/materials', {

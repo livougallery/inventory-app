@@ -9,13 +9,14 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ShoppingCart, LoaderCircle, TriangleAlert, Receipt } from 'lucide-react';
+import { ShoppingCart, LoaderCircle, TriangleAlert, Receipt, Plus } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   DataTableToolbar,
   useDataTable,
   type ColumnDef,
 } from '@/components/DataTableToolbar';
+import CreatePoDialog from '@/components/CreatePoDialog';
 import { apiJson } from '@/lib/api';
 import { rupiah, toNum } from '@/lib/format';
 
@@ -76,6 +77,9 @@ export default function PembelianMaterial() {
   const [detail, setDetail] = useState<PurchaseOrderDetail | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
+
+  // Dialog buat PO (tiket 06).
+  const [createOpen, setCreateOpen] = useState(false);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -186,9 +190,15 @@ export default function PembelianMaterial() {
   return (
     <>
       {/* Page Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight">Pembelian Material</h1>
-        <p className="text-sm text-muted-foreground">Catatan pembelian bahan baku (PO bahan baku)</p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">Pembelian Material</h1>
+          <p className="text-sm text-muted-foreground">Catatan pembelian bahan baku (PO bahan baku)</p>
+        </div>
+        <Button onClick={() => setCreateOpen(true)}>
+          <Plus className="mr-2 h-4 w-4" />
+          Buat PO
+        </Button>
       </div>
 
       {/* Ringkasan (dari data nyata) */}
@@ -399,6 +409,14 @@ export default function PembelianMaterial() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Dialog buat PO. Daftar dimuat ulang setelah berhasil, supaya PO baru
+          langsung muncul di tabel tanpa reload halaman. */}
+      <CreatePoDialog
+        open={createOpen}
+        onOpenChange={setCreateOpen}
+        onCreated={loadOrders}
+      />
     </>
   );
 }

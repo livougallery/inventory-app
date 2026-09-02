@@ -26,6 +26,35 @@ const EDITABLE_FIELDS = ['kode_bahan', 'nama', 'tipe', 'satuan', 'stok_minimum']
 // SQL identik dengan halaman cek-data lama (routes/cek-data.js sebelum dihapus).
 router.get('/', requireAuth, async (req, res) => {
   try {
+    // Varian diambil sebagai baris terstruktur, terpisah dari query utama.
+    //
+    // `varian_list` di atas adalah string agregat buatan string_agg — cukup
+    // untuk ditampilkan di tabel, tapi tidak bisa dipakai mengisi dropdown
+    // (tiket 06 butuh id tiap varian). Menguraikan string itu akan langsung
+    // rusak begitu nama varian mengandung ", " atau tanda kurung, jadi
+    // di sini diambil terstruktur.
+    const variantRows = (await db.query(`
+      SELECT id, raw_material_id, nama_varian, stok, satuan
+      FROM raw_material_variants
+      ORDER BY nama_varian, id
+    `)).rows;
+
+    // Dikelompokkan per material di JS, bukan dengan json_agg: satu query
+    // datar lebih mudah dibaca, dan `stok` REAL tetap angka asli tanpa
+    // konversi perantara JSON.
+    const variantsByMaterial = new Map();
+    for (const v of variantRows) {
+      if (!variantsByMaterial.has(v.raw_material_id)) {
+        variantsByMaterial.set(v.raw_material_id, []);
+      }
+      variantsByMaterial.get(v.raw_material_id).push({
+        id: v.id,
+        nama_varian: v.nama_varian,
+        stok: v.stok,
+        satuan: v.satuan,
+      });
+    }
+
     const rows = (await db.query(`
       SELECT rm.id, rm.kode_bahan, rm.nama, rm.tipe, rm.satuan,
              rm.stok, rm.stok_minimum, rm.updated_at,
@@ -57,6 +86,10 @@ router.get('/', requireAuth, async (req, res) => {
       r.tipe_label = TIPE_LABEL[r.tipe] || r.tipe;
       r.varian_list = r.varian_list || '';
       r.foto_path = r.foto_path || '';
+      // Selalu array, termasuk saat material tidak punya varian. Ini kasus
+      // normal hari ini — semua 7 material di live DB punya nol varian —
+      // jadi klien tidak perlu menangani null/undefined terpisah.
+      r.variants = variantsByMaterial.get(r.id) || [];
     });
     res.json({ ok: true, data: rows });
   } catch (error) {
