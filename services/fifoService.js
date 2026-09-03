@@ -3,9 +3,28 @@ const db = require('../db');
 const FIFO = {
   // Called when PO is validated: update status + create batch + 'masuk' movement per item
   // All operations in one transaction so PO status and stock stay in sync.
+  //
+  // Mengembalikan `true` kalau PO-nya benar-benar divalidasi, `false` kalau
+  // tidak ada baris yang berubah — artinya PO tidak ada, atau statusnya sudah
+  // bukan `pending` (sudah divalidasi, ditolak, atau diterima).
+  //
+  // Predikat `status='pending'` ADA DI UPDATE, bukan dibaca dulu dengan SELECT.
+  // Ini yang menutup validasi ganda: dua permintaan berbarengan tidak bisa
+  // berdua melihat status `pending` lalu berdua menulis batch. Yang kalah
+  // mendapati rowCount 0 dan dibatalkan — tanpa ini stok naik dua kali untuk
+  // satu PO.
+  //
+  // Penjagaan diletakkan DI SINI, di service, bukan di endpoint yang
+  // memanggilnya: halaman validasi EJS yang lama (routes/validation.js)
+  // memanggil service yang sama, jadi ia ikut terlindungi. Kalau penjaganya
+  // cuma ada di endpoint baru, jalur lama tetap bisa memvalidasi ganda.
   async createBatchFromPO(purchaseOrderId, userId) {
-    await db.transaction(async (tx) => {
-      await tx.run("UPDATE purchase_orders SET status='validated', validated_by=$1, validated_at=CURRENT_TIMESTAMP WHERE id=$2", [userId, purchaseOrderId]);
+    return db.transaction(async (tx) => {
+      const head = await tx.run(`UPDATE purchase_orders
+        SET status='validated', validated_by=$1, validated_at=CURRENT_TIMESTAMP
+        WHERE id=$2 AND status='pending'`, [userId, purchaseOrderId]);
+      if (head.rowCount === 0) return false;
+
       const r = await tx.query(`
         SELECT poi.*, po.tgl_beli
         FROM purchase_order_items poi
@@ -27,6 +46,8 @@ const FIFO = {
         await tx.run('UPDATE raw_materials SET stok = stok + $1 WHERE id = $2',
           [item.qty, item.raw_material_id]);
       }
+
+      return true;
     });
   },
 

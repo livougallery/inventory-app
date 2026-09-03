@@ -135,6 +135,34 @@ describe('JSON API /api/purchase-orders', () => {
       [id, materialId, namaVarian]
     );
 
+  // Stok awal material, supaya test bisa membedakan "stok bertambah" dari
+  // "stok menjadi sekian". Tanpa nilai awal bukan nol, PO dengan qty kecil
+  // bisa lolos walau stok tidak pernah disentuh — misalnya kalau stok
+  // di-SET alih-alih di-INCREMENT.
+  const setStok = (materialId, nilai) =>
+    db.query('UPDATE raw_materials SET stok = $1 WHERE id = $2', [nilai, materialId]);
+
+  const stokOf = async (materialId) => {
+    const r = await db.query('SELECT stok FROM raw_materials WHERE id = $1', [materialId]);
+    return Number(r.rows[0].stok);
+  };
+
+  // Status PO, batch, dan pergerakan dibaca sekaligus. STOK TIDAK termasuk:
+  // ia dibaca terpisah lewat stokOf(), karena nilainya per-material sedangkan
+  // ketiga tabel ini per-PO. Nama lama 'jejakStok' menyesatkan — tidak ada
+  // stok di sini.
+  //
+  // Dipakai untuk menegaskan penolakan tidak menyentuh apa-apa, dan bahwa
+  // kegagalan di tengah validasi membatalkan semuanya.
+  const jejakValidasi = async (poId) => {
+    const po = (await db.query(
+      'SELECT status, validated_by, catatan_reject FROM purchase_orders WHERE id = $1', [poId]
+    )).rows[0];
+    const batches = (await db.query('SELECT * FROM material_batches')).rows;
+    const movements = (await db.query('SELECT * FROM stock_movements')).rows;
+    return { po, batches, movements };
+  };
+
   // createdAt opsional — dipakai untuk menguji urutan "terbaru dulu" tanpa
   // bergantung pada CURRENT_TIMESTAMP yang bisa identik antar baris.
   const seedPo = async ({
@@ -1073,6 +1101,432 @@ describe('JSON API /api/purchase-orders', () => {
       )).rows;
       expect(rows).toHaveLength(1);
       expect(Number(rows[0].qty)).toBe(5);
+    });
+  });
+
+  // ----- POST /:id/validate & /:id/reject (validasi PO, tiket 08) -----
+  //
+  // Inti tiket ini: validasi memindahkan barang ke stok. Karena itu test di
+  // sini menegaskan EFEK YANG TERAMATI — stok, batch, dan pergerakan dibaca
+  // ulang dari database setelah permintaan — bukan sekadar kode respons 200.
+  describe('POST /:id/validate dan POST /:id/reject', () => {
+    // PO pending dengan dua item yang qty-nya sengaja berbeda, supaya
+    // "stok bertambah tepat sejumlah item" tidak bisa lolos dengan menambah
+    // qty item pertama saja.
+    const seedPendingDenganItem = async (opsi = {}) => {
+      await seedBase();
+      await seedMaterial(2, 'Kancing B', 'pcs');
+      await setStok(1, 10);
+      await setStok(2, 0);
+      const id = await seedPo(opsi);
+      await seedItem(id, { materialId: 1, qty: 5, harga: 1000 });
+      await seedItem(id, { materialId: 2, qty: 3, harga: 2500 });
+      return id;
+    };
+
+    // Sesi finance: satu-satunya role yang boleh memvalidasi (AC tiket).
+    const jadiFinance = () => setSession({ userId: 2, username: 'sari', role: 'finance' });
+
+    beforeEach(async () => {
+      await seedUser(2, 'sari', 'finance');
+      await jadiFinance();
+    });
+
+    // ----- Kegagalan lebih dulu: endpoint belum ada -----
+
+    test('validasi PO pending → 200', async () => {
+      const id = await seedPendingDenganItem();
+      const { status, body } = await mutate('POST', `/purchase-orders/${id}/validate`, {});
+      expect(status).toBe(200);
+      expect(body.ok).toBe(true);
+    });
+
+    // ----- Efek stok: alasan tiket ini ada -----
+
+    test('stok tiap material bertambah tepat sejumlah qty itemnya', async () => {
+      const id = await seedPendingDenganItem();
+      await mutate('POST', `/purchase-orders/${id}/validate`, {});
+
+      // Stok awal 10 dan 0; item 5 dan 3.
+      expect(await stokOf(1)).toBe(15);
+      expect(await stokOf(2)).toBe(3);
+    });
+
+    test('satu batch FIFO per item, dengan PO sebagai sumbernya', async () => {
+      const id = await seedPendingDenganItem();
+      await mutate('POST', `/purchase-orders/${id}/validate`, {});
+
+      const batches = (await db.query(
+        'SELECT raw_material_id, source_type, source_id, qty_awal, qty_sisa FROM material_batches ORDER BY id'
+      )).rows;
+      expect(batches).toHaveLength(2);
+      // source_type 'po' dan source_id = id PO: nilai yang sudah dipakai
+      // service lama, bukan karangan baru.
+      expect(batches.map((b) => b.source_type)).toEqual(['po', 'po']);
+      expect(batches.map((b) => Number(b.source_id))).toEqual([id, id]);
+      expect(batches.map((b) => Number(b.raw_material_id))).toEqual([1, 2]);
+    });
+
+    test('qty_sisa batch sama dengan qty_awal (batch belum terpakai)', async () => {
+      const id = await seedPendingDenganItem();
+      await mutate('POST', `/purchase-orders/${id}/validate`, {});
+
+      const batches = (await db.query(
+        'SELECT qty_awal, qty_sisa FROM material_batches ORDER BY id'
+      )).rows;
+      expect(batches.map((b) => [Number(b.qty_awal), Number(b.qty_sisa)])).toEqual([[5, 5], [3, 3]]);
+    });
+
+    test('satu pergerakan stok "masuk" per item, merujuk batchnya', async () => {
+      const id = await seedPendingDenganItem();
+      await mutate('POST', `/purchase-orders/${id}/validate`, {});
+
+      const movements = (await db.query(
+        `SELECT sm.raw_material_id, sm.movement_type, sm.qty, sm.batch_id, sm.ref_type, sm.ref_id
+         FROM stock_movements sm ORDER BY sm.id`
+      )).rows;
+      expect(movements).toHaveLength(2);
+      expect(movements.map((m) => m.movement_type)).toEqual(['masuk', 'masuk']);
+      expect(movements.map((m) => Number(m.qty))).toEqual([5, 3]);
+      expect(movements.map((m) => Number(m.ref_id))).toEqual([id, id]);
+      // batch_id harus merujuk batch yang benar-benar ada, bukan NULL.
+      for (const m of movements) {
+        expect(m.batch_id).not.toBeNull();
+      }
+    });
+
+    test('status PO menjadi validated, dan pencatat validasi tersimpan', async () => {
+      const id = await seedPendingDenganItem();
+      await mutate('POST', `/purchase-orders/${id}/validate`, {});
+
+      const po = (await db.query(
+        'SELECT status, validated_by, validated_at FROM purchase_orders WHERE id = $1', [id]
+      )).rows[0];
+      expect(po.status).toBe('validated');
+      expect(po.validated_by).toBe(2);   // sesi finance
+      expect(po.validated_at).not.toBeNull();
+    });
+
+    // ----- Validasi ganda: jalur menuju stok ganda -----
+
+    test('validasi dua kali → stok bertambah sekali saja', async () => {
+      const id = await seedPendingDenganItem();
+      const pertama = await mutate('POST', `/purchase-orders/${id}/validate`, {});
+      expect(pertama.status).toBe(200);
+
+      // Token CSRF dirotasi tiap mutasi berhasil, jadi mutate() yang
+      // mengambil token fresh tetap dipakai — bukan memakai token lama.
+      const kedua = await mutate('POST', `/purchase-orders/${id}/validate`, {});
+      expect(kedua.status).toBe(409);
+
+      expect(await stokOf(1)).toBe(15);
+      expect(await stokOf(2)).toBe(3);
+      const batches = (await db.query('SELECT COUNT(*)::int AS n FROM material_batches')).rows[0];
+      expect(batches.n).toBe(2);
+    });
+
+    for (const status of ['validated', 'rejected', 'received']) {
+      test(`validasi PO ${status} → 409, bukan 200`, async () => {
+        await seedBase();
+        const id = await seedPo({ status });
+        await seedItem(id, { materialId: 1, qty: 5, harga: 1000 });
+
+        const { status: code, body } = await mutate('POST', `/purchase-orders/${id}/validate`, {});
+        expect(code).toBe(409);
+        expect(body.ok).toBe(false);
+        // Pesan harus menjelaskan alasannya — dipakai langsung di UI.
+        expect(body.error).toMatch(/tidak bisa divalidasi/i);
+      });
+    }
+
+    test('validasi PO yang sudah divalidasi tidak menambah stok lagi', async () => {
+      const id = await seedPendingDenganItem();
+      await mutate('POST', `/purchase-orders/${id}/validate`, {});
+      await mutate('POST', `/purchase-orders/${id}/validate`, {});
+
+      expect(await stokOf(1)).toBe(15);
+      expect(await stokOf(2)).toBe(3);
+    });
+
+    // ----- Penolakan: stok tidak boleh tersentuh sama sekali -----
+
+    test('tolak PO pending → 200, status menjadi rejected', async () => {
+      const id = await seedPendingDenganItem();
+      const { status, body } = await mutate('POST', `/purchase-orders/${id}/reject`, {
+        catatan: 'Harga terlalu tinggi',
+      });
+      expect(status).toBe(200);
+      expect(body.ok).toBe(true);
+
+      const po = (await db.query(
+        'SELECT status, catatan_reject FROM purchase_orders WHERE id = $1', [id]
+      )).rows[0];
+      expect(po.status).toBe('rejected');
+      expect(po.catatan_reject).toBe('Harga terlalu tinggi');
+    });
+
+    test('penolakan menyimpan alasan, dan alasan itu terbaca lewat GET /:id', async () => {
+      const id = await seedPendingDenganItem();
+      await mutate('POST', `/purchase-orders/${id}/reject`, { catatan: 'Vendor tidak lengkap' });
+
+      // Alasan ditampilkan ke pembuat PO, jadi harus bisa dibaca ulang.
+      const { body } = await call('GET', `/purchase-orders/${id}`);
+      expect(body.data.catatan_reject).toBe('Vendor tidak lengkap');
+    });
+
+    test('penolakan tidak menyentuh stok, batch, maupun pergerakan', async () => {
+      const id = await seedPendingDenganItem();
+      const { status } = await mutate('POST', `/purchase-orders/${id}/reject`, { catatan: 'Salah harga' });
+      // Wajib ditegaskan dulu. Permintaan yang dijawab 404 (endpoint belum
+      // ada) juga tidak akan menyentuh stok — tanpa baris ini test ini akan
+      // tetap hijau walau penolakan tidak bekerja sama sekali.
+      expect(status).toBe(200);
+
+      const { batches, movements } = await jejakValidasi(id);
+      expect(await stokOf(1)).toBe(10);   // tidak berubah dari awal
+      expect(await stokOf(2)).toBe(0);
+      expect(batches).toHaveLength(0);
+      expect(movements).toHaveLength(0);
+    });
+
+    test('penolakan mencatat siapa yang menolak', async () => {
+      const id = await seedPendingDenganItem();
+      await mutate('POST', `/purchase-orders/${id}/reject`, { catatan: 'Ditolak' });
+
+      const po = (await db.query(
+        'SELECT validated_by FROM purchase_orders WHERE id = $1', [id]
+      )).rows[0];
+      expect(po.validated_by).toBe(2);
+    });
+
+    for (const status of ['validated', 'rejected', 'received']) {
+      test(`tolak PO ${status} → 409, bukan 200`, async () => {
+        await seedBase();
+        const id = await seedPo({ status });
+
+        const { status: code, body } = await mutate('POST', `/purchase-orders/${id}/reject`, {
+          catatan: 'x',
+        });
+        expect(code).toBe(409);
+        expect(body.error).toMatch(/tidak bisa ditolak/i);
+      });
+    }
+
+    // ----- Kegagalan tidak boleh meninggalkan efek setengah jadi -----
+    //
+    // Diverifikasi dengan memaksa kegagalan di tengah: item kedua dirusak
+    // supaya INSERT-nya gagal, lalu keempat tabel dibaca ulang.
+    test('gagal di tengah validasi → tidak ada stok, batch, pergerakan, atau perubahan status', async () => {
+      const id = await seedPendingDenganItem();
+
+      // Kegagalan diselipkan pada item KEDUA, bukan yang pertama. Kalau
+      // kegagalannya di item pertama, tidak ada yang sempat ditulis dan test
+      // akan hijau walau transaksi tidak pernah ada. Dengan kegagalan di item
+      // kedua, stok item pertama SUDAH terlanjur naik — jadi kalau transaksi
+      // dihapus, kenaikan itu akan tertinggal dan test ini merah.
+      //
+      // Baris item tidak bisa dirusak langsung: FK purchase_order_items
+      // menolak raw_material_id fiktif (terbukti — dicoba lebih dulu).
+      // Karena itu kegagalannya diselipkan di lapis akses data.
+      // `.bind(db)` WAJIB. Implementasi asli membaca `this.pool`, jadi tanpa
+      // bind ia melempar "Cannot read properties of undefined (reading
+      // 'pool')" — transaksi tak pernah dimulai, dan test ini akan lolos
+      // untuk alasan yang salah (tidak ada yang ditulis, jadi tidak ada
+      // yang perlu dibatalkan). Kebetulan ini yang pertama kali terjadi
+      // saat test ditulis.
+      const asli = db.transaction.bind(db);
+      const selipkan = jest.spyOn(db, 'transaction').mockImplementation((fn) =>
+        asli(async (tx) => {
+          const runAsli = tx.run.bind(tx);
+          tx.run = (sql, params) => {
+            // params[0] material_batches adalah raw_material_id.
+            if (/INSERT INTO material_batches/.test(sql) && params?.[0] === 2) {
+              throw new Error('Kegagalan yang disengaja pada item kedua');
+            }
+            return runAsli(sql, params);
+          };
+          return fn(tx);
+        })
+      );
+
+      let status;
+      try {
+        ({ status } = await mutate('POST', `/purchase-orders/${id}/validate`, {}));
+      } finally {
+        selipkan.mockRestore();
+      }
+      expect(status).toBe(500);
+
+      const { po, batches, movements } = await jejakValidasi(id);
+      // Keadaan setelah rollback: persis seperti sebelum permintaan.
+      expect(po.status).toBe('pending');
+      expect(po.validated_by).toBeNull();
+      expect(batches).toHaveLength(0);
+      expect(movements).toHaveLength(0);
+      expect(await stokOf(1)).toBe(10);
+      expect(await stokOf(2)).toBe(0);
+    });
+
+    test('PO tanpa item bisa divalidasi, tanpa menambah apa pun', async () => {
+      // Kasus pinggiran yang nyata: PO kosong tidak boleh merusak transaksi.
+      await seedBase();
+      await setStok(1, 7);
+      const id = await seedPo();
+
+      const { status } = await mutate('POST', `/purchase-orders/${id}/validate`, {});
+      expect(status).toBe(200);
+      expect(await stokOf(1)).toBe(7);
+      const po = (await db.query('SELECT status FROM purchase_orders WHERE id = $1', [id])).rows[0];
+      expect(po.status).toBe('validated');
+    });
+
+    // ----- Role: hanya finance -----
+    //
+    // requireRole menjawab JSON, bukan me-render error.ejs — itu syarat agar
+    // klien React bisa menampilkan pesannya (tiket 01).
+    test('admin (bukan finance) → 403 JSON, bukan redirect', async () => {
+      const id = await seedPendingDenganItem();
+      await setSession({ userId: 1, username: 'admin', role: 'admin' });
+
+      const { status, body, contentType } = await mutate('POST', `/purchase-orders/${id}/validate`, {});
+      expect(status).toBe(403);
+      expect(contentType).toMatch(/application\/json/);
+      expect(body.ok).toBe(false);
+      // Status tidak boleh berubah walau permintaan ditolak.
+      expect((await jejakValidasi(id)).po.status).toBe('pending');
+    });
+
+    test('admin (bukan finance) tidak bisa menolak → 403', async () => {
+      const id = await seedPendingDenganItem();
+      await setSession({ userId: 1, username: 'admin', role: 'admin' });
+
+      const { status } = await mutate('POST', `/purchase-orders/${id}/reject`, { catatan: 'x' });
+      expect(status).toBe(403);
+      expect((await jejakValidasi(id)).po.status).toBe('pending');
+    });
+
+    // ----- Autentikasi & CSRF -----
+
+    test('validasi tanpa session → 401 JSON', async () => {
+      const id = await seedPendingDenganItem();
+      const { status, contentType } = await call('POST', `/purchase-orders/${id}/validate`, {
+        body: {},
+        auth: false,
+      });
+      expect(status).toBe(401);
+      expect(contentType).toMatch(/application\/json/);
+    });
+
+    test('tolak tanpa session → 401 JSON', async () => {
+      const id = await seedPendingDenganItem();
+      const { status } = await call('POST', `/purchase-orders/${id}/reject`, {
+        body: { catatan: 'x' },
+        auth: false,
+      });
+      expect(status).toBe(401);
+    });
+
+    test('validasi tanpa header CSRF → 403', async () => {
+      const id = await seedPendingDenganItem();
+      const { status } = await call('POST', `/purchase-orders/${id}/validate`, { body: {} });
+      expect(status).toBe(403);
+    });
+
+    test('tolak tanpa header CSRF → 403', async () => {
+      const id = await seedPendingDenganItem();
+      const { status } = await call('POST', `/purchase-orders/${id}/reject`, { body: { catatan: 'x' } });
+      expect(status).toBe(403);
+    });
+
+    // ----- 404 & id tidak sah -----
+
+    test('validasi id yang tidak ada → 404 JSON, bukan 500', async () => {
+      await seedBase();
+      const { status, body, contentType } = await mutate('POST', '/purchase-orders/999/validate', {});
+      expect(status).toBe(404);
+      expect(body.ok).toBe(false);
+      expect(contentType).toMatch(/application\/json/);
+    });
+
+    // Tegasan contentType JSON WAJIB di test 404 ini. Express menjawab 404
+    // ber-HTML untuk route yang tidak terdaftar sama sekali, jadi tanpa
+    // tegasan itu test akan hijau walau endpointnya belum ditulis — tidak
+    // menguji apa pun. Yang diuji: route-nya ADA dan menjawab 404 JSON.
+    test('tolak id yang tidak ada → 404 JSON, bukan 500', async () => {
+      await seedBase();
+      const { status, contentType, body } = await mutate('POST', '/purchase-orders/999/reject', { catatan: 'x' });
+      expect(status).toBe(404);
+      expect(contentType).toMatch(/application\/json/);
+      expect(body.ok).toBe(false);
+    });
+
+    test('validasi dengan id bukan angka → 404 JSON, bukan 500', async () => {
+      // Tanpa parseId, '/abc' diteruskan ke Postgres → 22P02 → 500.
+      await seedBase();
+      const { status, contentType } = await mutate('POST', '/purchase-orders/abc/validate', {});
+      expect(status).toBe(404);
+      expect(contentType).toMatch(/application\/json/);
+    });
+
+    test('tolak dengan id bukan angka → 404 JSON, bukan 500', async () => {
+      await seedBase();
+      const { status, contentType } = await mutate('POST', '/purchase-orders/abc/reject', { catatan: 'x' });
+      expect(status).toBe(404);
+      expect(contentType).toMatch(/application\/json/);
+    });
+
+    // ----- Alasan penolakan wajib diisi -----
+
+    test('tolak tanpa catatan → 400', async () => {
+      const id = await seedPendingDenganItem();
+      const { status, body } = await mutate('POST', `/purchase-orders/${id}/reject`, {});
+      expect(status).toBe(400);
+      expect(body.ok).toBe(false);
+    });
+
+    // 404 harus menang atas 400: kalau alasan divalidasi lebih dulu, body
+    // kosong akan menjawab 400 dan klien tak pernah tahu PO-nya tidak ada.
+    test('tolak id yang tidak ada TANPA catatan → 404, bukan 400', async () => {
+      await seedBase();
+      const { status } = await mutate('POST', '/purchase-orders/999/reject', {});
+      expect(status).toBe(404);
+    });
+
+    test('tolak dengan catatan kosong → 400', async () => {
+      // String berisi spasi saja: kalau cuma dicek truthiness, ini lolos
+      // dan alasan tersimpan sebagai "   " yang tak bermakna.
+      const id = await seedPendingDenganItem();
+      const { status } = await mutate('POST', `/purchase-orders/${id}/reject`, { catatan: '   ' });
+      expect(status).toBe(400);
+    });
+
+    test('catatan bukan string → 400, bukan 500', async () => {
+      const id = await seedPendingDenganItem();
+      const { status } = await mutate('POST', `/purchase-orders/${id}/reject`, { catatan: 12345 });
+      expect(status).toBe(400);
+    });
+
+    // ----- Respons -----
+
+    test('respons validasi berisi PO dengan status baru, siap ditampilkan ulang', async () => {
+      const id = await seedPendingDenganItem();
+      const { body } = await mutate('POST', `/purchase-orders/${id}/validate`, {});
+      expect(body.data.status).toBe('validated');
+      expect(body.data.status_label).toBe('Tervalidasi');
+    });
+
+    test('setelah divalidasi, PO tidak bisa diubah lagi (409)', async () => {
+      // Penjaga tiket 07 dan tiket 08 harus sepakat: validasi mengunci PO.
+      const id = await seedPendingDenganItem();
+      await mutate('POST', `/purchase-orders/${id}/validate`, {});
+
+      const { status } = await mutate('PUT', `/purchase-orders/${id}`, {
+        vendor_id: 1,
+        no_po: 'PO-COBA-UBAH',
+        tgl_beli: '2026-09-02',
+        items: [{ raw_material_id: 1, qty: 5, harga_satuan: 1000 }],
+      });
+      expect(status).toBe(409);
     });
   });
 });

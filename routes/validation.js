@@ -5,6 +5,11 @@ const { isAuthenticated } = require('../middleware/auth');
 const role = require('../middleware/role');
 const ValidationService = require('../services/validationService');
 
+// Pesan dari redirect dibaca dari query, bukan dari konstanta: `error` dan
+// `success` dikirim sebagai query param oleh POST di bawah. Pola ini mengikuti
+// routes/raw-materials.js:49. Tanpa baris ini, pesan kegagalan validasi ganda
+// akan hilang diam-diam — view validation/index.ejs tidak membaca query
+// sendiri.
 router.get('/', isAuthenticated, role('finance'), async (req, res) => {
   const pendingPOs = (await db.query(`
     SELECT po.*, v.nama as vendor_nama, u.username as creator_name
@@ -30,17 +35,37 @@ router.get('/', isAuthenticated, role('finance'), async (req, res) => {
     WHERE pi.status = 'pending' ORDER BY pi.created_at DESC
   `)).rows;
 
-  res.render('validation/index', { title: 'Validasi Finance', pendingPOs, pendingCosts, pendingImports, error: null });
+  res.render('validation/index', {
+    title: 'Validasi Finance',
+    pendingPOs,
+    pendingCosts,
+    pendingImports,
+    error: req.query.error || null,
+    success: req.query.success || null,
+  });
 });
 
+// Nilai balik WAJIB diperiksa sejak tiket 08: approve/reject mengembalikan
+// `false` kalau tidak ada baris yang berubah, artinya PO sudah diputuskan
+// orang lain (atau tidak ada). Mengabaikannya berarti halaman ini mengumumkan
+// keberhasilan untuk permintaan yang tidak melakukan apa-apa.
+//
+// Hal itu mudah terjadi: halaman ini menampilkan daftar PO pending, jadi
+// dua finance bisa membukanya bersamaan dan berdua menekan tombol yang sama.
+// Yang kalah harus diberi tahu, bukan diberi pesan sukses.
+const APPROVE_GAGAL = '/validation?error=PO tidak bisa divalidasi. Statusnya sudah berubah.';
+const REJECT_GAGAL = '/validation?error=PO tidak bisa ditolak. Statusnya sudah berubah.';
+
 router.post('/po/:id/approve', isAuthenticated, role('finance'), async (req, res) => {
-  await ValidationService.approvePurchaseOrder(req.params.id, req.session.userId);
-  res.redirect('/validation?success=PO berhasil divalidasi');
+  const ok = await ValidationService.approvePurchaseOrder(req.params.id, req.session.userId);
+  res.redirect(ok ? '/validation?success=PO berhasil divalidasi' : APPROVE_GAGAL);
 });
 
 router.post('/po/:id/reject', isAuthenticated, role('finance'), async (req, res) => {
-  await ValidationService.rejectPurchaseOrder(req.params.id, req.session.userId, req.body.catatan || '');
-  res.redirect('/validation?success=PO ditolak');
+  const ok = await ValidationService.rejectPurchaseOrder(
+    req.params.id, req.session.userId, req.body.catatan || ''
+  );
+  res.redirect(ok ? '/validation?success=PO ditolak' : REJECT_GAGAL);
 });
 
 router.post('/cost/:id/approve', isAuthenticated, role('finance'), async (req, res) => {

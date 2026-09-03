@@ -11,8 +11,9 @@
 const express = require('express');
 const db = require('../../../db');
 const { validateToken } = require('../../../middleware/csrf');
-const { requireAuth } = require('../../../middleware/apiAuth');
+const { requireAuth, requireRole } = require('../../../middleware/apiAuth');
 const { parseId } = require('../../../middleware/parseId');
+const ValidationService = require('../../../services/validationService');
 
 const router = express.Router();
 
@@ -73,22 +74,28 @@ router.get('/:id', requireAuth, async (req, res) => {
       return res.status(404).json({ ok: false, error: 'Purchase order tidak ditemukan' });
     }
 
-    // Field validasi (catatan_reject, validator_name) sengaja belum dikirim:
-    // UI-nya ranah tiket 08. Diambil saat itu nanti, bukan sekarang.
-    //
     // vendor_id, currency_id, dan kurs_amount ikut dikirim supaya form ubah
     // (tiket 07) bisa mengisi nilai yang sudah tersimpan. Tanpa raw id-nya,
     // klien harus menebak dari nama vendor — akan salah begitu ada dua vendor
     // dengan nama sama.
+    //
+    // catatan_reject dan validator_name diambil mulai tiket 08: alasan
+    // penolakan harus bisa dibaca ulang oleh orang yang membuat PO, dan
+    // menyembunyikannya berarti pengguna tidak pernah tahu mengapa PO-nya
+    // ditolak. validator_name di-join ke users, bukan dikirim sebagai id —
+    // menampilkan "2" tidak bermakna bagi siapa pun.
     const po = (await db.query(`
       SELECT po.id, po.no_po, po.tgl_beli, po.status,
              po.vendor_id, po.currency_id, po.kurs_amount,
+             po.catatan_reject,
              v.nama AS vendor_nama,
              u.username AS creator_name,
+             uv.username AS validator_name,
              ${TOTAL_SQL} AS total
       FROM purchase_orders po
       LEFT JOIN vendors v ON po.vendor_id = v.id
       LEFT JOIN users u ON po.created_by = u.id
+      LEFT JOIN users uv ON po.validated_by = uv.id
       WHERE po.id = $1
     `, [id])).rows[0];
 
@@ -303,15 +310,23 @@ const EDITABLE_STATUS = 'pending';
 // tidak tahu bahwa PO rejected berbeda dari yang sudah divalidasi (yang
 // memang tidak bisa dibuka kembali, sementara rejected bisa, kalau nanti
 // pemilik memutuskannya).
+// Alasan penolakan dipetakan per status, bukan dirangkai dengan if. Peta ini
+// juga dipakai endpoint validasi/tolak di bawah, supaya "PO sudah divalidasi"
+// tidak punya dua kalimat berbeda di dua tempat.
+//
+// Kata kerjanya (${kind}) disisipkan pemanggil: 'diubah', 'dihapus',
+// 'divalidasi', atau 'ditolak'.
 const refusalReason = (kind, status) => {
-  if (status === 'rejected') {
-    return `Purchase order tidak bisa ${kind} karena sudah ditolak. Buka kembali dulu kalau ingin mengubahnya.`;
-  }
-  if (status === 'received') {
-    return `Purchase order tidak bisa ${kind} karena barangnya sudah diterima.`;
-  }
-  // validated (dan status tak dikenal lain, sebagai jalan aman)
-  return `Purchase order tidak bisa ${kind} lagi karena barangnya sudah tercatat di stok.`;
+  const alasan = {
+    rejected: `Purchase order tidak bisa ${kind} karena sudah ditolak. Buka kembali dulu kalau ingin mengubahnya.`,
+    received: `Purchase order tidak bisa ${kind} karena barangnya sudah diterima.`,
+    validated: `Purchase order tidak bisa ${kind} lagi karena barangnya sudah tercatat di stok.`,
+  };
+  // Jalan aman untuk status tak dikenal, termasuk `undefined`. Tercapai
+  // bila status sempat berubah lagi di antara dua pembacaan (statusSekarang
+  // mengembalikan undefined kalau PO terhapus di celah itu) — bukan cabang
+  // mati, jadi jangan dihapus.
+  return alasan[status] ?? `Purchase order tidak bisa ${kind} karena statusnya sudah berubah.`;
 };
 
 // Satu penjaga untuk ubah dan hapus. Predikatnya sama persis; yang berbeda
@@ -509,6 +524,112 @@ router.put('/:id', requireAuth, validateToken, async (req, res) => {
   } catch (error) {
     console.error('[purchaseOrdersApi] PUT error:', error.message);
     res.status(500).json({ ok: false, error: 'Gagal mengubah purchase order' });
+  }
+});
+
+// ===== Validasi & penolakan (tiket 08) =====
+//
+// Kedua endpoint ini HANYA menjaga, mendelegasi, dan melapor. Logika stok
+// tidak ditulis ulang di sini sedikit pun — ia hidup di FifoService
+// (batch FIFO + pergerakan + kenaikan stok) dan ValidationService. Menulis
+// ulang di sini berarti dua versi yang bisa berbeda pendapat, dan selisih
+// sekecil apa pun di antaranya adalah stok yang salah hitung.
+
+// Pesan penolakan untuk validasi dan tolak memakai refusalReason yang sama
+// dengan ubah dan hapus — satu sumber kalimat untuk satu keadaan.
+
+// Membaca status terakhir untuk menjelaskan PENOLAKAN 409. Status dibaca
+// ulang, bukan ditebak dari pembacaan sebelumnya: bisa saja berubah di
+// antara keduanya, dan menebak berarti menjelaskan keadaan yang salah.
+const statusSekarang = async (id) => {
+  const r = await db.query('SELECT status FROM purchase_orders WHERE id = $1', [id]);
+  return r.rows[0]?.status;
+};
+
+// Keberadaan PO dicek terpisah dari statusnya: 404 untuk PO yang tidak ada,
+// 409 untuk PO yang ada tapi tidak bisa diproses. Keduanya situasi yang
+// sama sekali berbeda bagi klien.
+const cekPoAda = async (id) => {
+  const r = await db.query('SELECT id FROM purchase_orders WHERE id = $1', [id]);
+  return r.rows[0] ?? null;
+};
+
+// POST /api/purchase-orders/:id/validate — setujui PO pending, masukkan
+// barangnya ke stok. Hanya role finance.
+router.post('/:id/validate', requireAuth, requireRole('finance'), validateToken, async (req, res) => {
+  const id = parseId(req.params.id);
+  if (id === null) {
+    return res.status(404).json({ ok: false, error: 'Purchase order tidak ditemukan' });
+  }
+
+  try {
+    if (!(await cekPoAda(id))) {
+      return res.status(404).json({ ok: false, error: 'Purchase order tidak ditemukan' });
+    }
+
+    // Delegasi ke service yang sudah ada. `false` berarti tidak ada baris
+    // yang berubah — PO-nya sudah bukan pending, jadi tidak ada yang
+    // divalidasi dan stok tidak tersentuh.
+    const approved = await ValidationService.approvePurchaseOrder(id, req.session.userId);
+    if (!approved) {
+      return res.status(409).json({
+        ok: false,
+        error: refusalReason('divalidasi', await statusSekarang(id)),
+      });
+    }
+
+    // Dibaca ulang, bukan disusun di klien: stok dan batch baru saja
+    // ditulis service, dan satu-satunya cara jujur melapor adalah membaca
+    // keadaan sesudahnya dari database.
+    const row = await readOne(id);
+    res.json({ ok: true, data: row });
+  } catch (error) {
+    console.error('[purchaseOrdersApi] POST validate error:', error.message);
+    res.status(500).json({ ok: false, error: 'Gagal memvalidasi purchase order' });
+  }
+});
+
+// POST /api/purchase-orders/:id/reject — tolak PO pending dengan alasan.
+// Stok, batch, dan pergerakan tidak tersentuh sama sekali.
+router.post('/:id/reject', requireAuth, requireRole('finance'), validateToken, async (req, res) => {
+  const id = parseId(req.params.id);
+  if (id === null) {
+    return res.status(404).json({ ok: false, error: 'Purchase order tidak ditemukan' });
+  }
+
+  try {
+    // Keberadaan PO dicek SEBELUM alasan divalidasi, supaya 'PO tidak ada'
+    // menjawab 404 untuk alasan apa pun — termasuk body kosong. Kalau alasan
+    // divalidasi lebih dulu, '/999/reject' dengan body kosong menjawab 400,
+    // dan klien tak pernah tahu bahwa PO-nya yang tidak ada. Urutan ini sama
+    // persis dengan endpoint validate di atas.
+    if (!(await cekPoAda(id))) {
+      return res.status(404).json({ ok: false, error: 'Purchase order tidak ditemukan' });
+    }
+
+    // Alasan WAJIB, bukan opsional. PO yang ditolak tanpa penjelasan membuat
+    // pembuatnya menebak-nebak apa yang salah — padahal penolakan yang paling
+    // sering terjadi justru karena hal sepele yang mudah diperbaiki.
+    const catatan = req.body?.catatan;
+    if (typeof catatan !== 'string' || catatan.trim() === '') {
+      return res.status(400).json({ ok: false, error: 'Alasan penolakan wajib diisi' });
+    }
+
+    const rejected = await ValidationService.rejectPurchaseOrder(
+      id, req.session.userId, catatan.trim()
+    );
+    if (!rejected) {
+      return res.status(409).json({
+        ok: false,
+        error: refusalReason('ditolak', await statusSekarang(id)),
+      });
+    }
+
+    const row = await readOne(id);
+    res.json({ ok: true, data: row });
+  } catch (error) {
+    console.error('[purchaseOrdersApi] POST reject error:', error.message);
+    res.status(500).json({ ok: false, error: 'Gagal menolak purchase order' });
   }
 });
 
