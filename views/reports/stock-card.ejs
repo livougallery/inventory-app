@@ -7,7 +7,11 @@
       <option value="">-- Pilih Bahan --</option>
       <% materials.forEach(m => { %>
       <option value="<%= m.id %>" <%= materialId === m.id ? 'selected' : '' %>>
-        <%= m.nama %> (<%= m.tipe === 'kain_roll' ? 'Fabric Roll' : m.tipe === 'kain_ecer' ? 'Ecer' : m.tipe === 'cmt_cost' ? 'Product Fulfillment' : 'Aksesoris' %>) — Stok: <%= Number(m.stok).toLocaleString('id-ID') %> <%= m.satuan %>
+        <%# Label diambil dari m.tipe_label yang dikirim routes/reports.js,
+            bukan dirangkai di sini. Dulu baris ini menuliskan "Ecer"
+            sendiri sementara API mengirim "Kain (Ecer)" — sumber
+            inkonsistensi yang ditemukan tiket 10. %>
+        <%= m.nama %> (<%= m.tipe_label %>) — Stok: <%= Number(m.stok).toLocaleString('id-ID') %> <%= m.satuan %>
       </option>
       <% }) %>
     </select>
