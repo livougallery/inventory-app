@@ -1,0 +1,87 @@
+<h1 class="text-2xl font-bold mb-4">Ubah Pembelian White Label</h1>
+
+<form method="POST" class="bg-white shadow rounded p-6 max-w-xl">
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Produk &amp; Varian</label>
+    <select name="variant_id" class="w-full border rounded p-2" required>
+      <option value="">Pilih Produk &amp; Varian</option>
+      <% products.forEach(p => { %>
+        <optgroup label="<%= p.nama_produk %>">
+          <% p.variants.forEach(v => { %>
+          <%# `selected` dibandingkan sebagai angka: nilai dari Postgres bisa
+              berupa string, dan '1' === 1 akan salah walau maksudnya sama. %>
+          <option value="<%= v.id %>" <%= Number(v.id) === Number(imp.variant_id) ? 'selected' : '' %>><%= v.warna %> - <%= v.size %> (SKU: <%= v.sku %>)</option>
+          <% }) %>
+        </optgroup>
+      <% }) %>
+    </select>
+  </div>
+
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Vendor (Importir)</label>
+    <select name="vendor_id" class="w-full border rounded p-2" required>
+      <option value="">Pilih Vendor</option>
+      <% vendors.forEach(v => { %>
+      <option value="<%= v.id %>" <%= Number(v.id) === Number(imp.vendor_id) ? 'selected' : '' %>><%= v.nama %></option>
+      <% }) %>
+    </select>
+  </div>
+
+  <%# Negara asal (tiket 09). Opsional, dan BISA DIKOSONGKAN — pilihan
+      pertama bernilai kosong itulah satu-satunya cara pengguna menghapus
+      negara yang sudah tersimpan. Tanpa opsi itu, negara yang salah pilih
+      tidak pernah bisa dibatalkan.
+
+      Perbandingan dibungkus Number(): imp.negara_id bisa NULL, dan
+      Number(null) === 0 tidak akan cocok dengan id mana pun (id mulai 1),
+      jadi tidak ada opsi yang terpilih — tepat yang diinginkan. %>
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Negara Asal <span class="text-gray-400 font-normal">(opsional)</span></label>
+    <%# data-negara menandai dropdown ini untuk test; tanpa penanda,
+        test tidak bisa membedakan <select> negara dari <select> produk
+        dan vendor, yang semuanya juga punya opsi terpilih. %>
+    <select name="negara_id" data-negara class="w-full border rounded p-2">
+      <option value="" <%= imp.negara_id === null || imp.negara_id === undefined ? 'selected' : '' %>>— Pilih Negara —</option>
+      <% negara.forEach(n => { %>
+      <option value="<%= n.id %>" <%= Number(n.id) === Number(imp.negara_id) ? 'selected' : '' %>><%= n.nama %></option>
+      <% }) %>
+    </select>
+    <% if (negara.length === 0) { %>
+    <p class="text-xs text-gray-400 mt-1">Belum ada negara terdaftar.</p>
+    <% } %>
+  </div>
+
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Tanggal Beli</label>
+    <input type="date" name="tgl_beli" value="<%= imp.tgl_beli %>" class="w-full border rounded p-2" required>
+  </div>
+
+  <div class="grid grid-cols-2 gap-4 mb-4">
+    <div>
+      <label class="block mb-1 text-sm font-medium">Qty</label>
+      <input type="number" name="qty" value="<%= imp.qty %>" class="w-full border rounded p-2" required min="1">
+    </div>
+    <div>
+      <label class="block mb-1 text-sm font-medium">Harga Produk (USD)</label>
+      <input type="number" name="harga_produk" step="0.01" value="<%= imp.harga_produk %>" class="w-full border rounded p-2" required>
+    </div>
+    <div>
+      <label class="block mb-1 text-sm font-medium">Kurs (1 USD = ... IDR)</label>
+      <input type="number" name="kurs" step="0.0001" value="<%= imp.kurs %>" class="w-full border rounded p-2">
+    </div>
+    <div>
+      <label class="block mb-1 text-sm font-medium">Logistik (IDR)</label>
+      <input type="number" name="logistik" step="any" value="<%= imp.logistik %>" class="w-full border rounded p-2">
+    </div>
+  </div>
+
+  <%# HPP dihitung ulang server saat menyimpan — nilai di sini hanya
+      pengingat, bukan input. %>
+  <p class="text-sm text-gray-500 mb-4">
+    HPP per item dihitung ulang saat disimpan: (harga &times; kurs) + (logistik &divide; qty).
+    Saat ini Rp <%= Number(imp.hpp_per_item).toLocaleString('id-ID') %>.
+  </p>
+
+  <button type="submit" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">Simpan Perubahan</button>
+  <a href="/purchase-imports/<%= imp.id %>" class="ml-2 text-gray-500 hover:underline">Batal</a>
+</form>

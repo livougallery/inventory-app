@@ -1,10 +1,23 @@
 <div class="mb-4">
   <a href="/purchase-imports" class="text-blue-600 hover:underline text-sm">← Kembali</a>
 </div>
-<h1 class="text-2xl font-bold mb-4">Detail Pembelian</h1>
+<div class="flex justify-between items-center mb-4">
+  <h1 class="text-2xl font-bold">Detail Pembelian</h1>
+  <%# Ubah hanya untuk pembelian pending dan admin. Yang sudah divalidasi
+      tidak boleh diubah: angkanya sudah masuk HPP dan stok. %>
+  <% if (imp.status === 'pending' && user.role === 'admin') { %>
+    <a href="/purchase-imports/<%= imp.id %>/edit" class="bg-blue-600 text-white px-4 py-2 rounded text-sm hover:bg-blue-700">Ubah</a>
+  <% } %>
+</div>
+<% if (error) { %>
+<div class="bg-red-50 border border-red-200 text-red-800 p-3 mb-4 rounded text-sm"><%= error %></div>
+<% } %>
 <div class="bg-white shadow rounded p-4 grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
   <div><span class="text-gray-500">Produk:</span> <strong><%= imp.nama_produk %> (<%= imp.warna %> - <%= imp.size %>)</strong></div>
   <div><span class="text-gray-500">Vendor:</span> <strong><%= imp.vendor_nama %></strong></div>
+  <%# Negara asal (tiket 09). Em dash kalau kosong: menampilkan "null" akan
+      terbaca sebagai data nyata, padahal artinya "tidak diisi". %>
+  <div><span class="text-gray-500">Negara:</span> <strong><%= imp.negara_nama || '—' %></strong></div>
   <div><span class="text-gray-500">Tanggal:</span> <strong><%= imp.tgl_beli %></strong></div>
   <div>
     <span class="text-gray-500">Status:</span>

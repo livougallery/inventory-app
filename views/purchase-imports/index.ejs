@@ -9,6 +9,10 @@
     <thead><tr class="bg-gray-100">
       <th class="p-3 text-left">Produk</th>
       <th class="p-3 text-left">Vendor</th>
+      <%# Kolom Negara (tiket 09). Em dash untuk pembelian tanpa negara —
+          bukan string "null" atau "undefined", yang akan terbaca sebagai
+          data nyata oleh siapa pun yang melihatnya. %>
+      <th class="p-3 text-left">Negara</th>
       <th class="p-3 text-left">Tanggal</th>
       <th class="p-3 text-right">Qty</th>
       <th class="p-3 text-right">HPP/Item</th>
@@ -20,6 +24,7 @@
       <tr class="border-t hover:bg-gray-50">
         <td class="p-3"><%= i.nama_produk %> (<%= i.warna %> - <%= i.size %>)</td>
         <td class="p-3"><%= i.vendor_nama %></td>
+        <td class="p-3"><%= i.negara_nama || '—' %></td>
         <td class="p-3"><%= i.tgl_beli %></td>
         <td class="p-3 text-right"><%= i.qty %></td>
         <td class="p-3 text-right">Rp <%= Number(i.hpp_per_item).toLocaleString('id-ID') %></td>
@@ -31,10 +36,18 @@
             <%= i.status === 'pending' ? 'Pending' : i.status === 'validated' ? 'Valid' : 'Ditolak' %>
           </span>
         </td>
-        <td class="p-3"><a href="/purchase-imports/<%= i.id %>" class="text-blue-600 hover:underline">Detail</a></td>
+        <td class="p-3">
+          <a href="/purchase-imports/<%= i.id %>" class="text-blue-600 hover:underline">Detail</a>
+          <%# Edit hanya untuk pembelian pending, dan hanya admin. Yang sudah
+              divalidasi sudah masuk HPP dan stok (penjaga yang sama dengan
+              tiket 07 pada purchase order). %>
+          <% if (i.status === 'pending' && user.role === 'admin') { %>
+            <a href="/purchase-imports/<%= i.id %>/edit" class="ml-2 text-blue-600 hover:underline">Ubah</a>
+          <% } %>
+        </td>
       </tr>
       <% }) %>
-      <% if (imports.length === 0) { %><tr><td colspan="7" class="p-3 text-center text-gray-400">Belum ada pembelian</td></tr><% } %>
+      <% if (imports.length === 0) { %><tr><td colspan="8" class="p-3 text-center text-gray-400">Belum ada pembelian</td></tr><% } %>
     </tbody>
   </table>
 </div>
