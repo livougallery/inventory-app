@@ -22,6 +22,25 @@
       <% }) %>
     </select>
   </div>
+  <%# Negara asal pembelian (tiket 09). OPSIONAL — pilihan pertama sengaja
+      bernilai kosong supaya pembelian bisa disimpan tanpa negara. Dua baris
+      yang sudah ada di database pun tidak punya negara, jadi ini keadaan
+      normal, bukan kasus pinggiran.
+
+      Negara dicatat pada transaksi, bukan pada vendor: satu vendor bisa
+      mendatangkan barang dari beberapa negara. %>
+  <div class="mb-4">
+    <label class="block mb-1 text-sm font-medium">Negara Asal <span class="text-gray-400 font-normal">(opsional)</span></label>
+    <select name="negara_id" class="w-full border rounded p-2">
+      <option value="">— Pilih Negara —</option>
+      <% negara.forEach(n => { %>
+      <option value="<%= n.id %>"><%= n.nama %></option>
+      <% }) %>
+    </select>
+    <% if (negara.length === 0) { %>
+    <p class="text-xs text-gray-400 mt-1">Belum ada negara terdaftar. Pembelian tetap bisa disimpan tanpa negara.</p>
+    <% } %>
+  </div>
   <div class="mb-4">
     <label class="block mb-1 text-sm font-medium">Tanggal Beli</label>
     <input type="date" name="tgl_beli" value="<%= new Date().toISOString().split('T')[0] %>" class="w-full border rounded p-2" required>

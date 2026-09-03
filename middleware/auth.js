@@ -42,6 +42,30 @@ module.exports = {
         role: req.session.role,
         nama_lengkap: req.session.namaLengkap,
       };
+      // res.locals.user WAJIB diisi, bukan cuma req.user.
+      //
+      // View-view EJS memakai `user` langsung sebagai variabel render
+      // (purchase-imports/index.ejs:3, products/index.ejs:3,
+      // dashboard/index.ejs:69) — bukan `locals.user`. Sebelum ini
+      // ditambahkan, halaman yang hanya memakai isAuthenticated (tanpa
+      // middleware `role`, yang kebetulan mengisi res.locals sendiri)
+      // melempar "user is not defined" dan menjawab 500 untuk setiap
+      // pengguna yang login secara normal.
+      //
+      // Ditemukan lewat smoke test terhadap server nyata, bukan lewat test
+      // otomatis: harness test mengisi res.locals.user sendiri, jadi
+      // kegagalan ini tersembunyi selama test dijalankan.
+      res.locals.user = req.user;
+      // currentPath dipakai layout.ejs untuk menandai menu aktif, dan ia
+      // dievaluasi DI LUAR blok `if (locals.user)` (baris 218). Jadi begitu
+      // res.locals.user terisi, layout mulai mengevaluasi currentPath —
+      // dan menjatuhkan seluruh halaman kalau nilainya tidak ada.
+      //
+      // Sebelum ini ditambahkan, kegagalannya tersembunyi: res.locals.user
+      // kosong, jadi blok sidebar tidak pernah dieksekusi dan currentPath
+      // tidak pernah dievaluasi. Memperbaiki `user` justru memperlihatkan
+      // bug ini — dua bug yang saling menutupi.
+      res.locals.currentPath = req.path;
       console.log('[isAuthenticated] ✅ User populated:', req.user);
       return next();
     }
