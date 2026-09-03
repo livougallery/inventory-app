@@ -3,8 +3,18 @@ const router = express.Router();
 const db = require('../db');
 const { isAuthenticated } = require('../middleware/auth');
 
+// Peta label tipe material dipinjam dari fitur material, bukan ditulis
+// ulang di sini. Tiket 10 melarang peta label kedua: dua peta pasti drift.
+// Sebelumnya view ini menuliskan "Ecer" sendiri sementara API mengirim
+// "Kain (Ecer)" untuk nilai yang sama.
+const { TIPE_LABEL } = require('../features/material/backend/routes');
+
 router.get('/stock-card', isAuthenticated, async (req, res) => {
   const materials = (await db.query('SELECT * FROM raw_materials ORDER BY nama')).rows;
+  // Label dihitung di route supaya view tidak perlu merangkainya sendiri.
+  for (const m of materials) {
+    m.tipe_label = TIPE_LABEL[m.tipe] || m.tipe;
+  }
   const materialId = req.query.raw_material_id ? parseInt(req.query.raw_material_id) : (materials[0] ? materials[0].id : null);
   const dateFrom = req.query.date_from || null;
   const dateTo = req.query.date_to || null;
@@ -15,6 +25,12 @@ router.get('/stock-card', isAuthenticated, async (req, res) => {
 
   if (materialId) {
     selectedMaterial = await db.one('SELECT * FROM raw_materials WHERE id = $1', [materialId]);
+    // Label ditambahkan di route, bukan dirangkai di view: view yang
+    // merangkai labelnya sendiri itulah sumber inkonsistensi yang
+    // ditemukan tiket 10.
+    if (selectedMaterial) {
+      selectedMaterial.tipe_label = TIPE_LABEL[selectedMaterial.tipe] || selectedMaterial.tipe;
+    }
 
     let sql = `
       SELECT sm.*, mb.tgl_masuk AS batch_tgl, mb.harga_satuan AS batch_harga

@@ -13,6 +13,15 @@ const { parseId } = require('../../../middleware/parseId');
 const router = express.Router();
 
 // Label tipe untuk tampilan; kolom kategori memakai slug di DB.
+//
+// Ini SATU-SATUNYA peta label tipe material yang boleh dipakai kode.
+// Diekspor supaya halaman EJS yang masih hidup bisa memakainya, bukan
+// menuliskan labelnya sendiri — dulu views/reports/stock-card.ejs
+// menuliskan "Ecer" sendiri sementara API mengirim "Kain (Ecer)", dan
+// views/raw-materials/* memakai dua ejaan lain lagi.
+//
+// Dua peta label pasti drift. Kalau butuh label di tempat lain, ambil dari
+// `tipe_label` yang dikirim endpoint ini, atau impor peta ini.
 const TIPE_LABEL = {
   kain_roll: 'Fabric Roll',
   kain_ecer: 'Kain (Ecer)',
@@ -197,4 +206,11 @@ router.delete('/:id', requireAuth, validateToken, async (req, res) => {
   }
 });
 
+// Tetap diekspor sebagai router — index.js memakainya langsung di
+// app.use('/api/materials', require(...)), jadi membungkusnya jadi
+// `{ router, TIPE_LABEL }` akan merusak pemasangan rutenya.
+//
+// TIPE_LABEL ditempel sebagai properti supaya pemanggil lain bisa
+// `require('.../routes').TIPE_LABEL` tanpa menyentuh kontrak app.use.
 module.exports = router;
+module.exports.TIPE_LABEL = TIPE_LABEL;

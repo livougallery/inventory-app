@@ -22,6 +22,11 @@ features/<feature-name>/
 │   ├── routes.js          # Route handlers
 │   ├── services.js        # Business logic / database operations
 │   └── controllers.js     # Controller functions
+│
+│   # Catatan (tiket 10, 2026-09): struktur di atas adalah RENCANA lama.
+│   # Kenyataannya tiap fitur hanya punya backend/routes.js. File
+│   # controllers.js pernah ada di features/material dan dihapus karena
+│   # menanyai tabel yang tidak pernah dibuat. Jangan dijadikan pola.
 ├── frontend/
 │   ├── component.tsx      # React components
 │   └── views.ejs          # EJS templates (jika ada server-rendered)
@@ -36,6 +41,16 @@ features/<feature-name>/
 - Backend: `/routes/cek-data.js`, `/routes/raw-materials.js`
 - Views: `/views/cek-data/material.ejs`, `pembelian-material.ejs`, `_table.ejs`
 - Tables: `raw_materials`, `material_purchases`
+
+> **Catatan (tiket 10, 2026-09) — dokumen ini adalah arsip rencana, isinya
+> dibiarkan apa adanya.**
+> `material_purchases` **tidak pernah dibuat** di skema mana pun.
+> `features/material/backend/controllers.js`, satu-satunya kode yang
+> menanyai tabel itu, sudah dihapus: tidak ada satu pun `require` yang
+> mengarah ke sana. Ia juga menanyai kolom `raw_materials.kode_material`,
+> `nama_material`, dan `harga_beli_rata_rata`, yang juga tidak pernah ada —
+> kolom nyatanya adalah `kode_bahan`, `nama`, dan `stok`.
+> Lihat `features/material/README.md` untuk keadaan fitur yang sekarang.
 
 ### 2. Product Management (Master Data - PRODUK)
 - Backend: `/routes/products.js`
