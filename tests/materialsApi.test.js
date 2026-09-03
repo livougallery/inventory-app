@@ -358,4 +358,134 @@ describe('JSON API /api/materials', () => {
       expect(Number(still.n)).toBe(1);
     });
   });
+
+  // ----- Kedua halaman sepakat tentang stok (AC terakhir tiket 08) -----
+  //
+  // AC tiket 08: "The Stok Material page shows the increased stock after
+  // approval, confirming the two pages agree."
+  //
+  // Waktu tiket 08 dikerjakan, AC ini dinyatakan "hanya bisa disahkan dengan
+  // pembacaan kode" karena repo ini tidak punya test frontend. Itu keliru:
+  // yang dipakai StokMaterial.tsx adalah KONTRAK JSON /api/materials, dan
+  // kontrak itu bisa diuji lewat seam HTTP yang sama dengan test lain.
+  //
+  // Test di bawah memanggil KEDUA endpoint yang dikonsumsi kedua halaman —
+  // validasi lewat /purchase-orders, lalu baca stok lewat /materials —
+  // persis yang dilakukan browser. Membaca raw_materials langsung tidak
+  // cukup: itu akan lolos walau /api/materials salah menghitung stoknya.
+  describe('stok setelah validasi PO: dua halaman sepakat (tiket 08)', () => {
+    // Rute PO di-mount di app yang sama supaya satu skema `test` dipakai
+    // bersama. Tanpa ini validasi harus dipanggil lewat file test lain, dan
+    // data antar file tidak pernah berbagi keadaan.
+    beforeAll(async () => {
+      app.use(
+        '/purchase-orders',
+        require('../features/purchase-order/backend/routes')
+      );
+    });
+
+    // Session butuh role: endpoint validasi menolak siapa pun selain finance.
+    const setSession = (overrides = {}) =>
+      new Promise((resolve, reject) => {
+        store.set(SID, {
+          cookie: {
+            originalMaxAge: 3600000,
+            expires: new Date(Date.now() + 3600000).toISOString(),
+            httpOnly: true,
+            path: '/',
+          },
+          userId: 1,
+          role: 'finance',
+          ...overrides,
+        }, (err) => (err ? reject(err) : resolve()));
+      });
+
+    const mutate = async (method, path, body) => {
+      const t = await getToken();
+      return call(method, path, { body, headers: { 'x-csrf-token': t } });
+    };
+
+    // Satu material, satu vendor, satu PO pending berisi material itu.
+    const seedPoPending = async (qty) => {
+      await setSession();
+      await db.query(
+        `INSERT INTO users (id, username, password, role) VALUES (1, 'sari', 'x', 'finance')`
+      );
+      await db.query(
+        `INSERT INTO vendors (id, nama, tipe) VALUES (1, 'PT Kain Maju', 'bahan_baku')`
+      );
+      await db.query(
+        `INSERT INTO raw_materials (id, kode_bahan, nama, tipe, satuan, stok)
+         VALUES (1, 'KB-001', 'Kain Cotton', 'kain_roll', 'Roll', 10)`
+      );
+      const po = (await db.query(
+        `INSERT INTO purchase_orders (vendor_id, no_po, tgl_beli, created_by, status)
+         VALUES (1, 'PO-ACC', '2026-09-01', 1, 'pending') RETURNING id`
+      )).rows[0];
+      await db.query(
+        `INSERT INTO purchase_order_items
+           (purchase_order_id, raw_material_id, qty, harga_satuan, subtotal)
+         VALUES ($1, 1, $2, 1000, $3)`,
+        [po.id, qty, qty * 1000]
+      );
+      return po.id;
+    };
+
+    const stokDariApi = async (materialId) => {
+      const { body } = await call('GET', '/materials');
+      const row = body.data.find((r) => Number(r.id) === materialId);
+      return Number(row.stok);
+    };
+
+    test('setelah divalidasi, /api/materials melaporkan stok yang sudah bertambah', async () => {
+      const id = await seedPoPending(5);
+
+      // Stok awal 10, item PO qty 5.
+      expect(await stokDariApi(1)).toBe(10);
+
+      const { status } = await mutate('POST', `/purchase-orders/${id}/validate`, {});
+      expect(status).toBe(200);
+
+      // Inilah inti AC-nya: angka yang DITAMPILKAN halaman Stok Material,
+      // bukan angka di tabel mentahnya.
+      expect(await stokDariApi(1)).toBe(15);
+    });
+
+    test('penolakan tidak mengubah stok yang dilaporkan /api/materials', async () => {
+      const id = await seedPoPending(5);
+
+      const { status } = await mutate('POST', `/purchase-orders/${id}/reject`, {
+        catatan: 'Harga terlalu tinggi',
+      });
+      expect(status).toBe(200);
+
+      expect(await stokDariApi(1)).toBe(10);
+    });
+
+    // Dua item pada material yang sama: stok harus bertambah sejumlah
+    // keduanya, bukan cuma salah satunya.
+    test('dua item pada material yang sama → stok bertambah sejumlah keduanya', async () => {
+      const id = await seedPoPending(5);
+      await db.query(
+        `INSERT INTO purchase_order_items
+           (purchase_order_id, raw_material_id, qty, harga_satuan, subtotal)
+         VALUES ($1, 1, 3, 1000, 3000)`,
+        [id]
+      );
+
+      await mutate('POST', `/purchase-orders/${id}/validate`, {});
+
+      expect(await stokDariApi(1)).toBe(18);
+    });
+
+    test('validasi ganda → /api/materials tetap melaporkan kenaikan sekali saja', async () => {
+      const id = await seedPoPending(5);
+
+      await mutate('POST', `/purchase-orders/${id}/validate`, {});
+      const kedua = await mutate('POST', `/purchase-orders/${id}/validate`, {});
+      expect(kedua.status).toBe(409);
+
+      expect(await stokDariApi(1)).toBe(15);
+    });
+  });
 });

@@ -1,5 +1,16 @@
 <h1 class="text-2xl font-bold mb-4"><i data-lucide="badge-check"></i> Validasi Finance</h1>
 
+<%# Pesan dari redirect. Ditambahkan tiket 08: approve/reject kini bisa
+    gagal (PO sudah diputuskan orang lain), dan tanpa blok ini kegagalannya
+    tidak pernah terlihat — pengguna cuma melihat daftar yang tidak berubah.
+    Pola mengikuti views/raw-materials/show.ejs. %>
+<% if (success) { %>
+  <div class="alert alert-success mb-4"><i data-lucide="circle-check"></i> <%= success %></div>
+<% } %>
+<% if (error) { %>
+  <div class="alert alert-error mb-4"><i data-lucide="circle-alert"></i> <%= error %></div>
+<% } %>
+
 <% if (pendingPOs.length > 0) { %>
 <h2 class="font-bold text-lg mb-2"><i data-lucide="shopping-cart"></i> PO Bahan Baku</h2>
 <div class="bg-white shadow rounded overflow-x-auto mb-6">

@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Dialog,
   DialogContent,
@@ -9,7 +10,17 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { ShoppingCart, LoaderCircle, TriangleAlert, Receipt, Plus, Pencil, Trash2 } from 'lucide-react';
+import {
+  ShoppingCart,
+  LoaderCircle,
+  TriangleAlert,
+  Receipt,
+  Plus,
+  Pencil,
+  Trash2,
+  Check,
+  X,
+} from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   DataTableToolbar,
@@ -27,6 +38,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
+import { Label } from '@/components/ui/label';
 import { apiJson, withCsrf } from '@/lib/api';
 import { rupiah, toNum } from '@/lib/format';
 
@@ -43,15 +55,20 @@ interface PurchaseOrder {
   total: number | string;
 }
 
-// Detail: PO lengkap dengan baris itemnya. Field validasi (catatan_reject,
-// validator_name) sengaja tidak diminta — itu ranah tiket 08.
+// Detail: PO lengkap dengan baris itemnya.
 //
 // vendor_id, currency_id, dan kurs_amount ikut dikirim GET /:id supaya form
 // ubah (tiket 07) bisa mengisi nilai yang sudah tersimpan tanpa menebak-nebak.
+//
+// catatan_reject dan validator_name dikirim mulai tiket 08: alasan penolakan
+// harus bisa dibaca orang yang membuat PO. Tanpa alasan yang bisa dibaca
+// ulang, ia cuma melihat status "Ditolak" tanpa tahu apa yang salah.
 interface PurchaseOrderDetail extends PurchaseOrder {
   vendor_id: number | null;
   currency_id?: number | null;
   kurs_amount?: number | string | null;
+  catatan_reject?: string | null;
+  validator_name?: string | null;
   items: Array<{
     id: number;
     qty: number | string;
@@ -112,6 +129,23 @@ export default function PembelianMaterial() {
   // Gagal mengambil detail saat tombol Ubah ditekan — ditampilkan di daftar,
   // karena dialog belum terbuka.
   const [editError, setEditError] = useState<string | null>(null);
+
+  // Validasi & penolakan (tiket 08).
+  //
+  // Tombolnya TIDAK disembunyikan berdasarkan role: klien tidak tahu role
+  // siapa pun (tidak ada endpoint /api/me), dan menebak dari data yang sudah
+  // dimuat akan memberi dua sumber kebenaran. Server yang memegang aturannya
+  // — non-finance dijawab 403, dan pesannya ditampilkan di sini. Pola ini
+  // sama dengan tiket 07: penjagaan ada di server, penyembunyian tombol
+  // hanya kenyamanan.
+  const [validatingId, setValidatingId] = useState<number | null>(null);
+  const [rejectTarget, setRejectTarget] = useState<PurchaseOrder | null>(null);
+  const [rejectReason, setRejectReason] = useState('');
+  const [rejecting, setRejecting] = useState(false);
+  const [rejectError, setRejectError] = useState<string | null>(null);
+  // Kegagalan validasi ditampilkan di daftar, bukan menghilang diam-diam:
+  // 409 berarti PO sudah diputuskan orang lain, dan itu perlu diketahui.
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -186,6 +220,60 @@ export default function PembelianMaterial() {
     }
   }, [deleteTarget, detailId, loadOrders]);
 
+  // Validasi: setujui PO pending, barangnya masuk stok.
+  //
+  // Semua efek stok dilakukan server di dalam satu transaksi; halaman ini
+  // tidak menghitung apa pun. Konfirmasi dipakai karena stok tidak bisa
+  // dikembalikan lewat UI ini — membatalkan PO yang sudah divalidasi bukan
+  // bagian tiket ini (lihat "Out of scope" di issue 08).
+  const confirmValidate = useCallback(async () => {
+    if (validatingId === null) return;
+    setActionError(null);
+    try {
+      const init = await withCsrf({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      await apiJson(`/api/purchase-orders/${validatingId}/validate`, init);
+      setValidatingId(null);
+      // Detail yang sedang terbuka ikut dimuat ulang supaya badge dan
+      // daftar aksinya berubah tanpa reload halaman (AC tiket).
+      if (detailId === validatingId) await openDetail(validatingId);
+      await loadOrders();
+    } catch (e) {
+      setValidatingId(null);
+      setActionError(e instanceof Error ? e.message : 'Gagal memvalidasi purchase order');
+    }
+  }, [validatingId, detailId, openDetail, loadOrders]);
+
+  // Tolak: alasan wajib dikirim, karena penolakan tanpa penjelasan membuat
+  // pembuat PO menebak-nebak apa yang salah.
+  const confirmReject = useCallback(async () => {
+    if (!rejectTarget) return;
+    setRejecting(true);
+    setRejectError(null);
+    try {
+      const init = await withCsrf({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ catatan: rejectReason.trim() }),
+      });
+      await apiJson(`/api/purchase-orders/${rejectTarget.id}/reject`, init);
+      setRejectTarget(null);
+      setRejectReason('');
+      if (detailId === rejectTarget.id) await openDetail(rejectTarget.id);
+      await loadOrders();
+    } catch (e) {
+      // Pesan server ditampilkan apa adanya: 409 menjelaskan PO sudah
+      // diputuskan, 403 menjelaskan role tidak berhak. Keduanya bisa
+      // ditindaklanjuti, berbeda dari "gagal" generik.
+      setRejectError(e instanceof Error ? e.message : 'Gagal menolak purchase order');
+    } finally {
+      setRejecting(false);
+    }
+  }, [rejectTarget, rejectReason, detailId, openDetail, loadOrders]);
+
   // Opsi filter status: nilai unik dari data, dihitung sekali per perubahan data.
   const statusOptions = useMemo(
     () => [...new Set(orders.map((o) => o.status_label))].sort((a, b) => a.localeCompare(b, 'id')),
@@ -255,6 +343,36 @@ export default function PembelianMaterial() {
           <TableCell key={key} className="text-right">
             {o.status === 'pending' ? (
               <div className="flex justify-end gap-1">
+                {/* Validasi: hijau, karena ini tindakan yang diharapkan.
+                    Urutan sengaja: validasi, tolak, ubah, hapus — dari yang
+                    paling sering ke yang paling jarang. */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setActionError(null);
+                    setValidatingId(o.id);
+                  }}
+                  aria-label={`Validasi ${o.no_po}`}
+                  title="Validasi: masukkan barang ke stok"
+                >
+                  <Check className="h-4 w-4 text-green-600" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setRejectError(null);
+                    setRejectReason('');
+                    setRejectTarget(o);
+                  }}
+                  aria-label={`Tolak ${o.no_po}`}
+                  title="Tolak purchase order"
+                >
+                  <X className="h-4 w-4 text-orange-600" />
+                </Button>
                 <Button
                   variant="ghost"
                   size="sm"
@@ -471,7 +589,22 @@ export default function PembelianMaterial() {
                 <span className="text-muted-foreground">
                   Dibuat oleh {detail.creator_name || '—'}
                 </span>
+                {detail.validator_name && (
+                  <span className="text-muted-foreground">
+                    · Diputuskan oleh {detail.validator_name}
+                  </span>
+                )}
               </div>
+
+              {/* Alasan penolakan: inti dari penolakan itu sendiri. Status
+                  "Ditolak" tanpa alasan tidak memberi tahu pembuat PO apa
+                  yang harus diperbaiki. */}
+              {detail.status === 'rejected' && detail.catatan_reject && (
+                <div className="rounded-lg border border-red-200 bg-red-50 p-3">
+                  <p className="text-xs font-medium text-red-800">Alasan penolakan</p>
+                  <p className="mt-1 text-sm text-red-900">{detail.catatan_reject}</p>
+                </div>
+              )}
 
               <div className="overflow-x-auto">
                 <Table>
@@ -510,6 +643,39 @@ export default function PembelianMaterial() {
                 <span className="text-sm font-medium">Total</span>
                 <span className="text-base font-bold">{rupiah(toNum(detail.total) ?? 0)}</span>
               </div>
+
+              {/* Aksi validasi di dalam dialog detail, bukan cuma di baris
+                  tabel. Inilah tempat keputusan diambil: finance membuka PO
+                  untuk MEMERIKSA itemnya dulu, baru menyetujui. Kalau
+                  aksinya cuma ada di baris, ia harus menutup dialog ini dan
+                  mencari barisnya lagi — alur yang tiket maksud justru
+                  terputus. */}
+              {detail.status === 'pending' && (
+                <div className="flex justify-end gap-2 border-t pt-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setRejectError(null);
+                      setRejectReason('');
+                      setRejectTarget(detail);
+                    }}
+                  >
+                    <X className="mr-1 h-4 w-4 text-orange-600" />
+                    Tolak
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setActionError(null);
+                      setValidatingId(detail.id);
+                    }}
+                  >
+                    <Check className="mr-1 h-4 w-4" />
+                    Validasi
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </DialogContent>
@@ -520,6 +686,17 @@ export default function PembelianMaterial() {
       {editError && (
         <p className="mb-4 text-sm text-red-600" role="alert">
           {editError}
+        </p>
+      )}
+
+      {/* Kegagalan validasi. Sengaja tidak ditaruh di dalam dialog
+          konfirmasi: dialognya sudah ditutup lebih dulu, jadi pesan di
+          dalamnya tidak akan pernah terlihat. Kasus yang paling mungkin:
+          409 karena PO baru saja divalidasi orang lain di tab/jendela lain,
+          atau 403 karena akun ini bukan finance. */}
+      {actionError && (
+        <p className="mb-4 text-sm text-red-600" role="alert">
+          {actionError}
         </p>
       )}
 
@@ -543,6 +720,94 @@ export default function PembelianMaterial() {
         onCreated={loadOrders}
         editPo={editPo}
       />
+
+      {/* Konfirmasi validasi. Dikonfirmasi karena barangnya langsung masuk
+          stok dan tidak ada tombol batal di UI ini. */}
+      <AlertDialog
+        open={validatingId !== null}
+        onOpenChange={(v) => {
+          if (!v) setValidatingId(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Validasi purchase order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Purchase order{' '}
+              <span className="font-mono font-medium">
+                {orders.find((o) => o.id === validatingId)?.no_po}
+              </span>{' '}
+              akan disetujui dan seluruh itemnya masuk ke stok material.
+              Tindakan ini tidak bisa dibatalkan dari halaman ini.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Batal</AlertDialogCancel>
+            <AlertDialogAction onClick={(e) => {
+              e.preventDefault();
+              confirmValidate();
+            }}>
+              Validasi
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Alasan penolakan. Alasan WAJIB: PO yang ditolak tanpa penjelasan
+          membuat pembuatnya menebak-nebak apa yang salah, padahal kebanyakan
+          penolakan terjadi karena hal sepele yang mudah diperbaiki. */}
+      <AlertDialog
+        open={rejectTarget !== null}
+        onOpenChange={(v) => {
+          if (!v) {
+            setRejectTarget(null);
+            setRejectReason('');
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Tolak purchase order?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Purchase order{' '}
+              <span className="font-mono font-medium">{rejectTarget?.no_po}</span>{' '}
+              akan ditolak. Stok tidak berubah.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+
+          <div className="space-y-2">
+            <Label htmlFor="alasan-tolak">Alasan penolakan</Label>
+            <Textarea
+              id="alasan-tolak"
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              placeholder="Misal: harga di atas kesepakatan, mohon dicek ulang"
+              rows={3}
+            />
+            {rejectError && (
+              <p className="text-sm text-red-600" role="alert">
+                {rejectError}
+              </p>
+            )}
+          </div>
+
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={rejecting}>Batal</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                // Cegah dialog menutup sendiri sebelum permintaan selesai:
+                // kalau server menolak (409/403), pesannya harus tetap
+                // terbaca di dalam dialog.
+                e.preventDefault();
+                confirmReject();
+              }}
+              disabled={rejecting || rejectReason.trim() === ''}
+            >
+              {rejecting ? 'Menolak…' : 'Tolak PO'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Konfirmasi hapus. Nomor PO disebut di kalimat konfirmasinya, karena
           menghapus PO yang salah tidak bisa dibatalkan. */}
