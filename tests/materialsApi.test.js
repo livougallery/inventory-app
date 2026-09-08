@@ -85,7 +85,7 @@ describe('JSON API /api/materials', () => {
     await db.query(
       `INSERT INTO raw_materials (kode_bahan, nama, tipe, satuan, stok, stok_minimum)
        VALUES ($1, $2, $3, $4, $5, $6)`,
-      ['KB-001', 'Kain Cotton', 'kain_roll', 'Roll', 10, 5]
+      ['KB-001', 'Kain Cotton', 'kain', 'Roll', 10, 5]
     );
     // Dua batch pembelian: harga_terakhir harus ambil yang termuda.
     await db.query(
@@ -118,7 +118,7 @@ describe('JSON API /api/materials', () => {
       const row = body.data[0];
       expect(row.kode_bahan).toBe('KB-001');
       expect(row.nama).toBe('Kain Cotton');
-      expect(row.tipe_label).toBe('Fabric Roll');   // map label kain_roll
+      expect(row.tipe_label).toBe('Kain');   // peta label tiga kategori (tiket 11e)
       expect(Number(row.harga_terakhir)).toBe(25000); // batch tgl 08-10, bukan 08-01
       expect(row.varian_list).toContain('Putih');
       expect(row.varian_list).toContain('Hitam');
@@ -148,7 +148,7 @@ describe('JSON API /api/materials', () => {
     const seedMaterialOnly = (kode, nama) =>
       db.query(
         `INSERT INTO raw_materials (kode_bahan, nama, tipe, satuan, stok)
-         VALUES ($1, $2, 'kain_roll', 'Roll', 0)`,
+         VALUES ($1, $2, 'kain', 'Roll', 0)`,
         [kode, nama]
       );
 
@@ -247,7 +247,7 @@ describe('JSON API /api/materials', () => {
     test('field stok ikut dikirim pun diabaikan (stok hanya dari pembelian)', async () => {
       const token = await getToken();
       await call('POST', '/materials', {
-        body: { kode_bahan: 'KB-004', nama: 'Kain Spam', tipe: 'kain_roll', satuan: 'Roll', stok: 999 },
+        body: { kode_bahan: 'KB-004', nama: 'Kain Spam', tipe: 'kain', satuan: 'Roll', stok: 999 },
         headers: { 'x-csrf-token': token },
       });
       const row = (await db.query('SELECT stok FROM raw_materials WHERE kode_bahan = $1', ['KB-004'])).rows[0];
@@ -270,7 +270,9 @@ describe('JSON API /api/materials', () => {
       await seedMaterial(); // stok = 10
       const token = await getToken();
       const { status, body } = await call('PUT', '/materials/1', {
-        body: { kode_bahan: 'KB-001X', nama: 'Kain Cotton Update', tipe: 'kain_ecer', satuan: 'Yard', stok_minimum: 8, stok: 999 },
+        // Kategori dan Jenis berdiri sendiri sejak tiket 11e: dulu satu nilai
+        // 'kain_ecer', sekarang kategori 'kain' dengan jenis 'ecer'.
+        body: { kode_bahan: 'KB-001X', nama: 'Kain Cotton Update', tipe: 'kain', jenis: 'ecer', satuan: 'Yard', stok_minimum: 8, stok: 999 },
         headers: { 'x-csrf-token': token },
       });
       expect(status).toBe(200);
@@ -279,7 +281,8 @@ describe('JSON API /api/materials', () => {
       const row = (await db.query('SELECT * FROM raw_materials WHERE id = 1')).rows[0];
       expect(row.nama).toBe('Kain Cotton Update');
       expect(row.kode_bahan).toBe('KB-001X');
-      expect(row.tipe).toBe('kain_ecer');
+      expect(row.tipe).toBe('kain');
+      expect(row.jenis).toBe('ecer');
       expect(Number(row.stok_minimum)).toBe(8);
       expect(Number(row.stok)).toBe(10); // stok TIDAK berubah
     });
@@ -319,7 +322,7 @@ describe('JSON API /api/materials', () => {
       // Material bersih tanpa batch pembelian (seedMaterial selalu punya batch).
       await db.query(
         `INSERT INTO raw_materials (kode_bahan, nama, tipe, satuan, stok)
-         VALUES ('KB-BERSIH', 'Kain Bersih', 'kain_roll', 'Roll', 3)`
+         VALUES ('KB-BERSIH', 'Kain Bersih', 'kain', 'Roll', 3)`
       );
       await db.query(
         `INSERT INTO raw_material_variants (raw_material_id, nama_varian, stok)
@@ -416,7 +419,7 @@ describe('JSON API /api/materials', () => {
       );
       await db.query(
         `INSERT INTO raw_materials (id, kode_bahan, nama, tipe, satuan, stok)
-         VALUES (1, 'KB-001', 'Kain Cotton', 'kain_roll', 'Roll', 10)`
+         VALUES (1, 'KB-001', 'Kain Cotton', 'kain', 'Roll', 10)`
       );
       const po = (await db.query(
         `INSERT INTO purchase_orders (vendor_id, no_po, tgl_beli, created_by, status)
