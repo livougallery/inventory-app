@@ -20,6 +20,7 @@ import {
 import { LoaderCircle, Plus, Trash2 } from 'lucide-react';
 import { apiJson, withCsrf } from '@/lib/api';
 import { rupiah } from '@/lib/format';
+import CreatableSelect from '@/components/CreatableSelect';
 
 // ===== Tipe =====
 
@@ -50,6 +51,13 @@ interface Currency {
   nama: string;
   simbol: string;
 }
+
+// Opsi flow transaksi diambil dari server (GET /api/purchase-orders/
+// flow-transaksi), bukan ditulis ulang di sini. Daftar yang sama dipakai
+// server untuk memvalidasi tulis, jadi menyalinnya ke klien berarti dua
+// daftar yang bisa berbeda — dan perbedaannya baru terasa saat form
+// menawarkan nilai yang ditolak server. Lihat Vendors.tsx untuk contoh
+// duplikasi semacam itu yang terlanjur ada.
 
 // Baris item di form. qty/harga disimpan sebagai string supaya field bisa
 // dikosongkan sementara saat diketik ulang tanpa langsung menjadi NaN/0.
@@ -98,6 +106,8 @@ export interface EditablePo {
   tgl_beli: string;
   currency_id?: number | null;
   kurs_amount?: number | string | null;
+  /** Sumber dana. '' bila belum diisi — kolomnya opsional. */
+  flow_transaksi?: string | null;
   items?: Array<{
     // Sengaja boleh undefined: baris dari API bisa saja tidak mengirim field
     // ini, dan form harus tetap terbuka dengan dropdown kosong daripada crash.
@@ -131,6 +141,11 @@ export default function CreatePoDialog({ open, onOpenChange, onCreated, editPo =
   const [currencyId, setCurrencyId] = useState<number | null>(null);
   const [kurs, setKurs] = useState('1');
   const [rows, setRows] = useState<ItemRow[]>([newRow()]);
+  const [flowTransaksi, setFlowTransaksi] = useState<string>('');
+  // Opsi flow transaksi ikut dimuat bersama opsi form lain. Gagal dimuat tidak
+  // boleh menutup form: PO tetap bisa dibuat tanpa sumber dana, karena 11 PO
+  // yang sudah ada pun tidak punya nilai ini.
+  const [flowOptions, setFlowOptions] = useState<string[]>([]);
 
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -147,12 +162,13 @@ export default function CreatePoDialog({ open, onOpenChange, onCreated, editPo =
       // currency OPSIONAL (kurs default 1). Dengan Promise.all, kegagalan
       // endpoint currency saja akan menggagalkan seluruh form padahal PO tetap
       // bisa dibuat tanpanya.
-      const [vendorRes, materialRes, currencyRes] = await Promise.allSettled([
+      const [vendorRes, materialRes, currencyRes, flowRes] = await Promise.allSettled([
         // Hanya vendor bahan baku: vendor white label tidak pernah beli material
         // (spesifikasi keputusan 6 / tiket 04).
         apiJson<{ data: Vendor[] }>('/api/vendors?tipe=bahan_baku'),
         apiJson<{ data: Material[] }>('/api/materials'),
         apiJson<{ data: Currency[] }>('/api/currencies'),
+        apiJson<{ data: string[] }>('/api/purchase-orders/flow-transaksi'),
       ]);
 
       if (vendorRes.status === 'rejected') throw vendorRes.reason;
@@ -160,9 +176,12 @@ export default function CreatePoDialog({ open, onOpenChange, onCreated, editPo =
 
       setVendors(vendorRes.value.data);
       setMaterials(materialRes.value.data);
-      // Currency gagal → daftar dikosongkan, bukan form ditutup. PO tetap bisa
-      // dibuat dengan mata uang default (IDR, kurs 1).
+      // Currency dan flow transaksi OPSIONAL, jadi keduanya gagal sendiri-sendiri
+      // tanpa menutup form — beda dengan vendor dan material yang wajib. PO
+      // tetap bisa dibuat dengan mata uang default (IDR, kurs 1) dan tanpa
+      // sumber dana.
       setCurrencies(currencyRes.status === 'fulfilled' ? currencyRes.value.data : []);
+      setFlowOptions(flowRes.status === 'fulfilled' ? flowRes.value.data : []);
     } catch (e) {
       setOptionsError(e instanceof Error ? e.message : 'Gagal memuat data form');
     } finally {
@@ -186,6 +205,12 @@ export default function CreatePoDialog({ open, onOpenChange, onCreated, editPo =
       setTglBeli(editPo.tgl_beli ?? '');
       setCurrencyId(editPo.currency_id ?? null);
       setKurs(editPo.kurs_amount != null ? String(editPo.kurs_amount) : '1');
+      // `?? ''` menormalkan null jadi string kosong. Field ini dideklarasikan
+      // nullable di EditablePo karena API memang bisa mengirim NULL untuk PO
+      // lama, sedangkan state dropdownnya bertipe string — normalisasi
+      // dilakukan sekali di sini supaya seluruh form di bawahnya hanya perlu
+      // menangani satu keadaan, bukan dua.
+      setFlowTransaksi(editPo.flow_transaksi ?? '');
       // Baris item dari detail PO. Dezimal dari Postgres dikembalikan sebagai
       // string oleh pg, jadi ditampilkan apa adanya tanpa diubah ke angka.
       setRows(
@@ -209,6 +234,7 @@ export default function CreatePoDialog({ open, onOpenChange, onCreated, editPo =
       setCurrencyId(null);
       setKurs('1');
       setRows([newRow()]);
+      setFlowTransaksi('');
     }
     setFormError(null);
     setSubmitted(false);
@@ -292,6 +318,9 @@ export default function CreatePoDialog({ open, onOpenChange, onCreated, editPo =
           tgl_beli: tglBeli,
           currency_id: currencyId,
           kurs_amount: kursNumber,
+          // '' dikirim apa adanya saat dropdown dikosongkan — server
+          // memperlakukannya sebagai "tidak diisi", bukan sebagai nilai.
+          flow_transaksi: flowTransaksi,
           items: rows.map((r) => ({
             raw_material_id: r.rawMaterialId,
             // null dikirim apa adanya; server menyimpannya sebagai NULL.
@@ -359,26 +388,20 @@ export default function CreatePoDialog({ open, onOpenChange, onCreated, editPo =
             <div className="grid gap-4 sm:grid-cols-3">
               <div className="space-y-2">
                 <Label htmlFor="po-vendor">Vendor</Label>
-                <Select
-                  value={vendorId === null ? null : String(vendorId)}
-                  onValueChange={(v) => setVendorId(Number(v))}
-                >
-                  <SelectTrigger id="po-vendor" className="w-full">
-                    <SelectValue placeholder="Pilih vendor">
-                      {(value) => {
-                        const v = vendors.find((x) => String(x.id) === String(value));
-                        return v ? v.nama : 'Pilih vendor';
-                      }}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    {vendors.map((v) => (
-                      <SelectItem key={v.id} value={String(v.id)}>
-                        {v.nama}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CreatableSelect
+                  id="po-vendor"
+                  value={vendorId}
+                  onChange={setVendorId}
+                  options={vendors.map((v) => ({ id: v.id, label: v.nama }))}
+                  placeholder="Pilih vendor"
+                  namaEntitas="vendor"
+                  endpoint="/api/vendors"
+                  // Tipe vendor dikirim tetap `bahan_baku` karena form ini
+                  // hanya memuat vendor bahan baku (lihat loadOptions). Field
+                  // wajib di server, jadi tidak boleh dibiarkan kosong.
+                  fieldTambahan={[{ name: 'tipe', label: 'tipe', defaultValue: 'bahan_baku', fixed: true }]}
+                  onCreated={loadOptions}
+                />
                 {showError(vendorId === null) && (
                   <p className="text-xs text-red-600">Vendor wajib dipilih</p>
                 )}
@@ -408,6 +431,37 @@ export default function CreatePoDialog({ open, onOpenChange, onCreated, editPo =
                 {showError(tglBeli.trim() === '') && (
                   <p className="text-xs text-red-600">Tanggal wajib diisi</p>
                 )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="po-flow">Flow Transaksi</Label>
+                <Select
+                  value={flowTransaksi === '' ? 'none' : flowTransaksi}
+                  // `v` bisa null: base-ui mengirim null saat pilihan
+                  // dibatalkan, bukan cuma string. Tanpa penjaga ini,
+                  // TypeScript menolaknya — dan dengan tepat, karena
+                  // menyimpan null ke state string akan membuat perbandingan
+                  // `flowTransaksi === ''` di atas gagal mendeteksi keadaan
+                  // kosong.
+                  onValueChange={(v) => setFlowTransaksi(!v || v === 'none' ? '' : v)}
+                >
+                  <SelectTrigger id="po-flow" className="w-full">
+                    {/* Nilainya sudah label tampilan, jadi tidak perlu peta
+                        kode→label seperti dropdown vendor. */}
+                    <SelectValue placeholder="Belum diisi" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Belum diisi</SelectItem>
+                    {flowOptions.map((f) => (
+                      <SelectItem key={f} value={f}>
+                        {f}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  Sumber dana untuk PO ini.
+                </p>
               </div>
             </div>
 
@@ -500,28 +554,33 @@ export default function CreatePoDialog({ open, onOpenChange, onCreated, editPo =
                         <Label className="text-xs" htmlFor={`material-${row.key}`}>
                           Material
                         </Label>
-                        <Select
-                          value={row.rawMaterialId === null ? null : String(row.rawMaterialId)}
-                          onValueChange={(v) => updateRow(row.key, { rawMaterialId: Number(v) })}
-                        >
-                          <SelectTrigger id={`material-${row.key}`} className="w-full">
-                            {/* Fungsi child: tanpa ini trigger menampilkan id
-                                mentah, bukan nama material. */}
-                            <SelectValue placeholder="Pilih material">
-                              {(value) => {
-                                const m = materials.find((x) => String(x.id) === String(value));
-                                return m ? m.nama : 'Pilih material';
-                              }}
-                            </SelectValue>
-                          </SelectTrigger>
-                          <SelectContent>
-                            {materials.map((m) => (
-                              <SelectItem key={m.id} value={String(m.id)}>
-                                {m.nama}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
+                        <CreatableSelect
+                          id={`material-${row.key}`}
+                          value={row.rawMaterialId}
+                          onChange={(id) => updateRow(row.key, { rawMaterialId: id })}
+                          options={materials.map((m) => ({ id: m.id, label: m.nama }))}
+                          placeholder="Pilih material"
+                          namaEntitas="material"
+                          endpoint="/api/materials"
+                          // `tipe` dan `satuan` wajib di server (400 kalau
+                          // kosong), jadi keduanya ditanyakan di sini —
+                          // kalau tidak, material baru selalu gagal dibuat
+                          // dengan pesan yang tidak jelas asalnya.
+                          fieldTambahan={[
+                            {
+                              name: 'tipe',
+                              label: 'Tipe',
+                              options: [
+                                { value: 'kain_roll', label: 'Fabric Roll' },
+                                { value: 'kain_ecer', label: 'Kain (Ecer)' },
+                                { value: 'aksesoris', label: 'Aksesoris' },
+                                { value: 'cmt_cost', label: 'Product Fulfillment' },
+                              ],
+                            },
+                            { name: 'satuan', label: 'Satuan', defaultValue: 'pcs' },
+                          ]}
+                          onCreated={loadOptions}
+                        />
                         {showError(problems.material) && (
                           <p className="text-xs text-red-600">Material wajib dipilih</p>
                         )}
