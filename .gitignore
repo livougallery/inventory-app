@@ -24,6 +24,13 @@ tmp/server.log
 tmp/probe-*
 tmp/*.pid
 
+# Berkas yang diunggah pengguna (foto nota PO, foto material) — data, bukan
+# kode. Direktori ini dibuat otomatis saat boot oleh services/photoUpload.js,
+# jadi tidak perlu ikut ter-commit. Tanpa ini, setiap foto yang diunggah akan
+# muncul sebagai perubahan yang belum di-commit.
+uploads/*
+!uploads/.gitkeep
+
 # Skrip smoke test & inspeksi DB sekali pakai di tmp/
 # (tmp/dump-postgres.js sengaja TIDAK masuk: itu alat backup yang dipakai rutin)
 tmp/smoke/

@@ -14,6 +14,12 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const expressLayouts = require('express-ejs-layouts');
 
+// Diimpor di sini supaya direktori upload-nya DIBUAT saat boot, dan supaya
+// jalur yang disajikan di bawah ini persis sama dengan yang dipakai saat
+// menyimpan. Dua jalur yang ditulis terpisah bisa berbeda pendapat — dan
+// perbedaannya baru terasa sebagai foto yang tersimpan tapi tidak tampil.
+const photoUpload = require('./services/photoUpload');
+
 const PORT = process.env.PORT || 3000;
 
 const db = require('./db');
@@ -134,6 +140,31 @@ function createApp(options = {}) {
   app.get('/bom', serveSPA);
   app.get('/dashboard', serveSPA); // Add dashboard to serve SPA
   console.log('[createApp] Explicit handlers added for /master-data, /bom, and /dashboard');
+
+  // Berkas yang diunggah (foto nota PO, foto material) — HARUS SEBELUM
+  // middleware SPA dan catch-all di bawah.
+  //
+  // Posisi ini yang menentukan semuanya. Awalnya ia dipasang setelah
+  // catch-all, dan akibatnya tidak pernah tercapai: permintaan ke /uploads/
+  // lebih dulu dijawab catch-all dengan index.html milik React (404 ber-HTML).
+  // Berkasnya tersimpan, baris databasenya ada, kolom fotonya terisi — dan
+  // gambarnya tidak pernah muncul. Persis keadaan foto produk hari ini, karena
+  // uploads/ tidak pernah di-mount sama sekali sebelum tiket ini.
+  //
+  // maxAge diset karena nama berkasnya mengandung cap waktu dan bagian acak:
+  // nama tertentu tidak pernah berubah isinya, jadi aman di-cache lama. Foto
+  // yang diganti mendapat nama baru, bukan isi baru.
+  app.use(
+    '/uploads',
+    express.static(photoUpload.UPLOAD_DIR, {
+      maxAge: '30d',
+      // Jangan mengizinkan penyajian selain berkas biasa: index bawaan
+      // express.static akan mendaftar isi direktori, yang memperlihatkan
+      // seluruh nama berkas yang diunggah.
+      index: false,
+      dotfiles: 'deny',
+    })
+  );
 
   // SPA middleware - serves React build for migrated routes ONLY
   // This must come AFTER login route but BEFORE dashboard route
