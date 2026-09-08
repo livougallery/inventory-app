@@ -33,3 +33,73 @@ ini, lalu OAuth login Supabase di browser saat tool pertama dipakai.
 
 Lihat `~/.claude/CLAUDE.md` — UI component baru pakai shadcn/ui (pengecualian: halaman EJS
 server-rendered di `views/` pakai CSS inline, style referensi shadcn).
+
+## Agent skills
+
+### Issue tracker
+
+Isu dan spec hidup sebagai file markdown lokal di `.scratch/` (bukan GitHub Issues, karena repo
+ini publik). Lihat `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Pakai lima role kanonikal (`needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`,
+`wontfix`) sebagai baris `Status:` di tiap file isu. Lihat `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context: satu `CONTEXT.md` di root plus `docs/adr/`. Lihat `docs/agents/domain.md`.
+
+## Alur kerja skill: grill-with-docs → spec → tickets → implement
+
+Untuk pekerjaan yang belum jelas (fitur baru, migrasi, refactor besar), ikuti satu alur utama.
+Jangan loncat dari "idea masih kabur" langsung ke coding.
+
+```
+1. grill-with-docs  wawancara: tajamkan ide, catat glossary + ADR
+                    (isi: grilling + domain-modeling)
+2. to-spec          rangkum hasil wawancara jadi spec, publish ke .scratch/
+3. to-tickets       pecah spec jadi tiket kecil, lengkap dengan blocking edges
+4. implement        kerjakan tiket: /tdd dulu, lalu /code-review, lalu commit
+```
+
+### Siapa yang men-trigger tiap node
+
+| Node | Trigger | Catatan |
+| --- | --- | --- |
+| `/grill-with-docs` | manual | Berisi `grilling` + `domain-modeling`. Begitu di-trigger, saya jalankan keduanya. |
+| `/to-spec` | manual | Dikunci `disable-model-invocation`. Saya tidak bisa memanggilnya. |
+| `/to-tickets` | manual | Dikunci `disable-model-invocation`. |
+| `/implement` | manual | Dikunci `disable-model-invocation`. |
+| `/tdd` | **otomatis** | Saya jalankan di dalam `implement`, di seam yang sudah disepakati di spec. |
+| `/code-review` | **otomatis** | Saya jalankan setelah tiket selesai, sebelum commit. |
+
+Keempat node manual itu dikunci oleh plugin, bukan oleh konfigurasi kita: saya tidak bisa
+memanggilnya, dan tidak boleh meniru isinya dengan cara lain. Jadi alur ini **tidak bisa
+berjalan penuh tanpa trigger** dari pengguna.
+
+Pengecualian untuk node 1: `grilling` dan `domain-modeling` (isi `/grill-with-docs`) berdua
+**bisa saya panggil sendiri**. Jadi kalau pengguna minta wawancara dengan bahasa biasa
+("gali idenya", "grill rencana ini"), saya mulai tanpa menunggu slash command.
+
+### Kewajiban saya di tiap transisi
+
+Begitu satu node selesai, saya **tidak boleh berhenti diam**. Saya harus langsung menyebutkan
+perintah persis untuk node berikutnya, misalnya:
+
+> Wawancara selesai. Jalankan `/mattpocock-skills:to-spec` untuk merangkumnya jadi spec.
+
+Begitu pengguna menjalankannya, saya lanjut tanpa diminta lagi. Pola yang sama berlaku untuk
+`to-spec` → `to-tickets` → `implement`. Tujuannya: pengguna hanya perlu satu trigger per stage,
+bukan mengingat seluruh alur.
+
+### Aturan turunan
+
+- **Jangan langsung coding** kalau permintaan masih kabur. Mulai dari `/grill-with-docs`.
+- **Wajib TDD.** Di dalam `implement`, pakai `/tdd` di seam yang sudah disepakati pada langkah
+  2 dari `to-spec`. Jangan menulis implementasi dulu baru test.
+- **Wajib code review sebelum commit.** `/code-review` jalan otomatis setelah tiket selesai.
+  Dua axis yang dipakai: Standards dan Spec.
+- **Commit hanya setelah review bersih**, ke branch saat ini.
+- Skill lain yang juga dikunci manual (untuk referensi): `/triage`, `/wayfinder`,
+  `/improve-codebase-architecture`, `/setup-matt-pocock-skills`, `/ask-matt`.
