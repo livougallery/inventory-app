@@ -55,7 +55,7 @@ interface NavSection {
 // Satu saklar, bukan menghapus menu satu per satu: begitu video selesai,
 // cukup balikkan nilai ini dan semua menu lama kembali persis seperti
 // sebelumnya — tanpa perlu mengingat apa saja yang tadi disembunyikan.
-const MODE_VIDEO = false;
+const MODE_VIDEO = true;
 
 /**
  * Path yang diblokir selama mode video (selain 7 modul).
