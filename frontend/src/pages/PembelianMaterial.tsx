@@ -39,7 +39,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Label } from '@/components/ui/label';
-import { apiJson, withCsrf } from '@/lib/api';
+import { apiJson, withCsrf, urlUnggahan, unggahFoto, hapusFoto } from '@/lib/api';
 import { rupiah, toNum } from '@/lib/format';
 
 // ===== Tipe data (mengikuti JSON /api/purchase-orders) =====
@@ -53,6 +53,28 @@ interface PurchaseOrder {
   vendor_nama: string | null;
   creator_name: string | null;
   total: number | string;
+  // Keputusan PO: kapan diputuskan dan oleh siapa (tiket 11a).
+  //
+  // Dua kolom ini melapor KEPUTUSAN, bukan "validasi": penolakan mengisi
+  // validated_at/validated_by yang sama, jadi PO berstatus rejected juga punya
+  // nilai di sini. Menyebutnya "Tanggal Validasi" akan membuat PO yang ditolak
+  // tampak seperti sudah disetujui — kolom Status di sebelahnya yang memberi
+  // tahu keputusannya apa.
+  //
+  // validated_at sudah berformat 'YYYY-MM-DD HH:MI' dari SQL (lihat
+  // VALIDATED_AT_SQL di features/purchase-order/backend/routes.js). Jangan
+  // di-parse jadi Date: nilai itu tanpa zona waktu, dan menafsirkannya sebagai
+  // zona mesin akan menggeser jam yang tampil.
+  validated_at: string | null;
+  validator_name: string | null;
+  // Sumber dana (tiket 11b). '' bila belum diisi — kolomnya opsional dan 11
+  // PO yang sudah ada tidak punya nilai ini.
+  flow_transaksi: string;
+  // Nama berkas foto nota (tiket 11c). null bila belum ada foto — beda dengan
+  // string kosong, supaya "tidak ada foto" tidak tertukar dengan "sedang
+  // dimuat". URL-nya dirakit di klien karena hanya perlu menggabungkan dengan
+  // prefix /uploads/, bukan mencari data dari id.
+  foto_path: string | null;
 }
 
 // Detail: PO lengkap dengan baris itemnya.
@@ -60,15 +82,21 @@ interface PurchaseOrder {
 // vendor_id, currency_id, dan kurs_amount ikut dikirim GET /:id supaya form
 // ubah (tiket 07) bisa mengisi nilai yang sudah tersimpan tanpa menebak-nebak.
 //
-// catatan_reject dan validator_name dikirim mulai tiket 08: alasan penolakan
-// harus bisa dibaca orang yang membuat PO. Tanpa alasan yang bisa dibaca
-// ulang, ia cuma melihat status "Ditolak" tanpa tahu apa yang salah.
+// catatan_reject dikirim mulai tiket 08: alasan penolakan harus bisa dibaca
+// orang yang membuat PO. Tanpa alasan yang bisa dibaca ulang, ia cuma melihat
+// status "Ditolak" tanpa tahu apa yang salah.
+//
+// validated_at dan validator_name TIDAK dideklarasikan ulang di sini. Keduanya
+// sudah ada di PurchaseOrder dengan tipe wajib `string | null`, dan
+// mendeklarasikannya lagi sebagai opsional akan membuat dua tipe berbeda untuk
+// field yang sama — TypeScript menolaknya, dan dengan tepat: kalau detail
+// boleh `undefined` sementara daftar tidak, setiap tempat yang membacanya
+// harus menangani kedua kemungkinan padahal keduanya tidak pernah terjadi.
 interface PurchaseOrderDetail extends PurchaseOrder {
   vendor_id: number | null;
   currency_id?: number | null;
   kurs_amount?: number | string | null;
   catatan_reject?: string | null;
-  validator_name?: string | null;
   items: Array<{
     id: number;
     qty: number | string;
@@ -147,6 +175,12 @@ export default function PembelianMaterial() {
   // 409 berarti PO sudah diputuskan orang lain, dan itu perlu diketahui.
   const [actionError, setActionError] = useState<string | null>(null);
 
+  // Foto nota PO (tiket 11c). Satu foto per PO; unggah baru menggantikan yang
+  // lama. Statusnya hidup di sini, bukan di dialog, karena unggahannya
+  // mengubah data detail yang sedang terbuka.
+  const [fotoSedangUnggah, setFotoSedangUnggah] = useState(false);
+  const [fotoError, setFotoError] = useState<string | null>(null);
+
   const loadOrders = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
@@ -158,6 +192,16 @@ export default function PembelianMaterial() {
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  // Opsi flow transaksi dimuat terpisah dari daftar PO, bukan digabung:
+  // kegagalan mengambil lima nama ini tidak boleh membuat seluruh halaman
+  // gagal dimuat. Kalau gagal, kolomnya tetap tampil dengan nilai apa adanya,
+  // hanya filternya yang tidak tersedia.
+  useEffect(() => {
+    apiJson<{ data: string[] }>('/api/purchase-orders/flow-transaksi')
+      .then((json) => setFlowOptions(json.data))
+      .catch(() => setFlowOptions([]));
   }, []);
 
   useEffect(() => {
@@ -183,6 +227,9 @@ export default function PembelianMaterial() {
     setDetailId(null);
     setDetail(null);
     setDetailError(null);
+    // Pesan foto ikut dibersihkan: kalau tidak, membuka PO lain akan
+    // menampilkan kegagalan milik PO sebelumnya.
+    setFotoError(null);
   };
 
   // Ubah: detail PO diambil dulu supaya form bisa mengisi nilai yang sudah
@@ -274,11 +321,66 @@ export default function PembelianMaterial() {
     }
   }, [rejectTarget, rejectReason, detailId, openDetail, loadOrders]);
 
+  // Unggah foto nota. Dipakai dari dialog detail.
+  //
+  // Setelah berhasil, detail DAN daftar dimuat ulang: keduanya menampilkan
+  // nilai yang sama, dan membiarkan salah satunya basi akan membuat kolom
+  // daftar tidak cocok dengan yang baru saja diunggah.
+  const pilihFoto = useCallback(
+    async (berkas: File) => {
+      if (detailId === null) return;
+      setFotoSedangUnggah(true);
+      setFotoError(null);
+      try {
+        await unggahFoto(`/api/purchase-orders/${detailId}/foto`, berkas);
+        await openDetail(detailId);
+        await loadOrders();
+      } catch (e) {
+        // Pesan server ditampilkan apa adanya: ia sudah menyebut jenis
+        // berkas yang diterima dan ukuran maksimalnya.
+        setFotoError(e instanceof Error ? e.message : 'Gagal mengunggah foto');
+      } finally {
+        setFotoSedangUnggah(false);
+      }
+    },
+    [detailId, openDetail, loadOrders]
+  );
+
+  const buangFoto = useCallback(async () => {
+    if (detailId === null) return;
+    setFotoSedangUnggah(true);
+    setFotoError(null);
+    try {
+      await hapusFoto(`/api/purchase-orders/${detailId}/foto`);
+      await openDetail(detailId);
+      await loadOrders();
+    } catch (e) {
+      setFotoError(e instanceof Error ? e.message : 'Gagal menghapus foto');
+    } finally {
+      setFotoSedangUnggah(false);
+    }
+  }, [detailId, openDetail, loadOrders]);
+
   // Opsi filter status: nilai unik dari data, dihitung sekali per perubahan data.
   const statusOptions = useMemo(
     () => [...new Set(orders.map((o) => o.status_label))].sort((a, b) => a.localeCompare(b, 'id')),
     [orders]
   );
+
+  // Opsi filter flow transaksi DIAMBIL DARI SERVER, bukan diturunkan dari data
+  // yang ada.
+  //
+  // Awalnya diturunkan dari data, dengan alasan filter untuk nilai yang belum
+  // dipakai PO mana pun hanya mengganggu. Alasan itu keliru, dan keliru untuk
+  // hal yang justru menjadi tiketnya: nilainya cuma lima dan sudah diketahui
+  // pasti. Menurunkannya dari data berarti "Reimbursement" tidak bisa difilter
+  // sampai kebetulan ada PO yang memakainya — padahal menemukan PO dengan
+  // sumber dana tertentu itu gunanya filter ini, termasuk saat belum ada
+  // satu pun.
+  //
+  // Diambil dari endpoint yang sama dengan dropdown form, jadi dua-duanya
+  // tidak bisa berbeda pendapat.
+  const [flowOptions, setFlowOptions] = useState<string[]>([]);
 
   // Kolom aksi hanya berisi untuk PO pending. Kolomnya tetap dikirim untuk
   // semua baris supaya lebar tabel tidak berubah-ubah; isinya yang kosong.
@@ -295,9 +397,38 @@ export default function PembelianMaterial() {
         filterOptions: statusOptions,
       },
       { key: 'creator', label: 'Dibuat Oleh', value: (o) => o.creator_name ?? '' },
+      // Kedua kolom keputusan mengembalikan null (bukan '') saat PO belum
+      // diputuskan, supaya keduanya berkelakuan sama saat diurut.
+      //
+      // Ini sengaja berbeda dari kolom `creator` di atas, yang memakai `?? ''`.
+      // useDataTable menaruh null paling bawah pada arah urutan apa pun, jadi
+      // dua kolom ini mengelompokkan PO yang menunggu keputusan di akhir
+      // daftar, bersama-sama. Kalau `validator` mengembalikan '' seperti
+      // `creator`, string kosong ikut diurut sebagai teks dan muncul lebih
+      // dulu pada urutan naik — jadi mengurutkan "Diputuskan Oleh" naik akan
+      // menaruh PO yang belum diputuskan di ATAS, berlawanan dengan kolom
+      // tanggal di sebelahnya, padahal keduanya bicara tentang kejadian
+      // yang sama.
+      { key: 'validated_at', label: 'Tanggal Keputusan', value: (o) => o.validated_at },
+      { key: 'validator', label: 'Diputuskan Oleh', value: (o) => o.validator_name },
+      // Filterable, karena nilainya cuma lima — beda dengan vendor yang bisa
+      // puluhan. Daftar opsi dihitung dari data yang ada, bukan dari daftar
+      // tetap server: opsi filter yang tidak muncul di data mana pun hanya
+      // akan menghasilkan filter yang selalu kosong.
+      {
+        key: 'flow_transaksi',
+        label: 'Flow Transaksi',
+        value: (o) => o.flow_transaksi || null,
+        filterOptions: flowOptions,
+      },
+      // Kolom foto TIDAK bisa difilter dan tidak bisa diurut: nilainya cuma
+      // "ada" atau "tidak ada", jadi keduanya tidak bermakna di sini.
+      // Khusus: filterable=false dinyatakan dengan tidak mengisi
+      // filterOptions, sama seperti kolom lain yang tidak difilter.
+      { key: 'foto', label: 'Foto', value: (o) => (o.foto_path ? 'ada' : null) },
       { key: 'aksi', label: 'Aksi', value: () => '' },
     ],
-    [statusOptions]
+    [statusOptions, flowOptions]
   );
 
   const searchFields = useMemo(
@@ -338,6 +469,56 @@ export default function PembelianMaterial() {
         );
       case 'creator':
         return <TableCell key={key} className="text-muted-foreground">{o.creator_name || '—'}</TableCell>;
+      case 'validated_at':
+        // Em dash, bukan "null" atau "Invalid Date". PO pending belum punya
+        // keputusan — ini keadaan normal, bukan error.
+        return (
+          <TableCell key={key} className="whitespace-nowrap text-muted-foreground">
+            {o.validated_at || '—'}
+          </TableCell>
+        );
+      case 'validator':
+        return (
+          <TableCell key={key} className="text-muted-foreground">{o.validator_name || '—'}</TableCell>
+        );
+      case 'flow_transaksi':
+        // Em dash, bukan sel kosong: sel kosong tidak bisa dibedakan dari
+        // kolom yang belum dimuat.
+        return (
+          <TableCell key={key} className="whitespace-nowrap text-muted-foreground">
+            {o.flow_transaksi || '—'}
+          </TableCell>
+        );
+      case 'foto':
+        return (
+          <TableCell key={key}>
+            {o.foto_path ? (
+              // Thumbnail, bukan gambar utuh: baris tabel tidak boleh berubah
+              // tinggi setiap kali ada PO berfoto. Klik membuka ukuran penuh
+              // di tab baru — halaman ini tidak punya penampil gambar sendiri.
+              <a
+                href={urlUnggahan(o.foto_path)}
+                target="_blank"
+                rel="noreferrer"
+                // stopPropagation: baris tabel membuka dialog detail pada klik.
+                // Tanpa ini, mengklik thumbnail membuka dua hal sekaligus.
+                onClick={(e) => e.stopPropagation()}
+                title="Buka foto nota"
+              >
+                <img
+                  src={urlUnggahan(o.foto_path)}
+                  alt={`Foto nota ${o.no_po}`}
+                  className="h-9 w-9 rounded border object-cover"
+                  loading="lazy"
+                />
+              </a>
+            ) : (
+              // Em dash, BUKAN <img> dengan src kosong — itu akan memicu
+              // permintaan gagal ke server dan menampilkan ikon rusak.
+              <span className="text-muted-foreground">—</span>
+            )}
+          </TableCell>
+        );
       case 'aksi':
         return (
           <TableCell key={key} className="text-right">
@@ -589,9 +770,22 @@ export default function PembelianMaterial() {
                 <span className="text-muted-foreground">
                   Dibuat oleh {detail.creator_name || '—'}
                 </span>
+                {/* Tanggal ikut ditampilkan, bukan cuma nama: "Diputuskan oleh
+                    sari" tanpa kapan tidak bisa dijawab saat PO ditanyakan
+                    berminggu-minggu kemudian. validated_at sudah berformat
+                    'YYYY-MM-DD HH:MI' dari server. */}
                 {detail.validator_name && (
                   <span className="text-muted-foreground">
                     · Diputuskan oleh {detail.validator_name}
+                    {detail.validated_at ? ` pada ${detail.validated_at}` : ''}
+                  </span>
+                )}
+                {/* Sumber dana. Finance memeriksa PO untuk memastikan uangnya
+                    keluar dari rekening yang benar, jadi nilainya perlu
+                    terbaca di sini — bukan cuma di daftar. */}
+                {detail.flow_transaksi && (
+                  <span className="text-muted-foreground">
+                    · {detail.flow_transaksi}
                   </span>
                 )}
               </div>
@@ -605,6 +799,104 @@ export default function PembelianMaterial() {
                   <p className="mt-1 text-sm text-red-900">{detail.catatan_reject}</p>
                 </div>
               )}
+
+              {/* Foto nota PO (tiket 11c).
+                  Satu foto per PO — mengunggah yang baru menggantikan yang
+                  lama, bukan menambah. Ini tempat finance memeriksa nota
+                  sebelum menyetujui, jadi fotonya harus ada di sini, bukan
+                  cuma sebagai kolom di daftar. */}
+              <div className="space-y-2 rounded-lg border p-3">
+                <p className="text-xs font-medium">Foto Nota</p>
+
+                {detail.foto_path ? (
+                  <div className="flex items-start gap-3">
+                    <a href={urlUnggahan(detail.foto_path)} target="_blank" rel="noreferrer">
+                      <img
+                        src={urlUnggahan(detail.foto_path)}
+                        alt={`Foto nota ${detail.no_po}`}
+                        className="h-24 w-24 rounded border object-cover"
+                      />
+                    </a>
+                    <div className="flex flex-wrap gap-2">
+                      {/* render=, bukan asChild: Button di repo ini memakai
+                          base-ui, yang menamai prop-nya `render`. */}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        render={
+                          <a href={urlUnggahan(detail.foto_path)} target="_blank" rel="noreferrer">
+                            Lihat ukuran penuh
+                          </a>
+                        }
+                      />
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={buangFoto}
+                        disabled={fotoSedangUnggah}
+                      >
+                        <Trash2 className="mr-1 h-4 w-4 text-red-600" />
+                        Hapus
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-muted-foreground">Belum ada foto nota.</p>
+                )}
+
+                {/* Label pembungkus, bukan tombol "Pilih berkas": input file
+                    yang disembunyikan dan dipicu lewat label memberi tampilan
+                    konsisten dengan tombol lain di aplikasi ini, tanpa
+                    bergantung pada tampilan bawaan browser yang berbeda-beda
+                    di tiap sistem. */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={fotoSedangUnggah}
+                    render={
+                      <label htmlFor="unggah-foto-po" className="cursor-pointer">
+                        {fotoSedangUnggah ? (
+                          <LoaderCircle className="mr-1 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Receipt className="mr-1 h-4 w-4" />
+                        )}
+                        {detail.foto_path ? 'Ganti foto' : 'Unggah foto'}
+                      </label>
+                    }
+                  />
+                  <input
+                    id="unggah-foto-po"
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    // disabled di sini yang menghentikan unggahan kedua, bukan
+                    // disabled pada Button di atas: Button-nya merender <label>,
+                    // dan label meneruskan klik ke input INI. Menonaktifkan
+                    // inputnya membuat klik itu tidak berpengaruh, sedangkan
+                    // menonaktifkan elemen yang di-render hanya mengubah
+                    // tampilannya.
+                    disabled={fotoSedangUnggah}
+                    onChange={(e) => {
+                      const berkas = e.target.files?.[0];
+                      // Nilai input dikosongkan setelah dipakai supaya berkas
+                      // yang sama bisa dipilih ulang — tanpa ini, memilih
+                      // berkas yang sama dua kali tidak memicu onChange.
+                      e.target.value = '';
+                      if (berkas) pilihFoto(berkas);
+                    }}
+                  />
+                  <span className="text-xs text-muted-foreground">
+                    JPEG, PNG, atau WEBP. Maksimal 5 MB.
+                  </span>
+                </div>
+
+                {fotoError && (
+                  <p className="text-sm text-red-600" role="alert">
+                    {fotoError}
+                  </p>
+                )}
+              </div>
 
               <div className="overflow-x-auto">
                 <Table>

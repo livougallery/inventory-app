@@ -63,6 +63,28 @@ describe('JSON API /api/purchase-orders', () => {
       call(method, path, { body, headers: { 'x-csrf-token': t } })
     );
 
+  // Unggah berkas sebagai multipart/form-data (tiket 11c).
+  //
+  // FormData dipakai, bukan JSON: itu satu-satunya bentuk yang diterima
+  // multer. fetch mengatur boundary-nya sendiri, jadi tidak perlu disusun
+  // manual. Token CSRF dikirim sebagai HEADER, bukan field form — server
+  // memeriksanya sebelum multer menyentuh badan permintaan.
+  const unggah = async (path, { nama = 'nota.jpg', tipe = 'image/jpeg', isi = 'isi-berkas' } = {}) => {
+    const t = await getToken();
+    const fd = new FormData();
+    fd.append('foto', new Blob([isi], { type: tipe }), nama);
+    const port = server.address().port;
+    const r = await fetch(`http://127.0.0.1:${port}${path}`, {
+      method: 'POST',
+      redirect: 'manual',
+      headers: { cookie: AUTH_COOKIE, 'x-csrf-token': t },
+      body: fd,
+    });
+    let json = null;
+    try { json = await r.json(); } catch (e) { /* bukan JSON */ }
+    return { status: r.status, body: json };
+  };
+
   beforeAll(async () => {
     app = express();
     store = new session.MemoryStore();
@@ -118,7 +140,7 @@ describe('JSON API /api/purchase-orders', () => {
 
   const seedMaterial = (id, nama, satuan) =>
     db.query(
-      `INSERT INTO raw_materials (id, nama, tipe, satuan) VALUES ($1, $2, 'kain_roll', $3)`,
+      `INSERT INTO raw_materials (id, nama, tipe, satuan) VALUES ($1, $2, 'kain', $3)`,
       [id, nama, satuan]
     );
 
@@ -281,6 +303,255 @@ describe('JSON API /api/purchase-orders', () => {
       expect(row.status).toBe('validated');
       expect(row.creator_name).toBe('budi');
       expect(row.total).toBe(5000);
+    });
+
+    // Tiket 11a: kolom Tanggal Keputusan dan Diputuskan Oleh.
+    //
+    // Penolakan juga mengisi validated_at/validated_by (services/validationService.js
+    // rejectPurchaseOrder), jadi dua kolom ini melapor KAPAN sebuah PO diputuskan —
+    // bukan "kapan divalidasi". Menyebutnya "Tanggal Validasi" akan membuat 2 dari
+    // 11 PO di live DB tampak tervalidasi padahal ditolak.
+
+    // Tanggal di-stempel eksplisit, bukan CURRENT_TIMESTAMP: format yang diuji
+    // adalah hasil TO_CHAR di SQL, dan nilainya tidak boleh bergantung pada
+    // timezone mesin yang menjalankan test.
+    const stempelKeputusan = (poId, userId, waktu) =>
+      db.query(
+        `UPDATE purchase_orders SET validated_by = $1, validated_at = $2::timestamp WHERE id = $3`,
+        [userId, waktu, poId]
+      );
+
+    test('PO yang diputuskan membawa nama validator dan tanggal keputusannya', async () => {
+      await seedBase();
+      await seedUser(2, 'sari', 'finance');
+      const id = await seedPo({ status: 'validated' });
+      await stempelKeputusan(id, 2, '2026-05-20 14:30:00');
+
+      const { body } = await call('GET', '/purchase-orders');
+      const row = body.data[0];
+      // Nama pengguna hasil join, bukan id mentah — menampilkan "2" tidak
+      // bermakna bagi siapa pun (konvensi yang sama dengan creator_name).
+      expect(row.validator_name).toBe('sari');
+      expect(row.validated_at).toBe('2026-05-20 14:30');
+    });
+
+    test('PO yang belum diputuskan → validator dan tanggal null, bukan string kosong', async () => {
+      await seedBase();
+      await seedPo({ status: 'pending' });
+
+      const { body } = await call('GET', '/purchase-orders');
+      const row = body.data[0];
+      expect(row.validator_name).toBeNull();
+      expect(row.validated_at).toBeNull();
+    });
+
+    test('PO yang DITOLAK tetap melapor tanggal keputusannya', async () => {
+      // Kasus nyata: 2 PO rejected di live DB punya validated_at terisi, karena
+      // rejectPurchaseOrder mengisi kolom yang sama. Menyembunyikannya berarti
+      // finance kehilangan informasi kapan PO itu ditolak.
+      await seedBase();
+      await seedUser(2, 'sari', 'finance');
+      const id = await seedPo({ status: 'rejected' });
+      await stempelKeputusan(id, 2, '2026-07-16 10:25:00');
+
+      const { body } = await call('GET', '/purchase-orders');
+      const row = body.data[0];
+      expect(row.status).toBe('rejected');
+      expect(row.validator_name).toBe('sari');
+      expect(row.validated_at).toBe('2026-07-16 10:25');
+    });
+
+    // Catatan untuk yang kelak menambah test di sini: sebelumnya ada test
+    // "validator tidak dikenal" yang menanam validated_by = 999 dengan
+    // mematikan FK purchase_orders_validated_by_fkey lewat ALTER TABLE.
+    // DIHAPUS, dengan tiga alasan.
+    //
+    //   1. Keadaannya mustahil. FK ke users tidak bertindak ON DELETE, jadi
+    //      pengguna yang pernah memvalidasi tidak bisa dihapus — percobaan
+    //      DELETE menjawab error constraint, bukan baris yatim.
+    //   2. Ia menguji jalur yang sudah diuji: baris tanpa validator
+    //      (PO pending) juga menghasilkan NULL lewat LEFT JOIN yang sama, dan
+    //      tidak butuh DDL untuk ditanam.
+    //   3. Skema `test` dibuat SEKALI per berkas (tests/setup.js beforeAll).
+    //      Menjalankan DDL di dalam satu test berarti kalau finally ikut
+    //      gagal, semua test sesudahnya di berkas ini berjalan tanpa FK itu.
+    //
+    // Kalau nanti alurnya berubah sampai baris yatim bisa terjadi (mis. FK
+    // diubah jadi ON DELETE SET NULL), testnya layak ditulis ulang — saat itu
+    // keadaannya bisa ditanam tanpa menyentuh skema.
+
+    test('tanggal keputusan terurut kronologis walau cuma diurut sebagai teks', async () => {
+      // Kontrak yang dijaga: urutan leksikal string tanggal SAMA dengan urutan
+      // waktunya. Tabel mengurut kolom ini sebagai teks (useDataTable memakai
+      // localeCompare pada nilai yang dikembalikan col.value), jadi kalau
+      // formatnya berubah jadi 'DD/MM/YYYY' atau ISO dengan zona, urutan di
+      // layar akan salah meski nilainya benar.
+      //
+      // Diukur terhadap WAKTU SENGGATAN (Date.parse), bukan terhadap
+      // localeCompare yang sama lagi — mengurut ulang dengan comparator yang
+      // identik tidak membuktikan apa-apa soal urutan di tabel.
+      await seedBase();
+      await seedUser(2, 'sari', 'finance');
+      const lama = await seedPo({ noPo: 'PO-LAMA', status: 'validated' });
+      const baru = await seedPo({ noPo: 'PO-BARU', status: 'validated' });
+      // Januari vs November: urutan leksikal dan kronologis hanya cocok kalau
+      // formatnya YYYY-MM-DD. Dengan 'DD/MM/YYYY', "20/11" akan duduk sebelum
+      // "05/01".
+      await stempelKeputusan(lama, 2, '2026-01-05 09:00:00');
+      await stempelKeputusan(baru, 2, '2026-11-20 09:00:00');
+
+      const { body } = await call('GET', '/purchase-orders');
+
+      const secaraWaktu = [...body.data].sort(
+        (a, b) => Date.parse(a.validated_at.replace(' ', 'T'))
+             - Date.parse(b.validated_at.replace(' ', 'T'))
+      );
+      const secaraTeks = [...body.data].sort((a, b) =>
+        String(a.validated_at).localeCompare(String(b.validated_at), 'id')
+      );
+
+      expect(secaraTeks.map((r) => r.no_po)).toEqual(secaraWaktu.map((r) => r.no_po));
+      expect(secaraTeks.map((r) => r.no_po)).toEqual(['PO-LAMA', 'PO-BARU']);
+    });
+
+    test('detail memakai format tanggal yang sama dengan daftar', async () => {
+      // Dialog detail dan kolom tabel menampilkan tanggal yang sama. Kalau
+      // formatnya berbeda (daftar '2026-05-20 14:30', detail ISO berawalan Z),
+      // pengguna melihat dua tanggal berbeda untuk keputusan yang sama — dan
+      // perbedaannya bergantung timezone mesin, bukan isi database.
+      await seedBase();
+      await seedUser(2, 'sari', 'finance');
+      const id = await seedPo({ status: 'validated' });
+      await stempelKeputusan(id, 2, '2026-05-20 14:30:00');
+
+      const list = await call('GET', '/purchase-orders');
+      const detail = await call('GET', `/purchase-orders/${id}`);
+
+      expect(detail.body.data.validator_name).toBe('sari');
+      expect(detail.body.data.validated_at).toBe(list.body.data[0].validated_at);
+      expect(detail.body.data.validated_at).toBe('2026-05-20 14:30');
+    });
+
+    test('detail PO pending → validator dan tanggal null, bukan string kosong', async () => {
+      await seedBase();
+      const id = await seedPo({ status: 'pending' });
+
+      const { body } = await call('GET', `/purchase-orders/${id}`);
+      expect(body.data.validator_name).toBeNull();
+      expect(body.data.validated_at).toBeNull();
+    });
+
+    // ----- Tiket 11b: Flow Transaksi -----
+    //
+    // Sumber dana/metode bayar, lima nilai tetap. Data live hari ini: 11 dari
+    // 11 PO kosong, jadi kolomnya tidak ada gunanya tanpa jalur input — karena
+    // itu yang diuji lebih dulu adalah bahwa nilainya bisa DISIMPAN.
+
+    const FLOW_VALID = [
+      'Livou Transfer',
+      'Saldo Shopee',
+      'Reimbursement',
+      'Deposit Cash',
+      'Saldo Lalamove',
+    ];
+
+    // Payload create minimal yang sah, supaya test bisa memvariasikan flow-nya
+    // tanpa mengulang enam field lain setiap kali.
+    const payload = (flow) => ({
+      vendor_id: 1,
+      no_po: 'PO-FLOW',
+      tgl_beli: '2026-09-04',
+      items: [{ raw_material_id: 1, qty: 2, harga_satuan: 1000 }],
+      ...(flow === undefined ? {} : { flow_transaksi: flow }),
+    });
+
+    test('kelima nilai flow transaksi diterima dan tersimpan', async () => {
+      await seedBase();
+      for (const flow of FLOW_VALID) {
+        const { status, body } = await post('/purchase-orders', payload(flow));
+        expect(status).toBe(201);
+        expect(body.data.flow_transaksi).toBe(flow);
+      }
+    });
+
+    test('flow transaksi terbaca lagi di daftar dan di detail', async () => {
+      await seedBase();
+      const dibuat = await post('/purchase-orders', payload('Saldo Shopee'));
+      const id = dibuat.body.data.id;
+
+      const list = await call('GET', '/purchase-orders');
+      expect(list.body.data[0].flow_transaksi).toBe('Saldo Shopee');
+
+      const detail = await call('GET', `/purchase-orders/${id}`);
+      expect(detail.body.data.flow_transaksi).toBe('Saldo Shopee');
+    });
+
+    test('flow transaksi diubah lewat PUT, dan perubahannya tersimpan', async () => {
+      // Ubah lewat PUT, bukan cuma create: PO bisa saja dibuat sebelum nilai
+      // ini tersedia, dan jalur satu-satunya untuk melengkapinya adalah ubah.
+      await seedBase();
+      const dibuat = await post('/purchase-orders', payload('Livou Transfer'));
+      const id = dibuat.body.data.id;
+
+      const ubah = await mutate('PUT', `/purchase-orders/${id}`, payload('Deposit Cash'));
+      expect(ubah.status).toBe(200);
+      expect(ubah.body.data.flow_transaksi).toBe('Deposit Cash');
+    });
+
+    test('nilai flow transaksi yang tidak dikenal → 400, bukan tersimpan diam-diam', async () => {
+      await seedBase();
+      const { status, body } = await post('/purchase-orders', payload('Transfer Ajaib'));
+      expect(status).toBe(400);
+      expect(body.ok).toBe(false);
+      // Kalau dibiarkan tersimpan, dropdown kelak tidak bisa menampilkan
+      // nilai ini — dan filter kolomnya akan punya opsi hantu.
+      expect(body.error).toMatch(/[Ff]low/);
+    });
+
+    test('flow transaksi dihilangkan → tersimpan kosong, tanpa error', async () => {
+      // Opsional, bukan wajib: 11 PO yang sudah ada tidak punya nilai ini, dan
+      // mewajibkannya akan memblokir semua PO lama untuk diubah.
+      await seedBase();
+      const { status, body } = await post('/purchase-orders', payload(undefined));
+      expect(status).toBe(201);
+      expect(body.data.flow_transaksi).toBe('');
+    });
+
+    test('PO yang dibuat sebelum ada flow transaksi tetap terbaca', async () => {
+      await seedBase();
+      await seedPo({ noPo: 'PO-LAMA' });
+
+      const { status, body } = await call('GET', '/purchase-orders');
+      expect(status).toBe(200);
+      expect(body.data[0].flow_transaksi).toBe('');
+    });
+
+    test('GET /flow-transaksi mengembalikan kelima nilai', async () => {
+      // Sumber opsi dropdown. Daftar ini yang dipakai validasi tulis, jadi
+      // kalau keduanya berbeda, nilai yang bisa disimpan tidak bisa dipilih
+      // lagi dari form — atau sebaliknya, form menawarkan nilai yang ditolak
+      // server.
+      await seedBase();
+      const { status, body } = await call('GET', '/purchase-orders/flow-transaksi');
+      expect(status).toBe(200);
+      expect(body).toEqual({ ok: true, data: FLOW_VALID });
+    });
+
+    test('GET /flow-transaksi tidak tertukar dengan GET /:id', async () => {
+      // Kalau rute opsinya diletakkan setelah /:id, 'flow-transaksi' akan
+      // dicocokkan sebagai id PO. parseId menolaknya (404), jadi gejalanya
+      // bukan data salah melainkan endpoint yang tak pernah terjangkau.
+      await seedBase();
+      const { status, body } = await call('GET', '/purchase-orders/flow-transaksi');
+      expect(status).toBe(200);
+      expect(Array.isArray(body.data)).toBe(true);
+      expect(body.data).toHaveLength(5);
+    });
+
+    test('GET /flow-transaksi tanpa session → 401, bukan daftar nilai', async () => {
+      await seedBase();
+      const { status } = await call('GET', '/purchase-orders/flow-transaksi', { auth: false });
+      expect(status).toBe(401);
     });
 
     test('total dihitung dari jumlah semua baris item', async () => {

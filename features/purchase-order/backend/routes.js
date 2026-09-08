@@ -14,6 +14,7 @@ const { validateToken } = require('../../../middleware/csrf');
 const { requireAuth, requireRole } = require('../../../middleware/apiAuth');
 const { parseId } = require('../../../middleware/parseId');
 const ValidationService = require('../../../services/validationService');
+const photoUpload = require('../../../services/photoUpload');
 
 const router = express.Router();
 
@@ -39,20 +40,84 @@ const TOTAL_SQL = `(SELECT COALESCE(SUM(subtotal), 0)
                     FROM purchase_order_items i
                     WHERE i.purchase_order_id = po.id)`;
 
+// Tanggal keputusan diformat di SQL, bukan dikirim sebagai timestamp mentah.
+//
+// Alasannya bukan gaya: kolomnya `timestamp without time zone`, dan node-pg
+// mengubahnya jadi objek Date berzona mesin lalu JSON mengubahnya lagi ke ISO
+// berawalan Z — dua konversi yang bisa menggeser hari yang tampil. TO_CHAR
+// membaca nilai tersimpan apa adanya, tanpa konversi zona sama sekali.
+//
+// Formatnya sengaja 'YYYY-MM-DD HH24:MI': mengurutkan teks ini menghasilkan
+// urutan yang sama dengan mengurutkan waktunya, jadi klien bisa mengurutkan
+// kolom ini sebagai teks biasa tanpa mengurai tanggal. Ada test yang mengawal
+// kontrak itu, karena kalau formatnya berubah jadi 'DD/MM/YYYY', urutan di
+// layar akan salah meski nilainya benar.
+//
+// Diekstrak jadi konstanta, mengikuti TOTAL_SQL di atas, karena dipakai dua
+// query (daftar dan detail) dan keduanya WAJIB menghasilkan format yang sama
+// persis — dua literal yang bisa berbeda pendapat adalah dua tampilan berbeda
+// untuk keputusan yang sama.
+const VALIDATED_AT_SQL = `TO_CHAR(po.validated_at, 'YYYY-MM-DD HH24:MI')`;
+
+// Foto nota PO (tiket 11c).
+//
+// LATERAL + LIMIT 1, bukan join biasa: skemanya mengizinkan banyak baris foto
+// per PO, jadi join biasa akan menggandakan baris PO untuk setiap foto — satu
+// PO muncul tiga kali di daftar. Kebijakannya satu foto per PO (keputusan
+// pemilik 4 September 2026), dan urutan `id DESC` menentukan foto mana yang
+// menang kalau data lama ternyata punya lebih dari satu.
+//
+// NULL bila tidak ada foto — bukan string kosong — supaya klien bisa
+// membedakan "tidak ada foto" dari "foto sedang dimuat". Ini keadaan normal
+// hari ini: semua 11 PO belum punya foto.
+const FOTO_SQL = `(SELECT pf.file_path
+                   FROM purchase_order_photos pf
+                   WHERE pf.purchase_order_id = po.id
+                   ORDER BY pf.id DESC
+                   LIMIT 1)`;
+
+// Flow transaksi — sumber dana/metode bayar, bukan alur kerja transaksi.
+//
+// Lima nilai tetap, dikonfirmasi pemilik 4 September 2026 (tiket 11b).
+//
+// Nilainya disimpan APA ADANYA sebagai teks, bukan sebagai slug dengan peta
+// label terpisah. Alasannya mengikuti preseden TIPE_LABEL di fitur material:
+// membuat slug berarti membuat peta kedua yang bisa drift dari yang pertama,
+// dan pemilik memberi nama-nama ini sebagai nama tampilan — bukan sebagai kode.
+// Satu daftar, dipakai untuk validasi tulis sekaligus untuk opsi dropdown baca.
+const FLOW_TRANSAKSI = [
+  'Livou Transfer',
+  'Saldo Shopee',
+  'Reimbursement',
+  'Deposit Cash',
+  'Saldo Lalamove',
+];
+
 // GET /api/purchase-orders — daftar PO, terbaru lebih dulu.
 router.get('/', requireAuth, async (req, res) => {
   try {
     // Tiebreak id DESC wajib, bukan gaya: di live DB tiga PO pertama punya
     // created_at identik sampai mikrodetik (hasil migrasi), jadi ORDER BY
     // created_at DESC saja mengembalikan urutan yang tidak ditentukan.
+    //
+    // validated_at dan validator_name: lihat VALIDATED_AT_SQL di atas untuk
+    // alasan formatnya. Ringkasnya, kolom ini melapor KAPAN sebuah PO
+    // diputuskan, bukan "kapan divalidasi" — rejectPurchaseOrder mengisi
+    // validated_at yang sama (services/validationService.js), jadi PO yang
+    // DITOLAK juga punya tanggal di sini.
     const rows = (await db.query(`
       SELECT po.id, po.no_po, po.tgl_beli, po.status,
+             po.flow_transaksi,
              v.nama AS vendor_nama,
              u.username AS creator_name,
+             ${VALIDATED_AT_SQL} AS validated_at,
+             uv.username AS validator_name,
+             ${FOTO_SQL} AS foto_path,
              ${TOTAL_SQL} AS total
       FROM purchase_orders po
       LEFT JOIN vendors v ON po.vendor_id = v.id
       LEFT JOIN users u ON po.created_by = u.id
+      LEFT JOIN users uv ON po.validated_by = uv.id
       ORDER BY po.created_at DESC, po.id DESC
     `)).rows;
 
@@ -63,6 +128,133 @@ router.get('/', requireAuth, async (req, res) => {
   } catch (error) {
     console.error('[purchaseOrdersApi] GET error:', error.message);
     res.status(500).json({ ok: false, error: 'Gagal memuat data pembelian material' });
+  }
+});
+
+// GET /flow-transaksi — opsi dropdown sumber dana (tiket 11b).
+//
+// Ditaruh SEBELUM GET /:id, bukan sesudahnya: kalau sesudah, 'flow-transaksi'
+// akan dicocokkan lebih dulu sebagai id PO. parseId memang menolaknya dengan
+// 404, jadi hari ini tidak tabrakan — tetapi itu bertahan hidup berdasarkan
+// urutan baris yang bisa bergeser saat diedit nanti. Letaknya di sini
+// menyatakan maksudnya, bukan cuma kebetulan bekerja.
+//
+// Endpoint ini ada supaya daftar nilainya punya SATU sumber. Menuliskan
+// kelima nama itu lagi di frontend akan mengulangi keadaan di Vendors.tsx,
+// yang menyalin TIPE_LABEL milik server dan hanya bisa berharap keduanya
+// tidak drift — satu-satunya jaminannya cuma komentar.
+//
+// Daftarnya juga TIDAK diambil dari DISTINCT atas kolom: kolom itu kosong di
+// semua 11 PO, jadi kueri itu akan mengembalikan nol baris. Yang dikirim ke
+// sini adalah nilai yang SAH, bukan nilai yang kebetulan pernah tersimpan.
+router.get('/flow-transaksi', requireAuth, async (req, res) => {
+  res.json({ ok: true, data: FLOW_TRANSAKSI });
+});
+
+// ===== Foto nota PO (tiket 11c) =====
+//
+// Urutan middleware sengaja: requireAuth → validateToken → multer.
+//
+// Autentikasi dan CSRF SEBELUM multer, supaya permintaan anonim ditolak
+// sebelum berkas sempat ditulis ke disk. Kalau multer lebih dulu, siapa pun
+// bisa mengunggah berkas ke server dan baru ditolak setelahnya — berkasnya
+// sudah telanjur tersimpan.
+//
+// validateToken memakai badan permintaan JSON, sedangkan unggahan memakai
+// multipart; karenanya token dikirim klien lewat HEADER, bukan field form.
+
+// POST /:id/foto — unggah atau ganti foto nota PO.
+//
+// tanganiErrorUpload datang dari services/photoUpload.js, berbagi dengan foto
+// material. Kalau salah satu fitur menjawab 400 dengan pesan jelas sementara
+// yang lain 500, pengguna akan melaporkannya sebagai bug di satu halaman saja
+// — dan tidak ada yang bisa menjelaskan mana perilaku yang benar.
+router.post(
+  '/:id/foto',
+  requireAuth,
+  validateToken,
+  photoUpload.buatUploadFoto('po').single('foto'),
+  photoUpload.tanganiErrorUpload,
+  async (req, res) => {
+    const id = parseId(req.params.id);
+    if (id === null) {
+      // Berkas sudah telanjur tersimpan oleh multer — hapus supaya tidak jadi
+      // berkas yatim. Ini satu-satunya tempat pengecekan id berjalan setelah
+      // berkas ditulis, jadi pembersihannya tidak bisa digabung di tempat lain.
+      await photoUpload.hapusBerkas(req.file?.filename);
+      return res.status(404).json({ ok: false, error: 'Purchase order tidak ditemukan' });
+    }
+
+    try {
+      const ada = await cekPoAda(id);
+      if (!ada) {
+        await photoUpload.hapusBerkas(req.file?.filename);
+        return res.status(404).json({ ok: false, error: 'Purchase order tidak ditemukan' });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ ok: false, error: 'Berkas foto belum dipilih' });
+      }
+
+      // Foto lama dihapus DULU (baris dan berkasnya), baru yang baru
+      // disimpan. Kalau yang baru disimpan lebih dulu, kegagalan di tengah
+      // akan meninggalkan dua foto untuk satu PO, dan kolom daftar tidak tahu
+      // mana yang benar.
+      const lama = await db.query(
+        'SELECT file_path FROM purchase_order_photos WHERE purchase_order_id = $1',
+        [id]
+      );
+      await db.query('DELETE FROM purchase_order_photos WHERE purchase_order_id = $1', [id]);
+      for (const f of lama.rows) await photoUpload.hapusBerkas(f.file_path);
+
+      await db.query(
+        `INSERT INTO purchase_order_photos (purchase_order_id, file_path)
+         VALUES ($1, $2)`,
+        [id, req.file.filename]
+      );
+
+      res.json({ ok: true, data: { file_path: req.file.filename } });
+    } catch (error) {
+      // Berkas yang baru diunggah ikut dibersihkan kalau penyimpanannya
+      // gagal — tanpa ini, kegagalan database meninggalkan berkas yang tidak
+      // direferensikan baris mana pun.
+      await photoUpload.hapusBerkas(req.file?.filename);
+      console.error('[purchaseOrdersApi] POST foto error:', error.message);
+      res.status(500).json({ ok: false, error: 'Gagal menyimpan foto purchase order' });
+    }
+  }
+);
+
+// DELETE /:id/foto — hapus foto nota PO.
+router.delete('/:id/foto', requireAuth, validateToken, async (req, res) => {
+  const id = parseId(req.params.id);
+  if (id === null) {
+    return res.status(404).json({ ok: false, error: 'Purchase order tidak ditemukan' });
+  }
+
+  try {
+    // Keberadaan PO-nya dicek, bukan keberadaan fotonya.
+    //
+    // Dua keadaan ini berbeda dan tidak boleh dijawab sama:
+    //   - PO tidak ada (id 999) → 404. Klien mencoba menghapus foto milik PO
+    //     yang tidak pernah ada, dan itu perlu diketahui.
+    //   - PO ada, tetapi tidak punya foto → 200. Menghapus sesuatu yang tidak
+    //     ada sudah menghasilkan keadaan yang diminta; menjawab 404 di sini
+    //     akan membuat klien menampilkan "gagal" untuk operasi yang berhasil.
+    if (!(await cekPoAda(id))) {
+      return res.status(404).json({ ok: false, error: 'Purchase order tidak ditemukan' });
+    }
+
+    const baris = await db.query(
+      'SELECT file_path FROM purchase_order_photos WHERE purchase_order_id = $1',
+      [id]
+    );
+    await db.query('DELETE FROM purchase_order_photos WHERE purchase_order_id = $1', [id]);
+    for (const f of baris.rows) await photoUpload.hapusBerkas(f.file_path);
+    res.json({ ok: true });
+  } catch (error) {
+    console.error('[purchaseOrdersApi] DELETE foto error:', error.message);
+    res.status(500).json({ ok: false, error: 'Gagal menghapus foto purchase order' });
   }
 });
 
@@ -84,13 +276,18 @@ router.get('/:id', requireAuth, async (req, res) => {
     // menyembunyikannya berarti pengguna tidak pernah tahu mengapa PO-nya
     // ditolak. validator_name di-join ke users, bukan dikirim sebagai id —
     // menampilkan "2" tidak bermakna bagi siapa pun.
+    // validated_at memakai konstanta yang sama dengan daftar, supaya dialog
+    // detail dan kolom tabel tidak menampilkan tanggal yang sama dengan dua
+    // format berbeda.
     const po = (await db.query(`
       SELECT po.id, po.no_po, po.tgl_beli, po.status,
              po.vendor_id, po.currency_id, po.kurs_amount,
-             po.catatan_reject,
+             po.catatan_reject, po.flow_transaksi,
              v.nama AS vendor_nama,
              u.username AS creator_name,
+             ${VALIDATED_AT_SQL} AS validated_at,
              uv.username AS validator_name,
+             ${FOTO_SQL} AS foto_path,
              ${TOTAL_SQL} AS total
       FROM purchase_orders po
       LEFT JOIN vendors v ON po.vendor_id = v.id
@@ -134,9 +331,30 @@ router.get('/:id', requireAuth, async (req, res) => {
 
 const isPositiveNumber = (v) => typeof v === 'number' && Number.isFinite(v);
 
+// Memvalidasi flow transaksi. Mengembalikan `{ ok: true, value }` atau
+// `{ ok: false, error }`.
+//
+// Nilai kosong (undefined, null, '') diperlakukan sama dengan tidak dikirim —
+// dropdown React mengirim '' saat dikosongkan, dan 11 PO yang sudah ada tidak
+// punya nilai ini sama sekali. Mewajibkannya akan memblokir semua PO lama
+// untuk diubah.
+const validateFlowTransaksi = (flow) => {
+  if (flow === undefined || flow === null || String(flow).trim() === '') return { ok: true, value: '' };
+  const nilai = String(flow);
+  if (!FLOW_TRANSAKSI.includes(nilai)) {
+    // Daftar nilai ikut disebut di pesannya: pengguna tidak bisa menebak
+    // ejaan yang diterima kalau tidak diberi tahu pilihannya apa saja.
+    return {
+      ok: false,
+      error: `Flow transaksi tidak dikenal. Pilihan: ${FLOW_TRANSAKSI.join(', ')}.`,
+    };
+  }
+  return { ok: true, value: nilai };
+};
+
 // Mengembalikan `{ ok: true, value }` atau `{ ok: false, error }`.
 const validateCreatePayload = (body) => {
-  const { vendor_id, no_po, tgl_beli, items, kurs_amount, currency_id } = body;
+  const { vendor_id, no_po, tgl_beli, items, kurs_amount, currency_id, flow_transaksi } = body;
 
   if (vendor_id === undefined || vendor_id === null || vendor_id === '') {
     return { ok: false, error: 'Vendor wajib dipilih' };
@@ -231,9 +449,16 @@ const validateCreatePayload = (body) => {
     }
   }
 
+  // Flow transaksi opsional (tiket 11b). Divalidasi terhadap daftar tetap
+  // FLOW_TRANSAKSI, bukan diterima apa adanya: nilai di luar daftar tidak bisa
+  // ditampilkan dropdownnya saat dibaca ulang, dan akan muncul sebagai opsi
+  // hantu di filter kolom.
+  const flow = validateFlowTransaksi(flow_transaksi);
+  if (!flow.ok) return flow;
+
   return {
     ok: true,
-    value: { vendorId, noPo, tglBeli, items: parsedItems, kurs, currencyId },
+    value: { vendorId, noPo, tglBeli, items: parsedItems, kurs, currencyId, flowTransaksi: flow.value },
   };
 };
 
@@ -354,6 +579,7 @@ const assertMutable = (po, kind) => {
 const readOne = async (id) => {
   const row = (await db.query(`
     SELECT po.id, po.no_po, po.tgl_beli, po.status, po.created_by, po.kurs_amount,
+           po.flow_transaksi,
            v.nama AS vendor_nama,
            u.username AS creator_name,
            cur.kode AS currency_kode,
@@ -375,7 +601,7 @@ router.post('/', requireAuth, validateToken, async (req, res) => {
   if (!parsed.ok) {
     return res.status(400).json({ ok: false, error: parsed.error });
   }
-  const { vendorId, noPo, tglBeli, items, kurs, currencyId } = parsed.value;
+  const { vendorId, noPo, tglBeli, items, kurs, currencyId, flowTransaksi } = parsed.value;
 
   try {
     // Referensi dicek sebelum INSERT supaya nilai fiktif menjawab 400 yang
@@ -391,12 +617,14 @@ router.post('/', requireAuth, validateToken, async (req, res) => {
     const created = await db.transaction(async (tx) => {
       const po = (await tx.query(
         `INSERT INTO purchase_orders
-           (vendor_id, no_po, tgl_beli, status, created_by, kurs_amount, currency_id)
-         VALUES ($1, $2, $3, 'pending', $4, $5, $6)
-         RETURNING id, no_po, tgl_beli, status, created_by, kurs_amount, currency_id`,
+           (vendor_id, no_po, tgl_beli, status, created_by, kurs_amount, currency_id,
+            flow_transaksi)
+         VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7)
+         RETURNING id, no_po, tgl_beli, status, created_by, kurs_amount, currency_id,
+                   flow_transaksi`,
         // created_by diambil dari sesi, bukan dari body: mempercayai body
         // berarti siapa pun bisa mengaku sebagai pengguna lain.
-        [vendorId, noPo, tglBeli, req.session.userId, kurs, currencyId]
+        [vendorId, noPo, tglBeli, req.session.userId, kurs, currencyId, flowTransaksi]
       )).rows[0];
 
       for (const item of items) {
@@ -463,7 +691,7 @@ router.put('/:id', requireAuth, validateToken, async (req, res) => {
   if (!parsed.ok) {
     return res.status(400).json({ ok: false, error: parsed.error });
   }
-  const { vendorId, noPo, tglBeli, items, kurs, currencyId } = parsed.value;
+  const { vendorId, noPo, tglBeli, items, kurs, currencyId, flowTransaksi } = parsed.value;
 
   try {
     const refs = await checkReferences(vendorId, currencyId, items);
@@ -482,11 +710,15 @@ router.put('/:id', requireAuth, validateToken, async (req, res) => {
     // antaranya), lalu UPDATE menimpa PO yang barangnya sudah masuk stok —
     // persis keadaan yang dicegah penjaga ini.
     const updated = await db.transaction(async (tx) => {
+      // flow_transaksi ikut di-SET, bukan dibiarkan: mengosongkan dropdown
+      // adalah cara menghapus nilainya, dan kalau kolomnya tidak masuk SET,
+      // nilai lama akan bertahan selamanya tanpa bisa dibersihkan dari UI.
       const head = await tx.query(
         `UPDATE purchase_orders
-            SET vendor_id = $1, no_po = $2, tgl_beli = $3, kurs_amount = $4, currency_id = $5
-          WHERE id = $6 AND status = 'pending'`,
-        [vendorId, noPo, tglBeli, kurs, currencyId, id]
+            SET vendor_id = $1, no_po = $2, tgl_beli = $3, kurs_amount = $4,
+                currency_id = $5, flow_transaksi = $6
+          WHERE id = $7 AND status = 'pending'`,
+        [vendorId, noPo, tglBeli, kurs, currencyId, flowTransaksi, id]
       );
       if (head.rowCount === 0) return false;
 
@@ -654,6 +886,14 @@ router.delete('/:id', requireAuth, validateToken, async (req, res) => {
       return res.status(guard.status).json({ ok: false, error: guard.error });
     }
 
+    // Jalur foto dibaca SEBELUM PO dihapus. FK ke purchase_order_photos
+    // bercascade, jadi begitu PO-nya hilang baris fotonya ikut lenyap dan nama
+    // berkasnya tidak bisa dibaca lagi.
+    const fotoRows = (await db.query(
+      'SELECT file_path FROM purchase_order_photos WHERE purchase_order_id = $1',
+      [id]
+    )).rows;
+
     // Predikat `status = 'pending'` ADA DI DML, dengan alasan yang sama
     // seperti PUT: tanpa ini, PO yang divalidasi di jendela antara pembacaan
     // status dan DELETE akan terhapus beserta catatan stoknya.
@@ -673,6 +913,12 @@ router.delete('/:id', requireAuth, validateToken, async (req, res) => {
         error: refusalReason('dihapus', now?.status),
       });
     }
+
+    // Berkasnya dihapus SETELAH PO benar-benar terhapus. Kalau dulu, PO yang
+    // gagal dihapus karena statusnya berubah akan kehilangan fotonya
+    // sia-sia. Item ikut terhapus lewat ON DELETE CASCADE; berkas di disk
+    // tidak — tanpa ini setiap PO yang dihapus meninggalkan berkas yatim.
+    for (const f of fotoRows) await photoUpload.hapusBerkas(f.file_path);
     res.json({ ok: true });
   } catch (error) {
     console.error('[purchaseOrdersApi] DELETE error:', error.message);
