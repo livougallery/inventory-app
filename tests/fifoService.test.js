@@ -10,7 +10,7 @@ describe('FifoService.deductFifo', () => {
     // inserting id=1, 2, 3 is deterministic.
     await db.query(`INSERT INTO test.vendors (id, nama, tipe) VALUES (1, 'V1', 'bahan_baku')`);
     await db.query(`INSERT INTO test.users (id, username, password) VALUES (1, 'admin', 'x')`);
-    await db.query(`INSERT INTO test.raw_materials (id, nama, tipe, satuan, stok) VALUES (1, 'Kain A', 'kain_roll', 'm', 0)`);
+    await db.query(`INSERT INTO test.raw_materials (id, nama, tipe, satuan, stok) VALUES (1, 'Kain A', 'kain', 'm', 0)`);
     rawMatId = 1;
     // Seed 3 batches at different dates (oldest first by tgl_masuk).
     await db.query(`INSERT INTO test.material_batches (id, raw_material_id, source_type, source_id, qty_awal, qty_sisa, harga_satuan, tgl_masuk) VALUES

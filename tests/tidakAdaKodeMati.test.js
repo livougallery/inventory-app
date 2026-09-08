@@ -184,12 +184,25 @@ describe('Kode mati material tidak boleh ada (tiket 10)', () => {
       return peta;
     };
 
-    test('peta label punya TEPAT empat nilai yang disyaratkan spesifikasi', () => {
+    // Diperbarui SENGAJA untuk tiket 11e, bukan dihapus: kategori material
+    // dipecah dari empat nilai (kain_roll/kain_ecer/aksesoris/cmt_cost)
+    // menjadi tiga (kain/aksesoris/cmt_cost), dan Roll/Ecer pindah jadi
+    // atribut Jenis. Test ini sengaja tetap meng-assert daftar nilainya
+    // secara persis — kalau ada nilai keempat muncul lagi, itu harus
+    // didiskusikan, bukan dibiarkan lewat.
+    test('peta label punya TEPAT tiga nilai kategori yang disyaratkan spesifikasi', () => {
       const peta = ambilTipeLabel();
       expect(peta).not.toBeNull();
-      expect(Object.keys(peta).sort()).toEqual(
-        ['aksesoris', 'cmt_cost', 'kain_ecer', 'kain_roll']
-      );
+      expect(Object.keys(peta).sort()).toEqual(['aksesoris', 'cmt_cost', 'kain']);
+    });
+
+    test('nilai kategori lama (kain_roll/kain_ecer) sudah tidak ada lagi', () => {
+      // Regresi tiket 11e: kalau keduanya masih dipakai di mana pun, berarti
+      // pemecahan Kategori/Jenis belum selesai dan dua skema nilai hidup
+      // berdampingan.
+      const peta = ambilTipeLabel();
+      expect(peta.kain_roll).toBeUndefined();
+      expect(peta.kain_ecer).toBeUndefined();
     });
 
     test('cmt_cost dilabeli "Product Fulfillment"', () => {
@@ -223,7 +236,9 @@ describe('Kode mati material tidak boleh ada (tiket 10)', () => {
       // eslint-disable-next-line global-require
       const rute = require('../features/material/backend/routes');
       expect(rute.TIPE_LABEL).toBeDefined();
-      expect(rute.TIPE_LABEL.kain_ecer).toBe('Kain (Ecer)');
+      // kain_ecer → 'Kain (Ecer)' diganti: Ecer sekarang nilai Jenis, dan
+      // kategori Kain dilabeli apa adanya.
+      expect(rute.TIPE_LABEL.kain).toBe('Kain');
     });
 
     test('modul yang merender material memakai TIPE_LABEL, bukan string sendiri', () => {

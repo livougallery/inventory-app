@@ -206,6 +206,16 @@ async function bootstrapSchema(schemaName) {
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- Lookup lokasi barang (tiket 11f). Mengikuti bentuk currencies/negara:
+    -- id SERIAL, nama unik case-insensitive lewat index di bawah, flag aktif,
+    -- timestamp. Dua nilai saja: Gudang (Livou HQ Office) dan Konveksi.
+    CREATE TABLE IF NOT EXISTS ${t('locations')} (
+      id SERIAL PRIMARY KEY,
+      nama TEXT NOT NULL,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS ${t('purchase_orders')} (
       id SERIAL PRIMARY KEY,
       vendor_id INTEGER NOT NULL REFERENCES ${t('vendors')}(id),
@@ -444,6 +454,11 @@ async function bootstrapSchema(schemaName) {
     -- tidak boleh diawali skema: Postgres menolak nama index yang dikualifikasi,
     -- dan letaknya sudah ditentukan oleh skema tabelnya.
     CREATE UNIQUE INDEX IF NOT EXISTS uq_negara_nama ON ${t('negara')}(LOWER(nama));
+
+    -- Sama dengan negara: nama index TIDAK boleh diawali skema, dan keunikan
+    -- case-insensitive ini yang membuat "Gudang" dan "GUDANG" tidak bisa hidup
+    -- berdampingan. Itu alasan utama lokasi berupa lookup, bukan teks bebas.
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_locations_nama ON ${t('locations')}(LOWER(nama));
   `);
 
   // Migrasi kolom tambahan (idempotent) — untuk tabel yang sudah terlanjur dibuat
@@ -461,6 +476,140 @@ async function bootstrapSchema(schemaName) {
     ALTER TABLE ${t('purchase_orders')} ADD COLUMN IF NOT EXISTS flow_transaksi TEXT DEFAULT '';
     ALTER TABLE ${t('purchase_imports')}
       ADD COLUMN IF NOT EXISTS negara_id INTEGER REFERENCES ${t('negara')}(id);
+
+    -- ===== Tiket 11f: lokasi barang =====
+    -- Nullable dan TANPA backfill: semua 7 material hari ini tidak punya
+    -- lokasi, dan menebaknya lebih buruk daripada mengosongkannya.
+    ALTER TABLE ${t('raw_materials')}
+      ADD COLUMN IF NOT EXISTS lokasi_id INTEGER REFERENCES ${t('locations')}(id);
+
+    -- ===== Tiket 11e: kategori + jenis =====
+    -- CATATAN: jangan pakai backtick di komentar SQL ini — komentar ini hidup
+    -- di dalam template literal JS, dan satu backtick mengakhiri stringnya
+    -- lebih awal. Baris inilah yang pernah membuat db.js gagal di-parse.
+    --
+    -- jenis murni aditif dan nullable — aman.
+    ALTER TABLE ${t('raw_materials')} ADD COLUMN IF NOT EXISTS jenis TEXT;
+
+    -- tipe TETAP jadi kolom Kategori (tiga nilai baru), bukan diganti kolom
+    -- lain. Menambah kolom kategori terpisah akan membuat dua sumber
+    -- kebenaran untuk satu hal — drift yang justru dihapus tiket 10 — karena
+    -- TIPE_LABEL, EDITABLE_FIELDS, dan views/raw-materials/* semua membaca
+    -- kolom tipe.
+    --
+    -- Nilai lama diselamatkan dulu ke tipe_asli SEBELUM ditulis ulang, supaya
+    -- jalan pulangnya ada: tanpa ini, migrasi yang meleset tidak bisa
+    -- dikembalikan kecuali dari backup.
+    ALTER TABLE ${t('raw_materials')} ADD COLUMN IF NOT EXISTS tipe_asli TEXT;
+    UPDATE ${t('raw_materials')} SET tipe_asli = tipe WHERE tipe_asli IS NULL;
+  `);
+
+  // Ganti CHECK `tipe` dari empat nilai lama ke tiga nilai baru.
+  //
+  // DROP dan ADD harus satu transaksi: kalau dipisah, baris yang sudah ada
+  // sempat melanggar constraint baru dan Postgres menolak.
+  //
+  // Nama constraint dicari, bukan ditebak. CREATE TABLE menuliskannya inline
+  // sehingga Postgres menamainya sendiri, dan nama itu berubah bila tabelnya
+  // berada di skema berbeda (skema `test` vs produksi) — menebak
+  // 'raw_materials_tipe_check' akan gagal di salah satunya.
+  // Isi dua lokasi. Idempoten berkat ON CONFLICT — seeding ini tidak boleh
+  // menggandakan baris pada boot kedua.
+  await db.exec(`
+    INSERT INTO ${t('locations')} (nama) VALUES
+      ('Gudang (Livou HQ Office)'), ('Konveksi')
+    ON CONFLICT DO NOTHING;
+  `);
+
+  // Pindahkan `tipe` ke tiga nilai baru.
+  //
+  // Urutannya TIDAK bisa dibalik dan harus SATU transaksi:
+  //   - UPDATE dulu → melanggar CHECK lama (kain_roll ditolak untuk 'kain').
+  //   - DROP+ADD CHECK dulu → melanggar CHECK baru (baris masih 'kain_roll').
+  // Keduanya gagal sendiri-sendiri; bersama-sama berhasil.
+  //
+  // Nama constraint dicari, bukan ditebak: CREATE TABLE menuliskannya inline
+  // sehingga Postgres yang menamai, dan namanya beda antara skema `test` dan
+  // produksi. Nama constraint juga TIDAK boleh diawali skema — jebakan yang
+  // sama dengan index.
+  const cek = await db.query(`
+    SELECT c.conname FROM pg_constraint c
+     JOIN pg_class r ON r.oid = c.conrelid
+     JOIN pg_namespace n ON n.oid = r.relnamespace
+    WHERE r.relname = 'raw_materials' AND n.nspname = $1
+      AND c.contype = 'c'
+      AND pg_get_constraintdef(c.oid) LIKE '%kain_roll%'
+  `, [schemaName && schemaName !== 'public' ? schemaName : 'public']);
+
+  for (const baris of cek.rows) {
+    await db.exec(`
+      BEGIN;
+      ALTER TABLE ${t('raw_materials')} DROP CONSTRAINT "${baris.conname}";
+      UPDATE ${t('raw_materials')} SET tipe = 'kain'
+       WHERE tipe IN ('kain_roll', 'kain_ecer');
+      ALTER TABLE ${t('raw_materials')}
+        ADD CONSTRAINT raw_materials_tipe_check CHECK(tipe IN ('kain','aksesoris','cmt_cost'));
+      COMMIT;
+    `);
+  }
+
+  // Backfill jenis. Hanya untuk kain, karena itu satu-satunya pemetaan yang
+  // mekanis: kain_roll → roll, kain_ecer → ecer.
+  //
+  // Aksesoris TIDAK di-backfill. Jenis aksesoris tidak bisa ditebak dari
+  // `tipe` — "Kancing Test" kebetulan bisa, tetapi "Tmp" (id 7) tidak
+  // memberi tahu apa pun. Menebak di sini akan mengisi kolom dengan nilai
+  // yang terlihat sah padahal karangan, dan karangan lebih sulit ditemukan
+  // daripada NULL.
+  //
+  // cmt_cost juga tidak di-backfill: Product Fulfillment memang tidak punya
+  // Jenis (keputusan owner 4 September).
+  //
+  // `tipe_asli` yang jadi acuan, bukan `tipe` — setelah backfill kategori di
+  // atas, nilai 'kain_roll' sudah tidak ada lagi di `tipe`.
+  await db.exec(`
+    UPDATE ${t('raw_materials')} SET jenis = 'roll'
+     WHERE jenis IS NULL AND tipe_asli = 'kain_roll';
+    UPDATE ${t('raw_materials')} SET jenis = 'ecer'
+     WHERE jenis IS NULL AND tipe_asli = 'kain_ecer';
+  `);
+
+  // Koreksi data yang diminta owner, 4 September:
+  //   > material label livou tolong perbaiki harusnya jenis label
+  //
+  // "Label Livou" (id 5) tersimpan sebagai kain_roll — label yang salah
+  // masuk kategori kain. Ini koreksi kesalahan input, bukan pemetaan
+  // mekanis, karenanya ditulis terpisah dan di-assert per id.
+  await db.exec(`
+    UPDATE ${t('raw_materials')} SET tipe = 'aksesoris', jenis = 'label'
+     WHERE id = 5 AND nama = 'Label Livou';
+  `);
+
+  // CHECK untuk `jenis`: daftar tetap, dan Jenis terikat pada kategori.
+  // 'roll'/'ecer' hanya untuk kain; tujuh nilai aksesoris hanya untuk
+  // aksesoris; cmt_cost tidak punya Jenis sama sekali.
+  //
+  // Dicari lalu diganti, bukan cuma ditambah: kalau cuma ADD, boot kedua
+  // menambah constraint kedua dengan nama lain dan keduanya berlaku.
+  const cekJenis = await db.query(`
+    SELECT c.conname FROM pg_constraint c
+     JOIN pg_class r ON r.oid = c.conrelid
+     JOIN pg_namespace n ON n.oid = r.relnamespace
+    WHERE r.relname = 'raw_materials' AND n.nspname = $1
+      AND c.contype = 'c'
+      AND pg_get_constraintdef(c.oid) LIKE '%jenis%'
+  `, [schemaName && schemaName !== 'public' ? schemaName : 'public']);
+
+  for (const baris of cekJenis.rows) {
+    await db.exec(`ALTER TABLE ${t('raw_materials')} DROP CONSTRAINT "${baris.conname}"`);
+  }
+  await db.exec(`
+    ALTER TABLE ${t('raw_materials')}
+      ADD CONSTRAINT raw_materials_jenis_check CHECK(
+        jenis IS NULL OR
+        (tipe = 'kain' AND jenis IN ('roll','ecer')) OR
+        (tipe = 'aksesoris' AND jenis IN ('hak kait','kancing','resleting','karet','label','renda','kain pelapis'))
+      );
   `);
 }
 
