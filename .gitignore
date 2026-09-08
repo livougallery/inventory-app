@@ -39,6 +39,34 @@ tmp/check-*.js
 tmp/reset-*.js
 tmp/*.patch
 
+# Draf pesan commit & body PR — artefak sekali pakai saat menyiapkan commit.
+# Sengaja TIDAK meng-ignore seluruh tmp/: 15 skrip di sana sudah terlacak dan
+# masih dipakai (tmp/dump-postgres.js untuk backup, tmp/mutate-*.js untuk uji
+# mutasi). Meng-ignore direktori utuhnya tidak menghapus berkas yang sudah
+# terlacak itu, tetapi akan membuatnya tampak seperti belum ada — dan skrip
+# baru di tmp/ akan tersembunyi dari `git status` tanpa disadari.
+tmp/commit-msg-*.txt
+tmp/pr-*-body.md
+tmp/pr-body.md
+
+# Berkas bantuan sekali pakai: diawali underscore, jadi langsung kelihatan
+# beda dari skrip yang memang dipakai rutin.
+tmp/_*
+
+# Draf pesan commit & body PR — artefak sekali pakai saat menyiapkan commit.
+# Sengaja TIDAK meng-ignore seluruh tmp/: 15 skrip di sana sudah terlacak dan
+# masih dipakai (tmp/dump-postgres.js untuk backup, tmp/mutate-*.js untuk uji
+# mutasi). Meng-ignore direktori utuhnya tidak akan menghapus berkas yang sudah
+# terlacak itu, tetapi akan membuatnya tampak seperti belum ada — dan skrip
+# baru di tmp/ akan tersembunyi dari `git status` tanpa disadari.
+tmp/commit-msg-*.txt
+tmp/pr-*-body.md
+tmp/pr-body.md
+
+# Berkas bantuan sekali pakai: diawali underscore, jadi langsung kelihatan
+# beda dari skrip yang memang dipakai rutin.
+tmp/_*
+
 # Frontend build output
 frontend/dist/
 
