@@ -9,13 +9,28 @@ import PurchaseOrders from './pages/PurchaseOrders';
 import ProductionBatches from './pages/ProductionBatches';
 import BOM from './pages/BOM';
 import HPP from './pages/HPP';
-import { Shell } from './components/Shell';
+import Material from './pages/Material';
+import Product from './pages/Product';
+import Whitelabel from './pages/Whitelabel';
+import ProductionFulfillment from './pages/ProductionFulfillment';
+import HppPratinjau from './pages/HppPratinjau';
+import BarangDatang from './pages/BarangDatang';
+import BomHpp from './pages/BomHpp';
+import { Shell, MODE_VIDEO_AKTIF, PATH_DIBLOKIR_VIDEO, TUJUAN_VIDEO } from './components/Shell';
 
 function App() {
   return (
     <Routes>
       {/* Login page - no shell */}
       <Route path="/login" element={<Login />} />
+
+      {/* Mode video: halaman lama dialihkan, bukan cuma disembunyikan dari
+          sidebar. Tanpa ini, halaman itu tetap bisa dibuka lewat URL — mudah
+          terjadi tidak sengaja saat merekam, misal lewat tombol "kembali". */}
+      {MODE_VIDEO_AKTIF &&
+        PATH_DIBLOKIR_VIDEO.map((p) => (
+          <Route key={p} path={p} element={<Navigate to={TUJUAN_VIDEO} replace />} />
+        ))}
 
       {/* All other pages wrapped in Shell with sidebar */}
       <Route path="/" element={
@@ -65,6 +80,47 @@ function App() {
           <HPP />
         </Shell>
       } />
+
+      {/* ===== 7 modul pratinjau (daftar kolom owner, 7 September 2026) =====
+          Terpisah dari halaman lama di atas: masing-masing punya URL sendiri
+          supaya owner bisa membukanya satu per satu tanpa mengganggu halaman
+          yang sudah jalan. */}
+      <Route path="/modul/material" element={
+        <Shell>
+          <Material />
+        </Shell>
+      } />
+      <Route path="/modul/product" element={
+        <Shell>
+          <Product />
+        </Shell>
+      } />
+      <Route path="/modul/whitelabel" element={
+        <Shell>
+          <Whitelabel />
+        </Shell>
+      } />
+      <Route path="/modul/production-fulfillment" element={
+        <Shell>
+          <ProductionFulfillment />
+        </Shell>
+      } />
+      <Route path="/modul/hpp-baru" element={
+        <Shell>
+          <HppPratinjau />
+        </Shell>
+      } />
+      <Route path="/modul/barang-datang" element={
+        <Shell>
+          <BarangDatang />
+        </Shell>
+      } />
+      <Route path="/modul/bom-hpp" element={
+        <Shell>
+          <BomHpp />
+        </Shell>
+      } />
+
       {/* Fallback */}
       <Route path="*" element={
         <Shell>

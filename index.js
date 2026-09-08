@@ -14,15 +14,14 @@ const path = require('path');
 const bcrypt = require('bcryptjs');
 const expressLayouts = require('express-ejs-layouts');
 
+const PORT = process.env.PORT || 3000;
+
+const db = require('./db');
 // Diimpor di sini supaya direktori upload-nya DIBUAT saat boot, dan supaya
 // jalur yang disajikan di bawah ini persis sama dengan yang dipakai saat
 // menyimpan. Dua jalur yang ditulis terpisah bisa berbeda pendapat — dan
 // perbedaannya baru terasa sebagai foto yang tersimpan tapi tidak tampil.
 const photoUpload = require('./services/photoUpload');
-
-const PORT = process.env.PORT || 3000;
-
-const db = require('./db');
 
 function createApp(options = {}) {
   console.log('[createApp] Starting');
@@ -63,7 +62,18 @@ function createApp(options = {}) {
     '/products',
     '/purchase-orders',
     '/production-batches',
-    '/hpp'
+    '/hpp',
+    // 7 modul pratinjau (daftar kolom owner, 7 September 2026).
+    // Wajib didaftarkan di sini: catch-all hanya menyajikan SPA untuk rute
+    // yang ada di set ini, jadi rute React yang tidak terdaftar menjawab 404
+    // meski sudah ada di App.tsx.
+    '/modul/material',
+    '/modul/product',
+    '/modul/whitelabel',
+    '/modul/production-fulfillment',
+    '/modul/hpp-baru',
+    '/modul/barang-datang',
+    '/modul/bom-hpp'
   ]);
   console.log('[createApp] SPA_ROUTES created (no /login):', SPA_ROUTES.size);
   console.log('[createApp] SPA_ROUTES created (no /login):', SPA_ROUTES.size);

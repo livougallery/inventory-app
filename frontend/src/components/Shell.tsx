@@ -11,6 +11,12 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   ChevronRight,
+  Shirt,
+  Truck,
+  ClipboardList,
+  Calculator,
+  PackageCheck,
+  ListTree,
 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
@@ -39,7 +45,73 @@ interface NavSection {
   items: NavItem[];
 }
 
-const navSections: NavSection[] = [
+// ===== Saklar mode presentasi =====
+//
+// `true`  → sidebar hanya berisi 7 modul baru, dengan judul "Master Data".
+//           Dipakai saat merekam video untuk owner, supaya tidak ada halaman
+//           lama yang belum sesuai rancangan baru ikut terlihat.
+// `false` → sidebar lengkap seperti semula.
+//
+// Satu saklar, bukan menghapus menu satu per satu: begitu video selesai,
+// cukup balikkan nilai ini dan semua menu lama kembali persis seperti
+// sebelumnya — tanpa perlu mengingat apa saja yang tadi disembunyikan.
+const MODE_VIDEO = false;
+
+/**
+ * Path yang diblokir selama mode video (selain 7 modul).
+ *
+ * Menyembunyikan menu saja tidak cukup: halaman lama tetap bisa dibuka lewat
+ * URL, dan saat merekam video itu mudah terjadi tidak sengaja — misal tombol
+ * "kembali" di browser. Daftar ini dipakai App.tsx untuk mengalihkannya.
+ */
+export const PATH_DIBLOKIR_VIDEO: string[] = [
+  '/',
+  '/stok-material',
+  '/pembelian-material',
+  '/master-data',
+  '/bom',
+  '/vendors',
+  '/products',
+  '/purchase-orders',
+  '/production-batches',
+  '/hpp',
+];
+
+/** Path yang dituju bila membuka halaman yang diblokir saat mode video. */
+export const TUJUAN_VIDEO = '/modul/material';
+
+// Mode video aktif diekspor supaya App.tsx memakai SUMBER yang sama untuk
+// memutuskan kapan pengalihan dipasang. Kalau masing-masing punya saklar
+// sendiri, cepat atau lambat keduanya tidak sinkron.
+export const MODE_VIDEO_AKTIF = MODE_VIDEO;
+
+// Tujuh modul sesuai daftar kolom owner, 7 September 2026.
+const modulBaru: NavItem[] = [
+  { path: '/modul/material', label: 'Material', icon: Package, section: 'Master Data' },
+  { path: '/modul/product', label: 'Product', icon: Shirt, section: 'Master Data' },
+  { path: '/modul/whitelabel', label: 'White Label', icon: Truck, section: 'Master Data' },
+  {
+    path: '/modul/production-fulfillment',
+    label: 'Production Fulfillment',
+    icon: ClipboardList,
+    section: 'Master Data',
+  },
+  { path: '/modul/hpp-baru', label: 'HPP', icon: Calculator, section: 'Master Data' },
+  { path: '/modul/barang-datang', label: 'Barang Datang', icon: PackageCheck, section: 'Master Data' },
+  { path: '/modul/bom-hpp', label: 'BOM + HPP Production', icon: ListTree, section: 'Master Data' },
+];
+
+// Mode video: hanya 7 modul, judulnya "Master Data" sesuai permintaan owner.
+const navSectionsVideo: NavSection[] = [
+  {
+    title: 'Master Data',
+    items: modulBaru,
+  },
+];
+
+const navSections: NavSection[] = MODE_VIDEO
+  ? navSectionsVideo
+  : [
   {
     items: [{ path: '/', label: 'Dashboard', icon: LayoutDashboard }],
   },
@@ -112,7 +184,16 @@ const navSections: NavSection[] = [
       },
     ],
   },
-];
+  {
+    // Tujuh modul sesuai daftar kolom owner, 7 September 2026.
+    //
+    // Sengaja diletakkan di bagian sendiri: ini PRATINJAU tampilan yang belum
+    // terhubung ke database (tiap halaman memasang BannerPratinjau). Dicampur
+    // ke grup yang sudah ada akan membuatnya tampak seperti halaman jadi.
+    title: 'Modul Baru (Pratinjau)',
+    items: modulBaru,
+  },
+  ];
 
 // Breadcrumb statis per path — cukup untuk halaman level satu.
 function breadcrumbFor(pathname: string): { label: string; to?: string }[] {
