@@ -34,6 +34,18 @@ ini, lalu OAuth login Supabase di browser saat tool pertama dipakai.
 Lihat `~/.claude/CLAUDE.md` — UI component baru pakai shadcn/ui (pengecualian: halaman EJS
 server-rendered di `views/` pakai CSS inline, style referensi shadcn).
 
+### ReUI (frontend/)
+
+MCP server `reui` terdaftar di config **user-level** (`~/.claude.json`), bukan di `.mcp.json`
+project — jadi ia tersedia di semua project, bukan hanya yang ini. Skill-nya ada di
+`.claude/skills/reui/`, dengan salinan untuk agent lain di `.agents/skills/reui/`.
+Sebelum menulis component berat sendiri — tabel, kanban, calendar, stepper, tree — cari dulu
+di ReUI lewat MCP `reui`.
+
+- `frontend/components.json` sudah punya registry `@reui`, base `style: "base-nova"` (Base UI)
+- Install: `npx shadcn@latest add @reui/<name> --yes` dari dalam `frontend/`
+- Komponen yang sudah dipasang ada di `frontend/src/components/reui/`
+
 ## Agent skills
 
 ### Issue tracker
