@@ -33,6 +33,12 @@ uploads/*
 
 # Skrip smoke test & inspeksi DB sekali pakai di tmp/
 # (tmp/dump-postgres.js sengaja TIDAK masuk: itu alat backup yang dipakai rutin)
+#
+# PELAJARAN 2026-09-14: aturan tmp/smoke-*.cjs sempat menyembunyikan tiga skrip
+# smoke Vendors yang TIDAK punya duplikat di tests/ — satu-satunya verifikasi UI
+# halaman itu, dan karena terabaikan git, sekali terhapus ia hilang permanen.
+# Ketiganya sudah dipindah ke tests/. Kalau sebuah skrip masih berguna, ia
+# TIDAK boleh tinggal di tmp/ dengan pola yang diabaikan di sini.
 tmp/smoke/
 tmp/smoke-*.cjs
 tmp/check-*.js
@@ -40,7 +46,7 @@ tmp/reset-*.js
 tmp/*.patch
 
 # Draf pesan commit & body PR — artefak sekali pakai saat menyiapkan commit.
-# Sengaja TIDAK meng-ignore seluruh tmp/: 15 skrip di sana sudah terlacak dan
+# Sengaja TIDAK meng-ignore seluruh tmp/: skrip di sana sudah terlacak dan
 # masih dipakai (tmp/dump-postgres.js untuk backup, tmp/mutate-*.js untuk uji
 # mutasi). Meng-ignore direktori utuhnya tidak menghapus berkas yang sudah
 # terlacak itu, tetapi akan membuatnya tampak seperti belum ada — dan skrip
@@ -53,19 +59,10 @@ tmp/pr-body.md
 # beda dari skrip yang memang dipakai rutin.
 tmp/_*
 
-# Draf pesan commit & body PR — artefak sekali pakai saat menyiapkan commit.
-# Sengaja TIDAK meng-ignore seluruh tmp/: 15 skrip di sana sudah terlacak dan
-# masih dipakai (tmp/dump-postgres.js untuk backup, tmp/mutate-*.js untuk uji
-# mutasi). Meng-ignore direktori utuhnya tidak akan menghapus berkas yang sudah
-# terlacak itu, tetapi akan membuatnya tampak seperti belum ada — dan skrip
-# baru di tmp/ akan tersembunyi dari `git status` tanpa disadari.
-tmp/commit-msg-*.txt
-tmp/pr-*-body.md
-tmp/pr-body.md
-
-# Berkas bantuan sekali pakai: diawali underscore, jadi langsung kelihatan
-# beda dari skrip yang memang dipakai rutin.
-tmp/_*
+# Skrip debug sekali pakai (server mainan yang menyajikan dist/index.html).
+# Semuanya terlacak sampai 2026-09-14; pola ini mencegah yang serupa menumpuk.
+tmp/debug-*.js
+tmp/test-*.js
 
 # Frontend build output
 frontend/dist/

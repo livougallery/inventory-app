@@ -48,7 +48,7 @@ inventory-app/
 ├── tmp/                # 🗂️ Temporary files (backups, dumps)
 │   └── dump-postgres.js
 ├── tests/              # 🧪 Test suite
-├── scripts/            # 🛠️ Utility scripts
+├── scripts/            # 🛠️ Utility scripts (backfill, disk-usage)
 ├── data/               # 💾 Local database cache (not source of truth)
 ├── docs/               # 📚 Documentation
 │   ├── STRUCTURE.md    # This file
