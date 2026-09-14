@@ -68,6 +68,8 @@ function createApp(options = {}) {
     // yang ada di set ini, jadi rute React yang tidak terdaftar menjawab 404
     // meski sudah ada di App.tsx.
     '/modul/material',
+    // Prototipe reui Data Grid (bandingkan dengan /modul/material).
+    '/modul/material-grid',
     '/modul/product',
     '/modul/whitelabel',
     '/modul/production-fulfillment',

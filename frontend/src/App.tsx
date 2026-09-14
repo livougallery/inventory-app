@@ -10,6 +10,7 @@ import ProductionBatches from './pages/ProductionBatches';
 import BOM from './pages/BOM';
 import HPP from './pages/HPP';
 import Material from './pages/Material';
+import MaterialGrid from './pages/MaterialGrid';
 import Product from './pages/Product';
 import Whitelabel from './pages/Whitelabel';
 import ProductionFulfillment from './pages/ProductionFulfillment';
@@ -88,6 +89,13 @@ function App() {
       <Route path="/modul/material" element={
         <Shell>
           <Material />
+        </Shell>
+      } />
+      {/* Prototipe Data Grid — bandingkan dengan /modul/material sebelum
+          memutuskan mengganti semua tabel. Halaman contoh, bukan pengganti. */}
+      <Route path="/modul/material-grid" element={
+        <Shell>
+          <MaterialGrid />
         </Shell>
       } />
       <Route path="/modul/product" element={

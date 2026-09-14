@@ -1,14 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Hammer, Package, LoaderCircle, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  DataTableToolbar,
-  useDataTable,
-  type ColumnDef,
-} from '@/components/DataTableToolbar';
+import TabelPratinjau, { type KolomPratinjau } from '@/components/TabelPratinjau';
 import { apiJson, urlUnggahan } from '@/lib/api';
 import { rupiah, toNum } from '@/lib/format';
 
@@ -118,28 +113,119 @@ export default function StokMaterial() {
     loadMaterials();
   }, [loadMaterials]);
 
-  // Opsi filter kategori: nilai unik dari data, dihitung sekali per perubahan data.
+  // Opsi filter kategori: nilai unik dari data, dihitung sekali per perubahan
+  // data. Diurutkan locale 'id' supaya urutannya sama dengan kolom lain.
   const kategoriOptions = useMemo(
     () => [...new Set(materials.map((m) => m.tipe_label))].sort((a, b) => a.localeCompare(b, 'id')),
     [materials]
   );
 
-  const columns: ColumnDef<Material>[] = useMemo(
+  const columns: KolomPratinjau<Material>[] = useMemo(
     () => [
       // Foto diletakkan pertama: baris tabel material paling mudah dikenali
       // dari wujudnya, dan kolom ini tidak bisa diurut atau difilter
       // (nilainya cuma "ada" atau "tidak ada"), jadi menaruhnya di ujung
       // hanya membuatnya tersembunyi di balik scroll.
-      { key: 'foto', label: 'Foto', value: (m) => (m.foto_path ? 'ada' : null) },
-      { key: 'kode_bahan', label: 'Kode', value: (m) => m.kode_bahan },
-      { key: 'nama', label: 'Nama', value: (m) => m.nama },
-      { key: 'tipe', label: 'Kategori', value: (m) => m.tipe_label, filterOptions: kategoriOptions },
-      { key: 'jenis', label: 'Jenis', value: (m) => m.jenis ?? null, filterOptions: JENIS_OPTIONS },
-      { key: 'lokasi', label: 'Lokasi', value: (m) => m.lokasi_nama ?? null, filterOptions: LOKASI_CONTOH },
+      //
+      // `render` dipakai, bukan `jenis: 'foto'`: data ini NYATA, jadi yang
+      // ditampilkan thumbnail aslinya — bukan penanda "FOTO" milik pratinjau.
+      {
+        key: 'foto',
+        label: 'Foto',
+        value: (m) => (m.foto_path ? 'ada' : null),
+        render: (m) =>
+          m.foto_path ? (
+            // Thumbnail, bukan gambar utuh — tinggi baris tabel tidak boleh
+            // berubah-ubah tergantung ada tidaknya foto.
+            <a
+              href={urlUnggahan(m.foto_path)}
+              target="_blank"
+              rel="noreferrer"
+              title={`Foto ${m.nama}`}
+            >
+              <img
+                src={urlUnggahan(m.foto_path)}
+                alt={`Foto ${m.nama}`}
+                className="h-9 w-9 rounded border object-cover"
+                loading="lazy"
+              />
+            </a>
+          ) : (
+            // Em dash, BUKAN <img> dengan src kosong: itu akan memicu
+            // permintaan gagal ke server dan menampilkan ikon gambar rusak
+            // di setiap baris yang belum punya foto.
+            <span className="text-muted-foreground">—</span>
+          ),
+      },
+      {
+        key: 'kode_bahan',
+        label: 'Kode',
+        value: (m) => m.kode_bahan,
+        render: (m) => (
+          <span className="font-mono text-sm font-medium">{m.kode_bahan ?? '—'}</span>
+        ),
+      },
+      {
+        key: 'nama',
+        label: 'Nama',
+        value: (m) => m.nama,
+        render: (m) => <span className="font-medium">{m.nama}</span>,
+      },
+      {
+        key: 'tipe',
+        label: 'Kategori',
+        value: (m) => m.tipe_label,
+        jenis: 'badge',
+        filterOptions: kategoriOptions,
+      },
+      { key: 'jenis', label: 'Jenis', value: (m) => m.jenis ?? null, filterOptions: JENIS_OPTIONS, lebar: 'max-w-40' },
+      {
+        key: 'lokasi',
+        label: 'Lokasi',
+        value: (m) => m.lokasi_nama ?? null,
+        filterOptions: LOKASI_CONTOH,
+        render: (m) => (
+          <span className="whitespace-nowrap text-muted-foreground">
+            {m.lokasi_nama || '—'}
+          </span>
+        ),
+      },
       { key: 'satuan', label: 'Satuan', value: (m) => m.satuan },
-      { key: 'varian', label: 'Varian', value: (m) => m.varian_list || null },
-      { key: 'stok', label: 'Stok', value: (m) => toNum(m.stok) },
-      { key: 'harga_terakhir', label: 'Harga Terakhir', value: (m) => m.harga_terakhir },
+      { key: 'varian', label: 'Varian', value: (m) => m.varian_list || null, lebar: 'max-w-48' },
+      {
+        key: 'stok',
+        label: 'Stok',
+        value: (m) => toNum(m.stok),
+        jenis: 'angka',
+        // Badge "Habis" menempel di angka stok — tidak bisa dinyatakan
+        // dengan `jenis` saja.
+        render: (m) => (
+          <span className="inline-flex items-center">
+            <span className="font-medium">{Number(m.stok).toLocaleString('id-ID')}</span>
+            {(toNum(m.stok) ?? 0) <= 0 && (
+              <Badge variant="destructive" className="ml-2">
+                Habis
+              </Badge>
+            )}
+          </span>
+        ),
+      },
+      {
+        key: 'harga_terakhir',
+        label: 'Harga Terakhir',
+        value: (m) => m.harga_terakhir,
+        jenis: 'uang',
+        render: (m) =>
+          m.harga_terakhir === null ? (
+            <span className="text-muted-foreground" title="Belum pernah ada pembelian">
+              —
+            </span>
+          ) : (
+            <span className="whitespace-nowrap tabular-nums">
+              {rupiah(Number(m.harga_terakhir))}
+            </span>
+          ),
+      },
     ],
     [kategoriOptions]
   );
@@ -153,98 +239,8 @@ export default function StokMaterial() {
     []
   );
 
-  // Pipeline search/filter/sort hidup di hook — identitas stabil, tanpa loop render.
-  const table = useDataTable(materials, columns, searchFields);
-  const visible = table.rows;
-  const hidden = table.hiddenColumns;
-  const { controls } = table;
-
   const outOfStock = materials.filter((m) => (toNum(m.stok) ?? 0) <= 0).length;
   const noPurchaseYet = materials.filter((m) => m.harga_terakhir === null).length;
-
-  // Render satu kolom dari sebuah baris (dipakai body; header pakai daftar yang sama).
-  const renderCell = (m: Material, key: string) => {
-    switch (key) {
-      case 'foto':
-        return (
-          <TableCell key={key}>
-            {m.foto_path ? (
-              // Thumbnail, bukan gambar utuh — tinggi baris tabel tidak boleh
-              // berubah-ubah tergantung ada tidaknya foto.
-              <a
-                href={urlUnggahan(m.foto_path)}
-                target="_blank"
-                rel="noreferrer"
-                title={`Foto ${m.nama}`}
-              >
-                <img
-                  src={urlUnggahan(m.foto_path)}
-                  alt={`Foto ${m.nama}`}
-                  className="h-9 w-9 rounded border object-cover"
-                  loading="lazy"
-                />
-              </a>
-            ) : (
-              // Em dash, BUKAN <img> dengan src kosong: itu akan memicu
-              // permintaan gagal ke server dan menampilkan ikon gambar rusak
-              // di setiap baris yang belum punya foto — yang hari ini semua.
-              <span className="text-muted-foreground">—</span>
-            )}
-          </TableCell>
-        );
-      case 'kode_bahan':
-        return <TableCell key={key} className="font-mono font-medium text-sm">{m.kode_bahan ?? '—'}</TableCell>;
-      case 'nama':
-        return <TableCell key={key} className="font-medium">{m.nama}</TableCell>;
-      case 'tipe':
-        return (
-          <TableCell key={key}>
-            <Badge variant="outline">{m.tipe_label}</Badge>
-          </TableCell>
-        );
-      case 'jenis':
-        return (
-          <TableCell key={key} className="max-w-40 truncate" title={m.jenis ?? ''}>
-            {m.jenis || '—'}
-          </TableCell>
-        );
-      case 'lokasi':
-        return (
-          <TableCell key={key} className="whitespace-nowrap text-muted-foreground">
-            {m.lokasi_nama || '—'}
-          </TableCell>
-        );
-      case 'satuan':
-        return <TableCell key={key}>{m.satuan}</TableCell>;
-      case 'varian':
-        return (
-          <TableCell key={key} className="max-w-48 truncate text-muted-foreground" title={m.varian_list}>
-            {m.varian_list || '—'}
-          </TableCell>
-        );
-      case 'stok':
-        return (
-          <TableCell key={key}>
-            <span className="font-medium">{Number(m.stok).toLocaleString('id-ID')}</span>
-            {(toNum(m.stok) ?? 0) <= 0 && <Badge variant="destructive" className="ml-2">Habis</Badge>}
-          </TableCell>
-        );
-      case 'harga_terakhir':
-        return (
-          <TableCell key={key}>
-            {m.harga_terakhir === null ? (
-              <span className="text-muted-foreground" title="Belum pernah ada pembelian">—</span>
-            ) : (
-              rupiah(Number(m.harga_terakhir))
-            )}
-          </TableCell>
-        );
-      default:
-        return null;
-    }
-  };
-
-  const visibleColumns = columns.filter((c) => !hidden.has(c.key));
 
   return (
     <>
@@ -297,23 +293,14 @@ export default function StokMaterial() {
         </Card>
       </div>
 
+      {/* Judul kartu memakai jumlah BARIS, bukan hasil filter: angka di sini
+          menunjukkan berapa material terdaftar, dan menyusut saat user
+          mengetik di kolom cari akan terasa seperti data yang hilang. */}
       <Card>
         <CardHeader>
-          <CardTitle>Stok Material ({visible.length})</CardTitle>
+          <CardTitle>Stok Material ({materials.length})</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <DataTableToolbar
-            rows={materials}
-            columns={columns}
-            searchFields={searchFields}
-            searchPlaceholder="Cari kode, nama, atau varian…"
-            itemLabel="material"
-            onRefresh={loadMaterials}
-            refreshing={loading}
-            resetOnRefresh
-            controls={controls}
-          />
-
           {loading && materials.length === 0 ? (
             <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
               <LoaderCircle className="h-4 w-4 animate-spin" /> Memuat data…
@@ -330,34 +317,17 @@ export default function StokMaterial() {
                   Gagal memuat ulang: {loadError} — menampilkan data terakhir.
                 </p>
               )}
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {visibleColumns.map((c) => (
-                        <TableHead key={c.key}>{c.label}</TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {visible.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={visibleColumns.length || 1} className="text-center py-10 text-sm text-muted-foreground">
-                          {materials.length === 0
-                            ? 'Belum ada material terdaftar.'
-                            : 'Tidak ada yang cocok dengan pencarian/filter.'}
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      visible.map((m) => (
-                        <TableRow key={m.id}>
-                          {visibleColumns.map((c) => renderCell(m, c.key))}
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+              <TabelPratinjau
+                rows={materials}
+                columns={columns}
+                searchFields={searchFields}
+                searchPlaceholder="Cari kode, nama, atau varian…"
+                itemLabel="material"
+                rowKey={(m) => m.id}
+                onRefresh={loadMaterials}
+                refreshing={loading}
+                emptyMessage="Belum ada material terdaftar."
+              />
             </>
           )}
         </CardContent>

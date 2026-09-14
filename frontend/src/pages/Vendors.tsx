@@ -1,5 +1,4 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -18,21 +17,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Building2, LoaderCircle, Pencil, Plus, Trash2, TriangleAlert } from 'lucide-react';
+import { LoaderCircle, Pencil, Plus, Trash2, TriangleAlert } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  DataTableToolbar,
-  useDataTable,
-  type ColumnDef,
-} from '@/components/DataTableToolbar';
+import TabelPratinjau, { type KolomPratinjau } from '@/components/TabelPratinjau';
 import { apiJson, withCsrf } from '@/lib/api';
 
 // ===== Tipe data (mengikuti JSON /api/vendors dan skema tabel `vendors`) =====
@@ -117,40 +104,16 @@ export default function Vendors() {
     []
   );
 
-  const columns: ColumnDef<Vendor>[] = useMemo(
-    () => [
-      { key: 'nama', label: 'Nama Vendor', value: (v) => v.nama },
-      { key: 'alamat', label: 'Alamat', value: (v) => v.alamat || null },
-      { key: 'kontak', label: 'Kontak', value: (v) => v.kontak || null },
-      {
-        key: 'tipe',
-        label: 'Tipe',
-        // `tipe_label` dari server (konvensi StokMaterial), dengan jatuh balik
-        // ke peta klien. Fallback ini menjaga badge dan opsi filter tetap dari
-        // satu sumber: kalau server belum mengirim label, barisnya tidak
-        // menjadi mustahil difilter.
-        value: (v) => v.tipe_label ?? tipeLabel[v.tipe] ?? v.tipe,
-        filterOptions: tipeFilterOptions,
-      },
-    ],
-    [tipeFilterOptions]
-  );
-
   const searchFields = useMemo(
     () => [
       { label: 'Nama', get: (v: Vendor) => v.nama },
-      // `alamat` nullable di DB (TEXT DEFAULT ''), sementara useDataTable
+      // `alamat` nullable di DB (TEXT DEFAULT ''), sementara pencarian
       // memanggil .toLowerCase() langsung pada hasil get. Baris lama dengan
-      // alamat NULL akan melempar saat mencari tanpa lindungan ini.
+      // alamat NULL akan melempar saat dicari tanpa lindungan ini.
       { label: 'Alamat', get: (v: Vendor) => v.alamat ?? '' },
     ],
     []
   );
-
-  const table = useDataTable(vendors, columns, searchFields);
-  const visible = table.rows;
-  const hidden = table.hiddenColumns;
-  const { controls } = table;
 
   // ===== Simpan & hapus =====
 
@@ -160,7 +123,9 @@ export default function Vendors() {
     setDialog('create');
   };
 
-  const openEdit = (vendor: Vendor) => {
+  // useCallback: dipakai sebagai dependency useMemo kolom di bawah. Tanpa ini
+  // identitasnya baru tiap render dan kolom Aksi dibangun ulang terus-menerus.
+  const openEdit = useCallback((vendor: Vendor) => {
     setForm({
       nama: vendor.nama,
       alamat: vendor.alamat ?? '',
@@ -169,7 +134,7 @@ export default function Vendors() {
     });
     setFormError(null);
     setDialog(vendor);
-  };
+  }, []);
 
   const closeDialog = () => {
     setDialog(null);
@@ -207,50 +172,81 @@ export default function Vendors() {
     }
   };
 
-  const deleteVendor = async (vendor: Vendor) => {
-    // Konfirmasi dua langkah: hapus vendor menolak kalau masih dipakai
-    // transaksi, tapi kalau tidak dipakai ia langsung hilang.
-    if (!window.confirm(`Hapus vendor "${vendor.nama}"?`)) return;
-    try {
-      const init = await withCsrf({ method: 'DELETE' });
-      await apiJson(`/api/vendors/${vendor.id}`, init);
-      await loadVendors();
-    } catch (e) {
-      // Pesan penolakan dari server menyebut jumlah dan lokasi pemakaian.
-      window.alert(e instanceof Error ? e.message : 'Gagal menghapus vendor');
-    }
-  };
+  const deleteVendor = useCallback(
+    async (vendor: Vendor) => {
+      // Konfirmasi dua langkah: hapus vendor menolak kalau masih dipakai
+      // transaksi, tapi kalau tidak dipakai ia langsung hilang.
+      if (!window.confirm(`Hapus vendor "${vendor.nama}"?`)) return;
+      try {
+        const init = await withCsrf({ method: 'DELETE' });
+        await apiJson(`/api/vendors/${vendor.id}`, init);
+        await loadVendors();
+      } catch (e) {
+        // Pesan penolakan dari server menyebut jumlah dan lokasi pemakaian.
+        window.alert(e instanceof Error ? e.message : 'Gagal menghapus vendor');
+      }
+    },
+    [loadVendors]
+  );
 
-  // ===== Render =====
+  // ===== Kolom =====
+  // Didefinisikan SETELAH openEdit/deleteVendor: kolom Aksi memanggil
+  // keduanya, dan `const` tidak di-hoist — ditaruh di atas akan meledak
+  // dengan ReferenceError saat render pertama.
 
-  const renderCell = (v: Vendor, key: string) => {
-    switch (key) {
-      case 'nama':
-        return (
-          <TableCell key={key} className="font-medium">
-            {v.nama}
-          </TableCell>
-        );
-      case 'alamat':
-        return (
-          <TableCell key={key} className="max-w-56 truncate text-muted-foreground" title={v.alamat}>
-            {v.alamat || '—'}
-          </TableCell>
-        );
-      case 'kontak':
-        return <TableCell key={key}>{v.kontak || '—'}</TableCell>;
-      case 'tipe':
-        return (
-          <TableCell key={key}>
-            <Badge variant="outline">{v.tipe_label ?? tipeLabel[v.tipe] ?? v.tipe}</Badge>
-          </TableCell>
-        );
-      default:
-        return null;
-    }
-  };
+  const columns: KolomPratinjau<Vendor>[] = useMemo(
+    () => [
+      {
+        key: 'nama',
+        label: 'Nama Vendor',
+        value: (v) => v.nama,
+        render: (v) => <span className="font-medium">{v.nama}</span>,
+      },
+      { key: 'alamat', label: 'Alamat', value: (v) => v.alamat || null, lebar: 'max-w-56' },
+      { key: 'kontak', label: 'Kontak', value: (v) => v.kontak || null },
+      {
+        key: 'tipe',
+        label: 'Tipe',
+        // `tipe_label` dari server (konvensi StokMaterial), dengan jatuh balik
+        // ke peta klien. Fallback ini menjaga badge dan opsi filter tetap dari
+        // satu sumber: kalau server belum mengirim label, barisnya tidak
+        // menjadi mustahil difilter.
+        value: (v) => v.tipe_label ?? tipeLabel[v.tipe] ?? v.tipe,
+        jenis: 'badge',
+        filterOptions: tipeFilterOptions,
+      },
+      // Kolom aksi jadi kolom sungguhan, bukan <TableHead> tambahan:
+      // DataGrid membangun header dari definisi kolom, jadi header yang
+      // ditulis langsung di JSX tidak akan pernah dirender.
+      {
+        key: 'aksi',
+        label: 'Aksi',
+        value: () => null,
+        render: (v) => (
+          <div className="flex items-center justify-end gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => openEdit(v)}
+              aria-label={`Ubah ${v.nama}`}
+            >
+              <Pencil className="h-4 w-4" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => deleteVendor(v)}
+              aria-label={`Hapus ${v.nama}`}
+            >
+              <Trash2 className="h-4 w-4 text-red-600" />
+            </Button>
+          </div>
+        ),
+      },
+    ],
+    [tipeFilterOptions, openEdit, deleteVendor]
+  );
 
-  const visibleColumns = columns.filter((c) => !hidden.has(c.key));
   const dialogTitle = dialog === 'create' ? 'Tambah Vendor' : 'Ubah Vendor';
 
   return (
@@ -267,23 +263,13 @@ export default function Vendors() {
         </Button>
       </div>
 
+      {/* Judul memakai jumlah BARIS, bukan hasil filter — lihat catatan di
+          StokMaterial. */}
       <Card>
         <CardHeader>
-          <CardTitle>Semua Vendor ({visible.length})</CardTitle>
+          <CardTitle>Semua Vendor ({vendors.length})</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <DataTableToolbar
-            rows={vendors}
-            columns={columns}
-            searchFields={searchFields}
-            searchPlaceholder="Cari nama atau alamat…"
-            itemLabel="vendor"
-            onRefresh={loadVendors}
-            refreshing={loading}
-            resetOnRefresh
-            controls={controls}
-          />
-
           {loading && vendors.length === 0 ? (
             <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
               <LoaderCircle className="h-4 w-4 animate-spin" /> Memuat data…
@@ -304,63 +290,17 @@ export default function Vendors() {
                   Gagal memuat ulang: {loadError} — menampilkan data terakhir.
                 </p>
               )}
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {visibleColumns.map((c) => (
-                        <TableHead key={c.key}>{c.label}</TableHead>
-                      ))}
-                      <TableHead className="text-right">Aksi</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {visible.length === 0 ? (
-                      <TableRow>
-                        <TableCell
-                          colSpan={visibleColumns.length + 1}
-                          className="py-10 text-center text-sm text-muted-foreground"
-                        >
-                          {vendors.length === 0 ? (
-                            <span className="flex flex-col items-center gap-2">
-                              <Building2 className="h-6 w-6" />
-                              Belum ada vendor terdaftar.
-                            </span>
-                          ) : (
-                            'Tidak ada vendor yang cocok dengan pencarian/filter.'
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      visible.map((v) => (
-                        <TableRow key={v.id}>
-                          {visibleColumns.map((c) => renderCell(v, c.key))}
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => openEdit(v)}
-                                aria-label={`Ubah ${v.nama}`}
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => deleteVendor(v)}
-                                aria-label={`Hapus ${v.nama}`}
-                              >
-                                <Trash2 className="h-4 w-4 text-red-600" />
-                              </Button>
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+              <TabelPratinjau
+                rows={vendors}
+                columns={columns}
+                searchFields={searchFields}
+                searchPlaceholder="Cari nama atau alamat…"
+                itemLabel="vendor"
+                rowKey={(v) => v.id}
+                onRefresh={loadVendors}
+                refreshing={loading}
+                emptyMessage="Belum ada vendor terdaftar."
+              />
             </>
           )}
         </CardContent>

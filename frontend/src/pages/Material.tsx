@@ -48,7 +48,7 @@ export interface BarisMaterial {
 // Baris contoh. Sengaja dibuat mencakup tiap kategori, supaya owner bisa
 // melihat bahwa pilihan Jenis BERUBAH mengikuti Kategori — bukan daftar yang
 // sama untuk semua baris.
-const barisContoh: BarisMaterial[] = [
+export const barisContoh: BarisMaterial[] = [
   {
     id: 1,
     tanggal: '2026-09-01',

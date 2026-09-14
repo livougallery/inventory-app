@@ -1,0 +1,16 @@
+{
+  "extends": "./tsconfig.app.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.reui.tsbuildinfo",
+    // Komponen reui diunduh dari registry dan berisi kode sisa dari situs
+    // demonya: impor yang tidak terpakai, variabel yang dideklarasikan untuk
+    // contoh yang tidak ikut disalin. Aturan kebersihan project tidak
+    // berlaku untuk kode yang bukan kita tulis — memaksanya berarti menyunting
+    // berkas vendor, dan setiap pembaruan registry akan menimpa suntingan itu.
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    "verbatimModuleSyntax": false
+  },
+  "include": ["src/components/reui", "src/components/reui/data-grid-table.tsx"],
+  "exclude": []
+}

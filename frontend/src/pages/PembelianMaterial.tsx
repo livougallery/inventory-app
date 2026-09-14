@@ -1,8 +1,12 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Badge } from '@/components/ui/badge';
 import { Textarea } from '@/components/ui/textarea';
+// Tabel shadcn MASIH dipakai — bukan untuk daftar utama (itu sekarang reui
+// Data Grid), melainkan untuk tabel item di dalam dialog detail. Data Grid
+// untuk lima baris item di dalam dialog justru berlebihan: tidak ada
+// sort/filter/paginasi yang dibutuhkan di situ.
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import {
   Dialog,
   DialogContent,
@@ -22,11 +26,7 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import {
-  DataTableToolbar,
-  useDataTable,
-  type ColumnDef,
-} from '@/components/DataTableToolbar';
+import TabelPratinjau, { type KolomPratinjau } from '@/components/TabelPratinjau';
 import CreatePoDialog from '@/components/CreatePoDialog';
 import {
   AlertDialog,
@@ -384,24 +384,52 @@ export default function PembelianMaterial() {
 
   // Kolom aksi hanya berisi untuk PO pending. Kolomnya tetap dikirim untuk
   // semua baris supaya lebar tabel tidak berubah-ubah; isinya yang kosong.
-  const columns: ColumnDef<PurchaseOrder>[] = useMemo(
+  const columns: KolomPratinjau<PurchaseOrder>[] = useMemo(
     () => [
-      { key: 'no_po', label: 'No. PO', value: (o) => o.no_po },
-      { key: 'vendor', label: 'Vendor', value: (o) => o.vendor_nama ?? '' },
+      {
+        key: 'no_po',
+        label: 'No. PO',
+        value: (o) => o.no_po,
+        render: (o) => <span className="font-mono text-sm font-medium">{o.no_po}</span>,
+      },
+      {
+        key: 'vendor',
+        label: 'Vendor',
+        value: (o) => o.vendor_nama ?? '',
+        render: (o) => <span className="font-medium">{o.vendor_nama || '—'}</span>,
+      },
       { key: 'tgl_beli', label: 'Tanggal', value: (o) => o.tgl_beli },
-      { key: 'total', label: 'Total', value: (o) => toNum(o.total) ?? 0 },
+      {
+        key: 'total',
+        label: 'Total',
+        value: (o) => toNum(o.total) ?? 0,
+        jenis: 'uang',
+        render: (o) => (
+          <span className="block whitespace-nowrap text-right tabular-nums">
+            {rupiah(toNum(o.total) ?? 0)}
+          </span>
+        ),
+      },
       {
         key: 'status',
         label: 'Status',
         value: (o) => o.status_label,
         filterOptions: statusOptions,
+        render: (o) => <StatusBadge status={o.status} statusLabel={o.status_label} />,
       },
-      { key: 'creator', label: 'Dibuat Oleh', value: (o) => o.creator_name ?? '' },
+      {
+        key: 'creator',
+        label: 'Dibuat Oleh',
+        value: (o) => o.creator_name ?? '',
+        render: (o) => (
+          <span className="text-muted-foreground">{o.creator_name || '—'}</span>
+        ),
+      },
       // Kedua kolom keputusan mengembalikan null (bukan '') saat PO belum
       // diputuskan, supaya keduanya berkelakuan sama saat diurut.
       //
       // Ini sengaja berbeda dari kolom `creator` di atas, yang memakai `?? ''`.
-      // useDataTable menaruh null paling bawah pada arah urutan apa pun, jadi
+      // Data Grid menaruh null paling bawah pada arah urutan apa pun, jadi
       // dua kolom ini mengelompokkan PO yang menunggu keputusan di akhir
       // daftar, bersama-sama. Kalau `validator` mengembalikan '' seperti
       // `creator`, string kosong ikut diurut sebagai teks dan muncul lebih
@@ -409,8 +437,26 @@ export default function PembelianMaterial() {
       // menaruh PO yang belum diputuskan di ATAS, berlawanan dengan kolom
       // tanggal di sebelahnya, padahal keduanya bicara tentang kejadian
       // yang sama.
-      { key: 'validated_at', label: 'Tanggal Keputusan', value: (o) => o.validated_at },
-      { key: 'validator', label: 'Diputuskan Oleh', value: (o) => o.validator_name },
+      {
+        key: 'validated_at',
+        label: 'Tanggal Keputusan',
+        value: (o) => o.validated_at,
+        render: (o) => (
+          // Em dash, bukan "null" atau "Invalid Date". PO pending belum punya
+          // keputusan — ini keadaan normal, bukan error.
+          <span className="whitespace-nowrap text-muted-foreground">
+            {o.validated_at || '—'}
+          </span>
+        ),
+      },
+      {
+        key: 'validator',
+        label: 'Diputuskan Oleh',
+        value: (o) => o.validator_name,
+        render: (o) => (
+          <span className="text-muted-foreground">{o.validator_name || '—'}</span>
+        ),
+      },
       // Filterable, karena nilainya cuma lima — beda dengan vendor yang bisa
       // puluhan. Daftar opsi dihitung dari data yang ada, bukan dari daftar
       // tetap server: opsi filter yang tidak muncul di data mana pun hanya
@@ -420,13 +466,118 @@ export default function PembelianMaterial() {
         label: 'Flow Transaksi',
         value: (o) => o.flow_transaksi || null,
         filterOptions: flowOptions,
+        render: (o) => (
+          // Em dash, bukan sel kosong: sel kosong tidak bisa dibedakan dari
+          // kolom yang belum dimuat.
+          <span className="whitespace-nowrap text-muted-foreground">
+            {o.flow_transaksi || '—'}
+          </span>
+        ),
       },
       // Kolom foto TIDAK bisa difilter dan tidak bisa diurut: nilainya cuma
       // "ada" atau "tidak ada", jadi keduanya tidak bermakna di sini.
       // Khusus: filterable=false dinyatakan dengan tidak mengisi
       // filterOptions, sama seperti kolom lain yang tidak difilter.
-      { key: 'foto', label: 'Foto', value: (o) => (o.foto_path ? 'ada' : null) },
-      { key: 'aksi', label: 'Aksi', value: () => '' },
+      {
+        key: 'foto',
+        label: 'Foto',
+        value: (o) => (o.foto_path ? 'ada' : null),
+        render: (o) =>
+          o.foto_path ? (
+            // Thumbnail, bukan gambar utuh: baris tabel tidak boleh berubah
+            // tinggi setiap kali ada PO berfoto. Klik membuka ukuran penuh
+            // di tab baru — halaman ini tidak punya penampil gambar sendiri.
+            <a
+              href={urlUnggahan(o.foto_path)}
+              target="_blank"
+              rel="noreferrer"
+              // stopPropagation: baris tabel membuka dialog detail pada klik.
+              // Tanpa ini, mengklik thumbnail membuka dua hal sekaligus.
+              onClick={(e) => e.stopPropagation()}
+              title="Buka foto nota"
+            >
+              <img
+                src={urlUnggahan(o.foto_path)}
+                alt={`Foto nota ${o.no_po}`}
+                className="h-9 w-9 rounded border object-cover"
+                loading="lazy"
+              />
+            </a>
+          ) : (
+            // Em dash, BUKAN <img> dengan src kosong — itu akan memicu
+            // permintaan gagal ke server dan menampilkan ikon rusak.
+            <span className="text-muted-foreground">—</span>
+          ),
+      },
+      {
+        key: 'aksi',
+        label: 'Aksi',
+        value: () => '',
+        render: (o) =>
+          // Kolom aksi hanya berisi untuk PO pending. Kolomnya tetap dikirim
+          // untuk semua baris supaya lebar tabel tidak berubah-ubah; isinya
+          // yang kosong.
+          o.status === 'pending' ? (
+            <div className="flex justify-end gap-1">
+              {/* Validasi: hijau, karena ini tindakan yang diharapkan.
+                  Urutan sengaja: validasi, tolak, ubah, hapus — dari yang
+                  paling sering ke yang paling jarang. */}
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActionError(null);
+                  setValidatingId(o.id);
+                }}
+                aria-label={`Validasi ${o.no_po}`}
+                title="Validasi: masukkan barang ke stok"
+              >
+                <Check className="h-4 w-4 text-green-600" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setRejectError(null);
+                  setRejectReason('');
+                  setRejectTarget(o);
+                }}
+                aria-label={`Tolak ${o.no_po}`}
+                title="Tolak purchase order"
+              >
+                <X className="h-4 w-4 text-orange-600" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                // stopPropagation WAJIB: baris tabel membuka dialog detail
+                // pada klik. Tanpa ini satu klik memicu dua dialog
+                // bertumpuk — edit sekaligus detail.
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openEdit(o);
+                }}
+                aria-label={`Ubah ${o.no_po}`}
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setDeleteError(null);
+                  setDeleteTarget(o);
+                }}
+                aria-label={`Hapus ${o.no_po}`}
+              >
+                <Trash2 className="h-4 w-4 text-red-600" />
+              </Button>
+            </div>
+          ) : null,
+      },
     ],
     [statusOptions, flowOptions]
   );
@@ -435,161 +586,14 @@ export default function PembelianMaterial() {
     () => [
       { label: 'No. PO', get: (o: PurchaseOrder) => o.no_po },
       // vendor_nama nullable (LEFT JOIN): baris dengan vendor yang sudah
-      // dihapus akan melempar di useDataTable tanpa lindungan ini.
+      // dihapus akan melempar saat dicari tanpa lindungan ini.
       { label: 'Vendor', get: (o: PurchaseOrder) => o.vendor_nama ?? '' },
     ],
     []
   );
 
-  // Pipeline search/filter/sort hidup di hook — identitas stabil, tanpa loop render.
-  const table = useDataTable(orders, columns, searchFields);
-  const visible = table.rows;
-  const hidden = table.hiddenColumns;
-  const { controls } = table;
-
   const totalNilai = orders.reduce((sum, o) => sum + (toNum(o.total) ?? 0), 0);
   const pendingCount = orders.filter((o) => o.status === 'pending').length;
-
-  // Render satu kolom dari sebuah baris (dipakai body; header pakai daftar yang sama).
-  const renderCell = (o: PurchaseOrder, key: string) => {
-    switch (key) {
-      case 'no_po':
-        return <TableCell key={key} className="font-mono font-medium text-sm">{o.no_po}</TableCell>;
-      case 'vendor':
-        return <TableCell key={key} className="font-medium">{o.vendor_nama || '—'}</TableCell>;
-      case 'tgl_beli':
-        return <TableCell key={key}>{o.tgl_beli}</TableCell>;
-      case 'total':
-        return <TableCell key={key} className="text-right whitespace-nowrap">{rupiah(toNum(o.total) ?? 0)}</TableCell>;
-      case 'status':
-        return (
-          <TableCell key={key}>
-            <StatusBadge status={o.status} statusLabel={o.status_label} />
-          </TableCell>
-        );
-      case 'creator':
-        return <TableCell key={key} className="text-muted-foreground">{o.creator_name || '—'}</TableCell>;
-      case 'validated_at':
-        // Em dash, bukan "null" atau "Invalid Date". PO pending belum punya
-        // keputusan — ini keadaan normal, bukan error.
-        return (
-          <TableCell key={key} className="whitespace-nowrap text-muted-foreground">
-            {o.validated_at || '—'}
-          </TableCell>
-        );
-      case 'validator':
-        return (
-          <TableCell key={key} className="text-muted-foreground">{o.validator_name || '—'}</TableCell>
-        );
-      case 'flow_transaksi':
-        // Em dash, bukan sel kosong: sel kosong tidak bisa dibedakan dari
-        // kolom yang belum dimuat.
-        return (
-          <TableCell key={key} className="whitespace-nowrap text-muted-foreground">
-            {o.flow_transaksi || '—'}
-          </TableCell>
-        );
-      case 'foto':
-        return (
-          <TableCell key={key}>
-            {o.foto_path ? (
-              // Thumbnail, bukan gambar utuh: baris tabel tidak boleh berubah
-              // tinggi setiap kali ada PO berfoto. Klik membuka ukuran penuh
-              // di tab baru — halaman ini tidak punya penampil gambar sendiri.
-              <a
-                href={urlUnggahan(o.foto_path)}
-                target="_blank"
-                rel="noreferrer"
-                // stopPropagation: baris tabel membuka dialog detail pada klik.
-                // Tanpa ini, mengklik thumbnail membuka dua hal sekaligus.
-                onClick={(e) => e.stopPropagation()}
-                title="Buka foto nota"
-              >
-                <img
-                  src={urlUnggahan(o.foto_path)}
-                  alt={`Foto nota ${o.no_po}`}
-                  className="h-9 w-9 rounded border object-cover"
-                  loading="lazy"
-                />
-              </a>
-            ) : (
-              // Em dash, BUKAN <img> dengan src kosong — itu akan memicu
-              // permintaan gagal ke server dan menampilkan ikon rusak.
-              <span className="text-muted-foreground">—</span>
-            )}
-          </TableCell>
-        );
-      case 'aksi':
-        return (
-          <TableCell key={key} className="text-right">
-            {o.status === 'pending' ? (
-              <div className="flex justify-end gap-1">
-                {/* Validasi: hijau, karena ini tindakan yang diharapkan.
-                    Urutan sengaja: validasi, tolak, ubah, hapus — dari yang
-                    paling sering ke yang paling jarang. */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setActionError(null);
-                    setValidatingId(o.id);
-                  }}
-                  aria-label={`Validasi ${o.no_po}`}
-                  title="Validasi: masukkan barang ke stok"
-                >
-                  <Check className="h-4 w-4 text-green-600" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setRejectError(null);
-                    setRejectReason('');
-                    setRejectTarget(o);
-                  }}
-                  aria-label={`Tolak ${o.no_po}`}
-                  title="Tolak purchase order"
-                >
-                  <X className="h-4 w-4 text-orange-600" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  // stopPropagation WAJIB: baris tabel membuka dialog detail
-                  // pada klik. Tanpa ini satu klik memicu dua dialog
-                  // bertumpuk — edit sekaligus detail.
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    openEdit(o);
-                  }}
-                  aria-label={`Ubah ${o.no_po}`}
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setDeleteError(null);
-                    setDeleteTarget(o);
-                  }}
-                  aria-label={`Hapus ${o.no_po}`}
-                >
-                  <Trash2 className="h-4 w-4 text-red-600" />
-                </Button>
-              </div>
-            ) : null}
-          </TableCell>
-        );
-      default:
-        return null;
-    }
-  };
-
-  const visibleColumns = columns.filter((c) => !hidden.has(c.key));
 
   return (
     <>
@@ -642,22 +646,12 @@ export default function PembelianMaterial() {
       </div>
 
       <Card>
+        {/* Judul memakai jumlah BARIS, bukan hasil filter — lihat catatan di
+            StokMaterial. */}
         <CardHeader>
-          <CardTitle>Daftar Pembelian ({visible.length})</CardTitle>
+          <CardTitle>Daftar Pembelian ({orders.length})</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <DataTableToolbar
-            rows={orders}
-            columns={columns}
-            searchFields={searchFields}
-            searchPlaceholder="Cari no. PO atau vendor…"
-            itemLabel="PO"
-            onRefresh={loadOrders}
-            refreshing={loading}
-            resetOnRefresh
-            controls={controls}
-          />
-
           {loading && orders.length === 0 ? (
             <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
               <LoaderCircle className="h-4 w-4 animate-spin" /> Memuat data…
@@ -674,52 +668,28 @@ export default function PembelianMaterial() {
                   Gagal memuat ulang: {loadError} — menampilkan data terakhir.
                 </p>
               )}
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      {visibleColumns.map((c) => (
-                        <TableHead key={c.key} className={c.key === 'total' ? 'text-right' : undefined}>
-                          {c.label}
-                        </TableHead>
-                      ))}
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {visible.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={visibleColumns.length || 1} className="text-center py-10 text-sm text-muted-foreground">
-                          {orders.length === 0
-                            ? 'Belum ada pembelian material tercatat.'
-                            : 'Tidak ada yang cocok dengan pencarian/filter.'}
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      visible.map((o) => (
-                        <TableRow
-                          key={o.id}
-                          onClick={() => openDetail(o.id)}
-                          // Baris bisa dibuka dengan keyboard juga, bukan hanya
-                          // klik mouse — tanpa ini detail sama sekali tidak
-                          // bisa dijangkau tanpa pointing device.
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' || e.key === ' ') {
-                              e.preventDefault();
-                              openDetail(o.id);
-                            }
-                          }}
-                          tabIndex={0}
-                          role="button"
-                          aria-label={`Lihat detail ${o.no_po}`}
-                          className="cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                        >
-                          {visibleColumns.map((c) => renderCell(o, c.key))}
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
+              <TabelPratinjau
+                rows={orders}
+                columns={columns}
+                searchFields={searchFields}
+                searchPlaceholder="Cari no. PO atau vendor…"
+                itemLabel="PO"
+                rowKey={(o) => o.id}
+                onRefresh={loadOrders}
+                refreshing={loading}
+                emptyMessage="Belum ada pembelian material tercatat."
+                // Klik baris membuka dialog detail.
+                //
+                // CATATAN: reui `onRowClick` hanya menangani MOUSE. Versi
+                // tabel lama memasang tabIndex + onKeyDown, sehingga detail
+                // bisa dibuka dengan Enter/Spasi. Data Grid tidak
+                // mengekspos handler keyboard per baris, jadi jalur keyboard
+                // itu hilang di sini — tombol "Ubah" di kolom Aksi tidak
+                // menggantikannya (ia membuka dialog edit, bukan detail).
+                // Dibiarkan apa adanya dan dicatat, bukan ditambal dengan
+                // akses DOM manual ke baris.
+                onRowClick={(o) => openDetail(o.id)}
+              />
             </>
           )}
         </CardContent>
