@@ -41,10 +41,46 @@ Di-mount di `/api/materials` (lihat `index.js`).
 | POST | `/api/materials` | `requireAuth` + CSRF | Buat material |
 | PUT | `/api/materials/:id` | `requireAuth` + CSRF | Ubah field deskriptif |
 | DELETE | `/api/materials/:id` | `requireAuth` + CSRF | Hapus material (ditolak bila punya riwayat batch) |
+| POST | `/api/materials/:id/foto` | `requireAuth` + CSRF | Unggah/ganti foto material |
+| DELETE | `/api/materials/:id/foto` | `requireAuth` + CSRF | Hapus foto material |
 
 **Stok tidak bisa diedit lewat API ini.** `stok` adalah akumulasi batch;
 mengubahnya langsung akan membuatnya divergen dari
 `material_batches.qty_sisa`.
+
+### Foto material
+
+Satu foto utama per material. Mengunggah yang baru **menggantikan** yang lama,
+dan berkas lama ikut dihapus — bukan ditambah sebagai baris kedua.
+
+Aturan upload (tipe berkas, batas ukuran, penamaan) hidup di
+`services/photoUpload.js`, **berbagi dengan fitur purchase-order**. Jangan
+menulis aturan kedua di sini.
+
+- `GET /api/materials` mengembalikan `foto_path` sebagai **string kosong** bila
+  tidak ada foto — bukan `null`. Ini sengaja beda dari foto PO (yang memakai
+  `null`), karena endpoint ini sudah menormalkannya demikian sejak sebelum
+  tiket 11d. Perbedaan itu ditegaskan di `tests/materialPhoto.test.js`.
+- Baris foto diurutkan `is_primary DESC, id DESC`. `is_primary` **wajib**
+  dihormati: tanpanya, foto yang ditandai utama bisa kalah dari unggahan lain
+  hanya karena id-nya lebih kecil.
+- **Menghapus material menghapus berkas fotonya**, bukan cuma barisnya.
+  `ON DELETE CASCADE` mengurus barisnya saja; berkas di disk tidak. Jalur
+  fotonya dibaca **sebelum** material dihapus, karena setelah cascade berjalan
+  baris fotonya ikut lenyap dan nama berkasnya tidak bisa dibaca lagi.
+
+### Berkas yang diunggah harus bisa dijangkau
+
+Foto disajikan di `/uploads/<nama berkas>`, di-mount di `index.js`. Dua hal yang
+mudah salah dan sudah pernah terjadi:
+
+1. **Mount tidak dipasang.** Sebelum tiket 11c hanya `/assets` yang di-mount,
+   sehingga `product_photos` menyimpan jalur berkas sejak lama sementara
+   berkasnya tidak pernah bisa ditampilkan.
+2. **Mount dipasang setelah middleware SPA dan catch-all.** Maka ia tidak
+   pernah dipanggil: permintaan ke `/uploads/…` dijawab lebih dulu oleh
+   catch-all dengan `index.html` milik React. Gejalanya halus — berkas
+   tersimpan, baris database ada, kolom terisi, gambar tidak pernah muncul.
 
 ## Database Tables
 
