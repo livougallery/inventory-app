@@ -2,7 +2,15 @@ import { useMemo, useState } from 'react';
 import TabelPratinjau, { type KolomPratinjau } from '@/components/TabelPratinjau';
 import BannerPratinjau from '@/components/BannerPratinjau';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { Button } from '@/components/ui/button';
 import { FLOW_TRANSAKSI, KATEGORI_VENDOR, SOLUSI, SUMBER_PRODUKSI, labelDari } from '@/lib/opsi';
+import PapanFulfillment from './production-fulfillment/PapanFulfillment';
+import {
+  KARTU_PRODUCTION,
+  KARTU_WHITELABEL,
+  PAPAN_PRODUCTION,
+  PAPAN_WHITELABEL,
+} from './production-fulfillment/data-kanban';
 
 // ===== Tabel Production Fulfillment (pratinjau) =====
 //
@@ -374,7 +382,12 @@ const STAGE: StagePdff[] = [
 ];
 
 export default function ProductionFulfillment() {
+  const [tampilan, setTampilan] = useState<'kanban' | 'tabel'>('kanban');
+  const [sumber, setSumber] = useState<'production' | 'whitelabel'>('production');
   const [stageAktif, setStageAktif] = useState(STAGE[0].id);
+
+  const papan = sumber === 'production' ? PAPAN_PRODUCTION : PAPAN_WHITELABEL;
+  const kartu = sumber === 'production' ? KARTU_PRODUCTION : KARTU_WHITELABEL;
 
   const searchFields = useMemo(
     () => [
@@ -390,25 +403,81 @@ export default function ProductionFulfillment() {
     <div className="space-y-4">
       <BannerPratinjau modul="Production Fulfillment" jumlahKolom={Object.keys(KOLOM).length} />
 
-      <Tabs value={stageAktif} onValueChange={setStageAktif}>
-        {/* Tab digulir horizontal, tidak dibungkus: delapan stage dengan emoji
-            dan nama panjang akan memakan tiga baris kalau dibungkus, dan
-            urutannya — yang merupakan urutan kerja — jadi sulit dibaca. */}
-        <TabsList className="h-auto max-w-full justify-start overflow-x-auto">
-          {STAGE.map((s) => (
-            <TabsTrigger key={s.id} value={s.id} className="shrink-0 gap-1.5">
-              <span aria-hidden="true">{s.ikon}</span>
-              {s.label}
-            </TabsTrigger>
-          ))}
-        </TabsList>
+      {/* Dua sumbu yang berdiri sendiri:
+          - `tampilan`  : papan atau tabel
+          - `sumber`    : Production atau White Label (hanya berlaku untuk papan)
 
-        {STAGE.map((s) => (
-          <TabsContent key={s.id} value={s.id}>
-            <StagePdffTable stage={s} searchFields={searchFields} />
-          </TabsContent>
-        ))}
-      </Tabs>
+          Sengaja dipisah, bukan satu baris tab berisi "Kanban / Tabel". Kalau
+          digabung, menukar papan ikut memindahkan tampilan tabel, padahal
+          tabelnya satu dan sama untuk kedua sumber. */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+          {(
+            [
+              { id: 'kanban', label: 'Kanban' },
+              { id: 'tabel', label: 'Tabel' },
+            ] as const
+          ).map((t) => (
+            <Button
+              key={t.id}
+              variant={tampilan === t.id ? 'default' : 'ghost'}
+              size="sm"
+              aria-pressed={tampilan === t.id}
+              onClick={() => setTampilan(t.id)}
+            >
+              {t.label}
+            </Button>
+          ))}
+        </div>
+
+        {tampilan === 'kanban' && (
+          <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+            {(
+              [
+                { id: 'production', label: 'Production' },
+                { id: 'whitelabel', label: 'White Label' },
+              ] as const
+            ).map((s) => (
+              <Button
+                key={s.id}
+                variant={sumber === s.id ? 'default' : 'ghost'}
+                size="sm"
+                aria-pressed={sumber === s.id}
+                onClick={() => setSumber(s.id)}
+              >
+                {s.label}
+              </Button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {tampilan === 'kanban' ? (
+        // `key` membuat papan dibangun ulang saat sumber ditukar. Tanpa itu,
+        // state kolom di dalam PapanFulfillment — termasuk kartu yang sempat
+        // digeser — terbawa dari papan Production ke papan White Label.
+        <PapanFulfillment key={sumber} stages={papan} kartu={kartu} />
+      ) : (
+        <Tabs value={stageAktif} onValueChange={setStageAktif}>
+          {/* Tab digulir horizontal, tidak dibungkus: delapan stage dengan emoji
+              dan nama panjang akan memakan tiga baris kalau dibungkus, dan
+              urutannya — yang merupakan urutan kerja — jadi sulit dibaca. */}
+          <TabsList className="h-auto max-w-full justify-start overflow-x-auto">
+            {STAGE.map((s) => (
+              <TabsTrigger key={s.id} value={s.id} className="shrink-0 gap-1.5">
+                <span aria-hidden="true">{s.ikon}</span>
+                {s.label}
+              </TabsTrigger>
+            ))}
+          </TabsList>
+
+          {STAGE.map((s) => (
+            <TabsContent key={s.id} value={s.id}>
+              <StagePdffTable stage={s} searchFields={searchFields} />
+            </TabsContent>
+          ))}
+        </Tabs>
+      )}
     </div>
   );
 }
