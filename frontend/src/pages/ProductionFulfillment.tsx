@@ -2,20 +2,19 @@ import { useMemo, useState } from 'react';
 import TabelPratinjau, { type KolomPratinjau } from '@/components/TabelPratinjau';
 import BannerPratinjau from '@/components/BannerPratinjau';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
-import { Button } from '@/components/ui/button';
 import { FLOW_TRANSAKSI, KATEGORI_VENDOR, SOLUSI, SUMBER_PRODUKSI, labelDari } from '@/lib/opsi';
-import PapanFulfillment from './production-fulfillment/PapanFulfillment';
-import {
-  KARTU_PRODUCTION,
-  KARTU_WHITELABEL,
-  PAPAN_PRODUCTION,
-  PAPAN_WHITELABEL,
-} from './production-fulfillment/data-kanban';
 
 // ===== Tabel Production Fulfillment (pratinjau) =====
 //
 // Empat puluh kolom sesuai daftar owner 7 September 2026 — modul terbesar.
 // Data contoh, bukan dari database; koneksinya menyusul setelah disetujui.
+//
+// Halaman ini SENGAJA hanya berisi tabel. Papan kanban-nya dipindah ke
+// PROGRESS > Production Fulfillment (lihat `PapanProduksi.tsx`), karena
+// keduanya menjawab pertanyaan yang berbeda dan selama satu halaman papan
+// selalu jadi tampilan kedua. Saklar "Kanban / Tabel" yang dulu ada di sini
+// ikut dihapus bersama pemindahan itu — dibiarkan, ia jadi tombol yang
+// memindahkan pembaca ke halaman lain tanpa memberitahu.
 //
 // Banyak kolom di sini ditandai "ambil dari tabel X" pada spesifikasi owner.
 // Di tahap pratinjau semuanya diisi contoh. Saat koneksi dikerjakan nanti,
@@ -262,11 +261,20 @@ const KOLOM: Record<string, KolomPratinjau<BarisPdff>> = {
 // memecah data. Jadi setiap stage memakai baris yang SAMA (`barisContoh`);
 // yang berubah hanya kolom mana yang ditampilkan.
 //
-// Stage 3 (Cutting) dan stage 5 (Laporan Terima Stock) sama-sama menyebut
-// "Register Plan PDFF". Keduanya memakai `proofRegisterPlanPdff` — kolom bukti
-// unggah yang juga dipakai stage 2. Jadi "Proof Register Plan PDFF" di stage 2
-// dan "Register Plan PDFF" di stage 3 adalah kolom yang sama; hanya
-// penyebutannya di daftar owner yang berbeda.
+// ID stage di sini SAMA dengan id kolom di papan kanban (lihat
+// `PAPAN_PRODUCTION` di pages/production-fulfillment/data-kanban.ts). Versi
+// sebelumnya memakai kosakata sendiri — 'terima-stock', 'calculate-hpp',
+// 'upload-system' — untuk pekerjaan yang di papan bernama 'receive',
+// 'hpp-price', 'upload'. Karena tabel dan papan kini dua halaman terpisah,
+// divergensinya tidak terlihat dari layar: satu pekerjaan punya dua nama
+// tergantung halaman mana yang dibuka. Menyamakan id-nya membuat keduanya
+// bisa disambungkan ke satu tabel stage tanpa penerjemahan.
+//
+// Catatan kolom: stage 3 (Cutting) dan stage 5 (Laporan Terima Stock)
+// sama-sama menyebut "Register Plan PDFF". Keduanya memakai
+// `proofRegisterPlanPdff` — kolom bukti unggah yang juga dipakai stage 2. Jadi
+// "Proof Register Plan PDFF" di stage 2 dan "Register Plan PDFF" di stage 3
+// adalah kolom yang sama; hanya penyebutannya di daftar owner yang berbeda.
 export interface StagePdff {
   id: string;
   label: string;
@@ -315,7 +323,9 @@ const STAGE: StagePdff[] = [
     ],
   },
   {
-    id: 'terima-stock',
+    // `receive`, bukan `terima-stock`: id-nya milik domain yang sama dengan
+    // kolom 'Receive' di papan. Labelnya tetap kata owner untuk halaman ini.
+    id: 'receive',
     label: 'Laporan Terima Stock',
     ikon: '📦',
     kunciKolom: [
@@ -339,7 +349,8 @@ const STAGE: StagePdff[] = [
     ],
   },
   {
-    id: 'calculate-hpp',
+    // `hpp-price`, bukan `calculate-hpp` — id kolom 'HPP & Price' di papan.
+    id: 'hpp-price',
     label: 'Calculate HPP & Price',
     ikon: '🧮',
     kunciKolom: [
@@ -351,7 +362,8 @@ const STAGE: StagePdff[] = [
     ],
   },
   {
-    id: 'upload-system',
+    // `upload`, bukan `upload-system` — id kolom 'Upload' di papan.
+    id: 'upload',
     label: 'Upload System',
     ikon: '💻',
     kunciKolom: [
@@ -382,12 +394,7 @@ const STAGE: StagePdff[] = [
 ];
 
 export default function ProductionFulfillment() {
-  const [tampilan, setTampilan] = useState<'kanban' | 'tabel'>('kanban');
-  const [sumber, setSumber] = useState<'production' | 'whitelabel'>('production');
   const [stageAktif, setStageAktif] = useState(STAGE[0].id);
-
-  const papan = sumber === 'production' ? PAPAN_PRODUCTION : PAPAN_WHITELABEL;
-  const kartu = sumber === 'production' ? KARTU_PRODUCTION : KARTU_WHITELABEL;
 
   const searchFields = useMemo(
     () => [
@@ -403,81 +410,25 @@ export default function ProductionFulfillment() {
     <div className="space-y-4">
       <BannerPratinjau modul="Production Fulfillment" jumlahKolom={Object.keys(KOLOM).length} />
 
-      {/* Dua sumbu yang berdiri sendiri:
-          - `tampilan`  : papan atau tabel
-          - `sumber`    : Production atau White Label (hanya berlaku untuk papan)
-
-          Sengaja dipisah, bukan satu baris tab berisi "Kanban / Tabel". Kalau
-          digabung, menukar papan ikut memindahkan tampilan tabel, padahal
-          tabelnya satu dan sama untuk kedua sumber. */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
-          {(
-            [
-              { id: 'kanban', label: 'Kanban' },
-              { id: 'tabel', label: 'Tabel' },
-            ] as const
-          ).map((t) => (
-            <Button
-              key={t.id}
-              variant={tampilan === t.id ? 'default' : 'ghost'}
-              size="sm"
-              aria-pressed={tampilan === t.id}
-              onClick={() => setTampilan(t.id)}
-            >
-              {t.label}
-            </Button>
-          ))}
-        </div>
-
-        {tampilan === 'kanban' && (
-          <div className="inline-flex rounded-lg border bg-muted/40 p-0.5">
-            {(
-              [
-                { id: 'production', label: 'Production' },
-                { id: 'whitelabel', label: 'White Label' },
-              ] as const
-            ).map((s) => (
-              <Button
-                key={s.id}
-                variant={sumber === s.id ? 'default' : 'ghost'}
-                size="sm"
-                aria-pressed={sumber === s.id}
-                onClick={() => setSumber(s.id)}
-              >
-                {s.label}
-              </Button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {tampilan === 'kanban' ? (
-        // `key` membuat papan dibangun ulang saat sumber ditukar. Tanpa itu,
-        // state kolom di dalam PapanFulfillment — termasuk kartu yang sempat
-        // digeser — terbawa dari papan Production ke papan White Label.
-        <PapanFulfillment key={sumber} stages={papan} kartu={kartu} />
-      ) : (
-        <Tabs value={stageAktif} onValueChange={setStageAktif}>
-          {/* Tab digulir horizontal, tidak dibungkus: delapan stage dengan emoji
-              dan nama panjang akan memakan tiga baris kalau dibungkus, dan
-              urutannya — yang merupakan urutan kerja — jadi sulit dibaca. */}
-          <TabsList className="h-auto max-w-full justify-start overflow-x-auto">
-            {STAGE.map((s) => (
-              <TabsTrigger key={s.id} value={s.id} className="shrink-0 gap-1.5">
-                <span aria-hidden="true">{s.ikon}</span>
-                {s.label}
-              </TabsTrigger>
-            ))}
-          </TabsList>
-
+      <Tabs value={stageAktif} onValueChange={setStageAktif}>
+        {/* Tab digulir horizontal, tidak dibungkus: delapan stage dengan emoji
+            dan nama panjang akan memakan tiga baris kalau dibungkus, dan
+            urutannya — yang merupakan urutan kerja — jadi sulit dibaca. */}
+        <TabsList className="h-auto max-w-full justify-start overflow-x-auto">
           {STAGE.map((s) => (
-            <TabsContent key={s.id} value={s.id}>
-              <StagePdffTable stage={s} searchFields={searchFields} />
-            </TabsContent>
+            <TabsTrigger key={s.id} value={s.id} className="shrink-0 gap-1.5">
+              <span aria-hidden="true">{s.ikon}</span>
+              {s.label}
+            </TabsTrigger>
           ))}
-        </Tabs>
-      )}
+        </TabsList>
+
+        {STAGE.map((s) => (
+          <TabsContent key={s.id} value={s.id}>
+            <StagePdffTable stage={s} searchFields={searchFields} />
+          </TabsContent>
+        ))}
+      </Tabs>
     </div>
   );
 }

@@ -72,7 +72,11 @@ function createApp(options = {}) {
     '/modul/material-grid',
     '/modul/product',
     '/modul/whitelabel',
+    // Papan kanban Production Fulfillment, di section Progress.
     '/modul/production-fulfillment',
+    // Tabel 40 kolomnya — halaman TERPISAH sejak papan dipindah ke Progress.
+    // Dua rute, bukan satu dengan saklar: keduanya menjawab pertanyaan berbeda.
+    '/modul/production-fulfillment-table',
     '/modul/hpp-baru',
     '/modul/barang-datang',
     '/modul/bom-hpp'

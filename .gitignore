@@ -57,6 +57,7 @@ tmp/pr-body.md
 
 # Berkas bantuan sekali pakai: diawali underscore, jadi langsung kelihatan
 # beda dari skrip yang memang dipakai rutin.
+
 tmp/_*
 
 # Skrip debug sekali pakai (server mainan yang menyajikan dist/index.html).
@@ -66,6 +67,15 @@ tmp/test-*.js
 
 # Frontend build output
 frontend/dist/
+
+# Berkas bantuan smoke test, ditulis ke frontend/ karena vite membacanya
+# relatif ke sana. Namanya unik per proses (`_smoke-kanban-<acak>.*`) dan
+# dibersihkan lewat handler `exit` — tapi handler itu TIDAK jalan kalau
+# prosesnya dibunuh paksa (SIGKILL, task manager, pipa PowerShell yang
+# ditutup). Tanpa aturan ini, sisa berkasnya muncul sebagai untracked dan
+# `git add -A` akan menyapunya masuk commit — persis kesalahan yang paling
+# mudah terjadi saat menyiapkan commit setelah menjalankan test.
+frontend/_smoke-kanban-*
 
 # Local debug artifacts (server logs, curl output, throwaway tests) — jangan commit
 *.log

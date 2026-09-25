@@ -13,7 +13,8 @@ import {
   ChevronRight,
   Shirt,
   Truck,
-  ClipboardList,
+  Table2,
+  SquareKanban,
   Calculator,
   PackageCheck,
   ListTree,
@@ -47,10 +48,17 @@ interface NavSection {
 
 // ===== Saklar mode presentasi =====
 //
-// `true`  → sidebar hanya berisi 7 modul baru, dengan judul "Master Data".
-//           Dipakai saat merekam video untuk owner, supaya tidak ada halaman
-//           lama yang belum sesuai rancangan baru ikut terlihat.
+// `true`  → sidebar hanya berisi menu pratinjau, terbagi ke dua section:
+//           "Master Data" (modul berbentuk tabel) dan "PROGRESS" (papan
+//           kanban). Dipakai saat merekam video untuk owner, supaya tidak ada
+//           halaman lama yang belum sesuai rancangan baru ikut terlihat.
 // `false` → sidebar lengkap seperti semula.
+//
+// Jumlah entrinya sengaja TIDAK ditulis di sini. Angka seperti "7 modul" sudah
+// dua kali meleset begitu satu modul dipecah jadi dua menu — dan tidak ada test
+// yang menghitungnya, jadi yang salah cuma komentar yang dibaca orang
+// berikutnya. Yang perlu diketahui dari komentar ini adalah BENTUKnya (dua
+// section, satu berisi tabel dan satu berisi papan), bukan jumlahnya.
 //
 // Satu saklar, bukan menghapus menu satu per satu: begitu video selesai,
 // cukup balikkan nilai ini dan semua menu lama kembali persis seperti
@@ -58,11 +66,17 @@ interface NavSection {
 const MODE_VIDEO = true;
 
 /**
- * Path yang diblokir selama mode video (selain 7 modul).
+ * Path yang diblokir selama mode video — semua halaman di luar menu pratinjau.
  *
  * Menyembunyikan menu saja tidak cukup: halaman lama tetap bisa dibuka lewat
  * URL, dan saat merekam video itu mudah terjadi tidak sengaja — misal tombol
  * "kembali" di browser. Daftar ini dipakai App.tsx untuk mengalihkannya.
+ *
+ * `/modul/material-grid` ikut di sini meski bukan halaman lama: rutenya ada di
+ * App.tsx dan tidak muncul di sidebar mana pun, jadi tanpa entri ini ia satu-
+ * satunya halaman di luar tujuh modul yang masih bisa terbuka di tengah
+ * perekaman. Halaman prototipe pembanding memang bukan bagian dari alur yang
+ * direkam.
  */
 export const PATH_DIBLOKIR_VIDEO: string[] = [
   '/',
@@ -75,6 +89,7 @@ export const PATH_DIBLOKIR_VIDEO: string[] = [
   '/purchase-orders',
   '/production-batches',
   '/hpp',
+  '/modul/material-grid',
 ];
 
 /** Path yang dituju bila membuka halaman yang diblokir saat mode video. */
@@ -85,15 +100,22 @@ export const TUJUAN_VIDEO = '/modul/material';
 // sendiri, cepat atau lambat keduanya tidak sinkron.
 export const MODE_VIDEO_AKTIF = MODE_VIDEO;
 
-// Tujuh modul sesuai daftar kolom owner, 7 September 2026.
+// Modul pratinjau sesuai daftar kolom owner, 7 September 2026 — semuanya
+// berbentuk tabel dengan daftar kolom yang panjang, jadi semuanya tinggal di
+// "Master Data". Papannya TIDAK di sini: ia dipisah ke `papanProgress` di
+// bawah, karena yang dibaca di sana sebaran kartu antar tahap, bukan urutan
+// kolom.
 const modulBaru: NavItem[] = [
   { path: '/modul/material', label: 'Material', icon: Package, section: 'Master Data' },
   { path: '/modul/product', label: 'Product', icon: Shirt, section: 'Master Data' },
   { path: '/modul/whitelabel', label: 'White Label', icon: Truck, section: 'Master Data' },
   {
-    path: '/modul/production-fulfillment',
+    path: '/modul/production-fulfillment-table',
     label: 'Production Fulfillment',
-    icon: ClipboardList,
+    // Ikon tabel, bukan ikon papan: menu ini membuka 40 kolomnya, dan labelnya
+    // sama persis dengan menu di PROGRESS — ikonnyalah yang membedakan keduanya
+    // saat sidebar dipindai cepat.
+    icon: Table2,
     section: 'Master Data',
   },
   { path: '/modul/hpp-baru', label: 'HPP', icon: Calculator, section: 'Master Data' },
@@ -101,11 +123,33 @@ const modulBaru: NavItem[] = [
   { path: '/modul/bom-hpp', label: 'BOM + HPP Production', icon: ListTree, section: 'Master Data' },
 ];
 
-// Mode video: hanya 7 modul, judulnya "Master Data" sesuai permintaan owner.
+/**
+ * Papan kanban Production Fulfillment, di section PROGRESS.
+ *
+ * Judul sectionnya "Progress" (huruf besar-kecilnya diseragamkan dengan
+ * "Master Data"), tapi di sidebar tetap terbaca PROGRESS — huruf besarnya
+ * dipasang CSS, bukan ditulis di data.
+ */
+const papanProgress: NavItem[] = [
+  {
+    path: '/modul/production-fulfillment',
+    label: 'Production Fulfillment',
+    icon: SquareKanban,
+    section: 'Progress',
+  },
+];
+
+// Mode video: modul pratinjau dalam dua section — Master Data (tabel) dan
+// Progress (papan). Urutannya mengikuti alur kerja: data induk dulu, lalu
+// pekerjaan yang sedang berjalan.
 const navSectionsVideo: NavSection[] = [
   {
     title: 'Master Data',
     items: modulBaru,
+  },
+  {
+    title: 'Progress',
+    items: papanProgress,
   },
 ];
 
@@ -185,13 +229,24 @@ const navSections: NavSection[] = MODE_VIDEO
     ],
   },
   {
-    // Tujuh modul sesuai daftar kolom owner, 7 September 2026.
+    // Modul tabel sesuai daftar kolom owner, 7 September 2026.
     //
     // Sengaja diletakkan di bagian sendiri: ini PRATINJAU tampilan yang belum
     // terhubung ke database (tiap halaman memasang BannerPratinjau). Dicampur
     // ke grup yang sudah ada akan membuatnya tampak seperti halaman jadi.
     title: 'Modul Baru (Pratinjau)',
     items: modulBaru,
+  },
+  {
+    // Papan kanbannya tetap di section sendiri di sini juga — bukan ikut ke
+    // "Modul Baru (Pratinjau)".
+    //
+    // Dua menu bernama "Production Fulfillment" (tabel dan papan) memang
+    // dibedakan oleh sectionnya; digabung ke satu section, keduanya jadi dua
+    // baris berlabel sama persis yang berdempetan, dan tidak ada lagi yang
+    // memberi tahu mana yang membuka tabel dan mana yang membuka papan.
+    title: 'Progress',
+    items: papanProgress,
   },
   ];
 

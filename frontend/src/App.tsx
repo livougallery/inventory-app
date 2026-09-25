@@ -14,6 +14,7 @@ import MaterialGrid from './pages/MaterialGrid';
 import Product from './pages/Product';
 import Whitelabel from './pages/Whitelabel';
 import ProductionFulfillment from './pages/ProductionFulfillment';
+import PapanProduksi from './pages/production-fulfillment/PapanProduksi';
 import HppPratinjau from './pages/HppPratinjau';
 import BarangDatang from './pages/BarangDatang';
 import BomHpp from './pages/BomHpp';
@@ -108,7 +109,19 @@ function App() {
           <Whitelabel />
         </Shell>
       } />
+      {/* Papan kanban, di section PROGRESS. URL lamanya (`/modul/production-
+          fulfillment`) sengaja TETAP di sini dan tetap menunjuk papan — itu
+          URL yang sudah dipakai saat merekam video, dan berpindahnya papan ke
+          section lain tidak boleh membuat link lama menampilkan halaman yang
+          berbeda dari yang dilihat terakhir kali. */}
       <Route path="/modul/production-fulfillment" element={
+        <Shell>
+          <PapanProduksi />
+        </Shell>
+      } />
+      {/* Tabel 40 kolomnya, tetap di Master Data. URL-nya baru dan terpisah,
+          supaya kedua halaman bisa dibedakan tanpa bergantung pada state. */}
+      <Route path="/modul/production-fulfillment-table" element={
         <Shell>
           <ProductionFulfillment />
         </Shell>

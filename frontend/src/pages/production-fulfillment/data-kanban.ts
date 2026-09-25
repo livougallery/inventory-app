@@ -28,8 +28,14 @@ export interface BarisWarna {
 export interface SpesifikasiKain {
   nama: string;
   satuan: string;
-  /** Kebutuhan dan stok per kode warna. Warna yang tidak tercantum dilewati. */
-  perWarna: Record<string, { perPcs: number; tersedia: number }>;
+  /**
+   * Kebutuhan dan stok per kode warna. Warna yang tidak tercantum dilewati.
+   *
+   * `tersedia` boleh kosong: stok yang belum pernah dicatat berbeda dari stok
+   * yang habis, dan hanya yang kedua yang boleh jadi badge merah. Lihat
+   * `push()` di `bahanKartu()`.
+   */
+  perWarna: Record<string, { perPcs: number; tersedia?: number }>;
 }
 
 export interface SpesifikasiAksesori {
@@ -38,7 +44,8 @@ export interface SpesifikasiAksesori {
   berlaku: string;
   perPcs: number;
   satuan: string;
-  tersedia: number;
+  /** Boleh kosong — stok yang belum dicatat, bukan stok nol. Lihat `push()`. */
+  tersedia?: number;
 }
 
 export interface DetailKartu {
@@ -73,6 +80,21 @@ export interface BarisBahan {
   material: string;
   varian: string;
   berlaku: string;
+  /**
+   * Kunci stabil satu baris bahan, dipakai untuk menyimpan penanda "sudah siap"
+   * di tahap Prepare.
+   *
+   * Sengaja dibentuk dari isi barisnya, bukan dari nomor baris: kalau urutan
+   * BOM berubah, nomor bergeser dan penanda yang sudah dicentang akan menempel
+   * ke baris yang salah — diam-diam, tanpa error.
+   *
+   * Isi baris saja TIDAK cukup: dua baris kain bernama sama (kain utama dan
+   * furing, misalnya) menghasilkan teks yang identik, jadi keduanya berbagi
+   * satu kunci. Akibatnya satu centang menandai keduanya sekaligus, dan gate
+   * Prepare terbuka sebelum bahannya benar-benar diperiksa. Karena itu nomor
+   * kemunculannya ikut disertakan — lihat `nomorKemunculan` di `bahanKartu()`.
+   */
+  kunci: string;
   perPcs: string;
   total: string;
   fifo: string;
@@ -84,35 +106,44 @@ export interface BarisBahan {
 
 // ===== Tahap =====
 //
-// Delapan tahap, persis daftar owner. Papan White Label memakai urutan yang
-// sama dengan satu perbedaan: Cutting digantikan Invoice Logistic — barang
-// white label tidak dipotong di sini, ia datang utuh dari vendor luar negeri.
+// Delapan tahap untuk papan Production, persis daftar owner. Papan White Label
+// memakai urutan yang sama dengan DUA perbedaan: Cutting digantikan Invoice
+// Logistic (barang white label tidak dipotong di sini, ia datang utuh dari
+// vendor luar negeri), dan Prepare dihapus — usulan white label yang di-approve
+// langsung ke Invoice Logistic, jadi papannya tujuh kolom.
 
 export interface StagePapan {
   id: string;
   label: string;
+  /**
+   * Kelas Tailwind untuk titik penanda tahap di header kolom.
+   *
+   * ReUI tidak mewarnai kolomnya sendiri — contoh resminya pun menambahkan
+   * penanda ini per kolom. Ditulis sebagai kelas utuh (bukan dirangkai dari
+   * nama warna) supaya pemindai Tailwind menemukannya sebagai string biasa.
+   */
+  warna: string;
 }
 
 export const PAPAN_PRODUCTION: StagePapan[] = [
-  { id: 'propose', label: 'Propose' },
-  { id: 'prepare', label: 'Prepare' },
-  { id: 'cutting', label: 'Cutting' },
-  { id: 'receive', label: 'Receive' },
-  { id: 'invoice-product', label: 'Invoice Product' },
-  { id: 'hpp-price', label: 'HPP & Price' },
-  { id: 'upload', label: 'Upload' },
-  { id: 'finance-validate', label: 'Finance Validate' },
+  { id: 'propose', label: 'Propose', warna: 'bg-slate-400' },
+  { id: 'prepare', label: 'Prepare', warna: 'bg-amber-500' },
+  { id: 'cutting', label: 'Cutting', warna: 'bg-violet-500' },
+  { id: 'receive', label: 'Receive', warna: 'bg-blue-500' },
+  { id: 'invoice-product', label: 'Invoice Product', warna: 'bg-pink-500' },
+  { id: 'hpp-price', label: 'HPP & Price', warna: 'bg-emerald-500' },
+  { id: 'upload', label: 'Upload', warna: 'bg-indigo-500' },
+  { id: 'finance-validate', label: 'Finance Validate', warna: 'bg-green-600' },
 ];
 
 export const PAPAN_WHITELABEL: StagePapan[] = [
-  { id: 'propose', label: 'Propose' },
-  { id: 'prepare', label: 'Prepare' },
-  { id: 'invoice-logistic', label: 'Invoice Logistic' },
-  { id: 'receive', label: 'Receive' },
-  { id: 'invoice-product', label: 'Invoice Product' },
-  { id: 'hpp-price', label: 'HPP & Price' },
-  { id: 'upload', label: 'Upload' },
-  { id: 'finance-validate', label: 'Finance Validate' },
+  { id: 'propose', label: 'Propose', warna: 'bg-slate-400' },
+  { id: 'invoice-logistic', label: 'Invoice Logistic', warna: 'bg-cyan-500' },
+  { id: 'receive', label: 'Receive', warna: 'bg-blue-500' },
+  { id: 'invoice-product', label: 'Invoice Product', warna: 'bg-pink-500' },
+  { id: 'hpp-price', label: 'HPP & Price', warna: 'bg-emerald-500' },
+  { id: 'upload', label: 'Upload', warna: 'bg-indigo-500' },
+  { id: 'finance-validate', label: 'Finance Validate', warna: 'bg-green-600' },
 ];
 
 // ===== Perhitungan =====
@@ -162,6 +193,13 @@ export function bahanKartu(kartu: KartuPdff): BarisBahan[] {
   const semuaPcs = totalPcs(kartu);
   const baris: BarisBahan[] = [];
 
+  // Berapa kali satu teks baris sudah muncul. Dipakai untuk membedakan baris
+  // yang isinya kebetulan sama — tanpa ini, dua baris "Kain Rayon | Black |
+  // Color Black" berbagi satu kunci dan satu centang membuka gate untuk
+  // keduanya. Penghitungnya per-teks, bukan nomor urut global, supaya kunci
+  // tetap stabil kalau ada baris lain yang ditambah atau dihapus di atasnya.
+  const nomorKemunculan = new Map<string, number>();
+
   const push = (
     material: string,
     varian: string,
@@ -169,17 +207,28 @@ export function bahanKartu(kartu: KartuPdff): BarisBahan[] {
     perPcs: number,
     satuan: string,
     qty: number,
-    tersedia: number
+    // `undefined` = stoknya belum pernah dicatat. Itu BUKAN nol: menampilkannya
+    // sebagai 0 membuat baris yang datanya cuma belum diisi langsung bertanda
+    // merah "Not Enough", dan pembaca menyimpulkan stoknya habis padahal tidak
+    // ada yang tahu. Barisnya tetap tampil — kebutuhannya nyata — hanya kolom
+    // stoknya yang jujur mengatakan belum ada angkanya.
+    tersedia: number | undefined
   ) => {
     const total = perPcs * qty;
-    const kurang = total > tersedia;
+    const kurang = tersedia !== undefined && total > tersedia;
+    const teks = `${material}|${varian}|${berlaku}`;
+    const ke = (nomorKemunculan.get(teks) ?? 0) + 1;
+    nomorKemunculan.set(teks, ke);
     baris.push({
+      // `#1` hanya muncul kalau teksnya memang berulang, supaya kunci baris
+      // yang lazim tetap persis seperti sebelumnya.
+      kunci: ke === 1 ? teks : `${teks}#${ke}`,
       material,
       varian,
       berlaku,
       perPcs: `${presisi(perPcs)} ${satuan}`,
       total: `${angka(total)} ${satuan}`,
-      fifo: `${angka(tersedia)} ${satuan}`,
+      fifo: tersedia === undefined ? 'Belum dicatat' : `${angka(tersedia)} ${satuan}`,
       status: kurang ? 'kurang' : 'ready',
       ...(kurang
         ? {
@@ -196,11 +245,17 @@ export function bahanKartu(kartu: KartuPdff): BarisBahan[] {
 
   const ukuranUnik = [...new Set(warna.flatMap((w) => w.pcs.map((p) => p.ukuran)))];
   for (const u of ukuranUnik) {
+    const tersedia = labelTersedia[u];
+    // Ukuran yang stok labelnya belum dicatat dilewati, bukan dianggap nol.
+    // "Belum ada catatannya" dan "stoknya habis" adalah dua hal berbeda;
+    // menampilkan yang pertama sebagai kekurangan membuat kartu baru — yang
+    // memang belum punya catatan label — selalu bertanda merah.
+    if (tersedia === undefined) continue;
     const qty = warna.reduce(
       (s, w) => s + w.pcs.filter((p) => p.ukuran === u).reduce((a, p) => a + p.qty, 0),
       0
     );
-    push(`Label Size ${u}`, '—', `Size ${u}`, 1, 'pcs', qty, labelTersedia[u] ?? 0);
+    push(`Label Size ${u}`, '—', `Size ${u}`, 1, 'pcs', qty, tersedia);
   }
 
   for (const k of kain) {
@@ -230,6 +285,243 @@ export function kekurangan(kartu: KartuPdff): string | null {
   const terbesar = kurang.reduce((a, b) => ((b.kurangQty ?? 0) > (a.kurangQty ?? 0) ? b : a));
   return terbesar.catatan ?? null;
 }
+
+// ===== Kesiapan bahan (tahap Prepare) =====
+//
+// Di tahap Prepare, tiap baris bahan dicentang kalau barangnya sudah benar-benar
+// dibeli. Kartu baru boleh lanjut ke kolom berikutnya setelah SEMUA baris bahan
+// siap — karena itu pindahnya bukan drag, tapi tombol yang muncul hanya saat
+// syaratnya terpenuhi.
+//
+// Isi centangnya disimpan di luar `KartuPdff` (lihat `KARTU_BARU` di bawah),
+// bukan sebagai field di dalam kartu. Dua alasan: `bahanKartu()` tetap murni
+// turunan dari data kartu seperti sebelumnya, dan saat koneksi database
+// dikerjakan, yang perlu dikirim cuma daftar kunci yang siap — bukan seluruh
+// kartu.
+
+/** Daftar kunci baris bahan yang sudah ditandai siap, per id kartu. */
+export type SiapBahan = Record<string, string[]>;
+
+/**
+ * Perpindahan kartu antar stage, per id kartu.
+ *
+ * Peta ini yang menang atas `stage` bawaan kartu, jadi satu peta cukup untuk
+ * dua hal sekaligus: kartu contoh yang di-approve dari Propose, dan kartu yang
+ * lanjut dari Prepare ke kolom berikutnya.
+ */
+export type PindahKartu = Record<string, string>;
+
+export interface DataProduksiBaru {
+  productName: string;
+  designCode: string;
+  kategori: string;
+  batch: string;
+  kategoriVendor: string;
+  namaVendor: string;
+  dateRequest: string;
+  pic: string;
+  inisial: string;
+  warna: BarisWarna[];
+  labelTersedia: Record<string, number>;
+  aksesori: SpesifikasiAksesori[];
+  kain: SpesifikasiKain[];
+}
+
+/**
+ * Akhiran workcode per papan.
+ *
+ * Dipisah jadi peta, bukan ditulis di dalam `kartuBaru()`: akhiran ini milik
+ * PAPAN, dan papan itu yang tahu dirinya Production atau White Label. Versi
+ * sebelumnya menulis `_PRDN` tetap di dalam fungsinya, jadi usulan yang dibuat
+ * dari papan White Label mendapat workcode produksi — terlihat di kartu dan
+ * popup, tanpa error apa pun.
+ */
+export const AKHIRAN_WORKCODE: Record<'production' | 'whitelabel', string> = {
+  production: 'PRDN',
+  whitelabel: 'WHLB',
+};
+
+/**
+ * Kartu dari form "Tambah Produksi" di kolom Propose.
+ *
+ * Lahir di stage `propose` — persis seperti usulan baru: belum disetujui, dan
+ * baru naik ke kolom setelah Propose setelah di-approve lewat popupnya (Prepare
+ * di papan Production, Invoice Logistic di papan White Label). `id` ditentukan
+ * pemanggil supaya tidak mungkin bentrok dengan kartu yang sudah ada.
+ *
+ * `sumber` WAJIB dioper, bukan punya nilai bawaan: kartu yang lahir di papan
+ * White Label harus berakhiran `_WHLB` seperti delapan kartu contoh di
+ * sebelahnya. Nilai bawaan akan membuat pemanggil yang lupa mengoper tetap
+ * mendapat workcode yang terlihat benar — persis kegagalan yang paling sulit
+ * ketahuan, karena tidak ada yang error.
+ */
+export function kartuBaru(
+  id: string,
+  b: DataProduksiBaru,
+  sumber: 'production' | 'whitelabel'
+): KartuPdff {
+  return {
+    id,
+    stage: 'propose',
+    productName: b.productName,
+    brand: 'CASSCA',
+    workcode: `PDFF_${b.designCode}_${b.batch}_${AKHIRAN_WORKCODE[sumber]}`,
+    batch: b.batch,
+    kategoriVendor: b.kategoriVendor,
+    namaVendor: b.namaVendor,
+    dateRequest: b.dateRequest,
+    pic: b.pic,
+    inisial: b.inisial,
+    detail: {
+      designCode: b.designCode,
+      kategori: b.kategori,
+      dibuatOleh: b.pic,
+      tanggalDibuat: b.dateRequest,
+      warna: b.warna,
+      labelTersedia: b.labelTersedia,
+      aksesori: b.aksesori,
+      kain: b.kain,
+    },
+  };
+}
+
+/**
+ * Kunci semua baris bahan — semuanya boleh ditandai siap.
+ *
+ * Termasuk baris yang stoknya kurang, dan itu memang disengaja: baris yang
+ * kurang justru baris yang paling perlu dibeli. Kalau baris itu diblokir,
+ * gate-nya jadi tidak mungkin terpenuhi dan kartunya tidak akan pernah bisa
+ * lanjut ke kolom berikutnya.
+ */
+export function kunciBahan(kartu: KartuPdff): string[] {
+  return bahanKartu(kartu).map((b) => b.kunci);
+}
+
+/** Ringkasan centang satu kartu, dipakai kartu papan maupun popup. */
+export interface RingkasanBahan {
+  siap: number;
+  total: number;
+  /** Benar kalau semua baris bahan sudah ditandai siap. */
+  lengkap: boolean;
+  /** Baris yang stoknya masih kurang — informasi, bukan penghalang. */
+  kurang: number;
+}
+
+export function ringkasBahan(kartu: KartuPdff, siap: SiapBahan): RingkasanBahan {
+  const semua = bahanKartu(kartu);
+  const kunci = new Set(siap[kartu.id] ?? []);
+  const ditandai = semua.filter((b) => kunci.has(b.kunci)).length;
+  return {
+    siap: ditandai,
+    total: semua.length,
+    lengkap: semua.length > 0 && ditandai === semua.length,
+    kurang: semua.filter((b) => b.status === 'kurang').length,
+  };
+}
+
+/**
+ * Stage setelah `id` di papan ini. `undefined` kalau `id` kolom terakhir atau
+ * tidak ada di papan.
+ *
+ * Dipakai untuk semua perpindahan kartu. Tujuannya TIDAK PERNAH ditulis tetap
+ * seperti `'prepare'`: papan White Label tidak punya kolom itu, jadi kartu yang
+ * dipindah ke sana tidak cocok dengan kolom mana pun dan lenyap dari papan —
+ * tanpa error, tanpa jejak, dan datanya sendiri terlihat benar.
+ */
+export function stageSetelah(stages: StagePapan[], id: string): StagePapan | undefined {
+  const i = stages.findIndex((s) => s.id === id);
+  return i >= 0 ? stages[i + 1] : undefined;
+}
+
+/**
+ * Stage tempat sebuah kartu berada sekarang.
+ *
+ * Urutan menangnya penting: perpindahan yang sudah dikerjakan MENANG atas stage
+ * bawaan kartu. Kalau dibalik, approve di Propose tidak akan memindahkan apa
+ * pun — kartunya ada di daftar bawaan, jadi stage bawaannya selalu dianggap
+ * yang berlaku, dan tombolnya seperti tidak bekerja.
+ *
+ * Dua penjagaan di bawah sama-sama menjaga satu hal: kartu tidak boleh lenyap
+ * dari papan. Kolom yang tidak ada di papan ini — misalnya tujuan perpindahan
+ * lama yang menunjuk `prepare` di papan White Label — diabaikan, dan kartunya
+ * tetap tampil di kolom yang masuk akal. Kartu yang hilang tanpa pesan jauh
+ * lebih sulit dilacak daripada kartu yang muncul di kolom yang salah.
+ *
+ * Kartu yang tidak ada di daftar (hasil form) ditaruh di kolom setelah Propose
+ * di papan itu: kartu lahir dari approve, jadi tempat paling masuk akalnya
+ * memang stage setelah Propose — di papan White Label Invoice Logistic, bukan
+ * Prepare.
+ */
+export function stageKartu(
+  id: string,
+  daftar: KartuPdff[],
+  pindah: Record<string, string>,
+  stages: StagePapan[]
+): string {
+  const tujuan = pindah[id];
+  if (tujuan && stages.some((s) => s.id === tujuan)) return tujuan;
+
+  const kartu = daftar.find((k) => k.id === id);
+  if (kartu && stages.some((s) => s.id === kartu.stage)) return kartu.stage;
+
+  return stageSetelah(stages, 'propose')?.id ?? stages[0]?.id ?? 'propose';
+}
+
+// ===== Satu usulan baru, dipakai smoke test =====
+//
+// Sama dengan yang dihasilkan form "Tambah Produksi": lahir di Propose, naik ke
+// Prepare setelah di-approve. Bahannya sengaja belum lengkap (Karet Pinggang
+// 60 m untuk 130 pcs), jadi alur gate di Prepare bisa diperagakan sampai
+// selesai: centang satu per satu, lalu tombol lanjut baru hidup setelah baris
+// terakhir siap.
+
+export const KARTU_BARU: DataProduksiBaru = {
+  productName: 'Celeste Dress',
+  designCode: 'CSC-DRS-31',
+  kategori: 'Dress',
+  batch: 'B-04',
+  kategoriVendor: 'Inhouse',
+  namaVendor: 'Livou',
+  dateRequest: '15 Sep 2026',
+  pic: 'Jan Chun Siong',
+  inisial: 'JS',
+  warna: [
+    {
+      nama: 'Black',
+      kode: 'BLK',
+      pcs: [
+        { ukuran: 'S', qty: 20 },
+        { ukuran: 'M', qty: 25 },
+        { ukuran: 'L', qty: 20 },
+      ],
+    },
+    {
+      nama: 'Ivory',
+      kode: 'IVR',
+      pcs: [
+        { ukuran: 'S', qty: 20 },
+        { ukuran: 'M', qty: 25 },
+        { ukuran: 'L', qty: 20 },
+      ],
+    },
+  ],
+  labelTersedia: { S: 120, M: 150, L: 120 },
+  aksesori: [
+    { nama: 'Label Brand', varian: 'LIVOU', berlaku: 'All variations', perPcs: 1, satuan: 'pcs', tersedia: 500 },
+    // 130 pcs x 0.756 = 98.28 m, tersedia 60 m -> kurang 38.28 m.
+    { nama: 'Karet Pinggang', varian: '—', berlaku: 'All variations', perPcs: 0.756, satuan: 'm', tersedia: 60 },
+  ],
+  kain: [
+    {
+      nama: 'Kain Rayon',
+      satuan: 'm',
+      perWarna: {
+        BLK: { perPcs: 1.5, tersedia: 120 },
+        IVR: { perPcs: 1.5, tersedia: 115 },
+      },
+    },
+  ],
+};
 
 // ===== Pabrik kartu =====
 
@@ -345,7 +637,8 @@ export const KARTU_PRODUCTION: KartuPdff[] = [
         nama: 'Kain Pleats',
         satuan: 'm',
         perWarna: {
-          // 50 pcs x 1.116 = 55.8 m, tersedia 70 m -> cukup.
+          // Black 20+30+30 = 80 pcs; 80 x 1.116 = 89.28 m, tersedia 70 m
+          // -> kurang 19.28 m. Angka itulah yang jadi badge kartu ini.
           BLK: { perPcs: 1.116, tersedia: 70 },
           IVR: { perPcs: 1.785, tersedia: 200 },
         },
@@ -775,8 +1068,17 @@ export const KARTU_PRODUCTION: KartuPdff[] = [
 
 // ===== Papan White Label =====
 //
-// Vendor-nya di luar negeri (China), jadi tahap Cutting digantikan Invoice
-// Logistic — barang datang utuh, tidak dipotong di sini.
+// Dua perbedaan dari papan Production, keduanya keputusan pemilik:
+//
+//   1. Tidak ada Cutting. Vendor-nya di luar negeri (China), barang datang
+//      utuh — tidak dipotong di sini. Digantikan Invoice Logistic.
+//   2. Tidak ada Prepare. Usulan yang di-approve langsung ke Invoice Logistic,
+//      jadi tidak ada tahap menyiapkan bahan di papan ini.
+//
+// Konsekuensinya penting dan disengaja: papan ini TIDAK punya gate kesiapan
+// bahan sama sekali. Centang bahan per baris hanya hidup di papan Production,
+// karena hanya di sana bahan itu disiapkan sendiri. Kartu white label tidak
+// pernah tertahan menunggu bahan.
 //
 // Di data sungguhan kedua papan ini BUKAN dua daftar seperti ini: keduanya
 // membaca tabel yang sama, dan yang menentukan sebuah kartu masuk papan mana
@@ -836,7 +1138,7 @@ export const KARTU_WHITELABEL: KartuPdff[] = [
 
   kartu({
     id: 'w-02',
-    stage: 'prepare',
+    stage: 'invoice-logistic',
     productName: 'Odette Gown',
     workcode: 'PDFF_CSC-GWN-19_B-03_WHLB',
     batch: 'B-03',
