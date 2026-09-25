@@ -77,6 +77,12 @@ frontend/dist/
 # mudah terjadi saat menyiapkan commit setelah menjalankan test.
 frontend/_smoke-kanban-*
 
+# Probe sekali pakai juga ditulis ke frontend/ dengan pola `_<nama>.mjs` dan
+# hilang setelah exit — aturan `_smoke-kanban-*` di atas tidak menutupnya, dan
+# dua probe ini sempat muncul sebagai untracked setelah saya menghapus
+# 2026-09-25. Satu baris lagi untuk seluruhnya, bukan satu baris per nama.
+frontend/_probe-*
+
 # Local debug artifacts (server logs, curl output, throwaway tests) — jangan commit
 *.log
 /body.html

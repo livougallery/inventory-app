@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { ExternalLink, FileText, Paperclip, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
 import {
   Dialog,
@@ -18,11 +20,24 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { BadgeStatus } from './KartuFulfillment';
-import type { BarisBahan, KartuPdff, RingkasanBahan, SiapBahan, StagePapan } from './data-kanban';
+import type {
+  BarisBahan,
+  BerkasBukti,
+  BuktiCutting,
+  CuttingPcs,
+  KartuPdff,
+  RingkasanBahan,
+  RingkasanCutting,
+  SiapBahan,
+  StagePapan,
+} from './data-kanban';
 import {
+  JENIS_BUKTI_CUTTING,
+  barisVarian,
   bahanKartu,
   jumlahVarian,
   ringkasBahan,
+  ringkasCutting,
   skuVarian,
   totalPcs,
 } from './data-kanban';
@@ -49,6 +64,18 @@ export interface AksiStage {
   lanjutStage: (kartu: KartuPdff) => void;
   /** Kunci baris bahan yang sudah ditandai siap untuk kartu ini. */
   siapKartu: (kartu: KartuPdff) => string[];
+  /** Isi pcs cutting satu varian (tahap Cutting). */
+  isiCutting: (kartu: KartuPdff, kunci: string, pcs: number) => void;
+  /**
+   * Tambah satu berkas bukti cutting (tahap Cutting).
+   *
+   * Menerima `File`, bukan object yang sudah diurai: pembuatan object URL harus
+   * terjadi di satu tempat saja, di dalam `setState`, supaya URL-nya ikut
+   * tercatat di state dan bisa di-revoke saat berkasnya dihapus.
+   */
+  tambahBukti: (kartu: KartuPdff, jenis: string, berkas: File) => void;
+  /** Buang satu berkas bukti cutting. */
+  hapusBukti: (kartu: KartuPdff, jenis: string, nama: string) => void;
 }
 
 function Sel({ label, nilai }: { label: string; nilai?: string }) {
@@ -94,6 +121,8 @@ export default function PopupKartu({
   adaPrepare = true,
   sumber,
   siapBahan,
+  cuttingPcs,
+  buktiCutting,
   aksi,
   onTutup,
 }: {
@@ -111,6 +140,8 @@ export default function PopupKartu({
    */
   sumber: 'production' | 'whitelabel';
   siapBahan: SiapBahan;
+  cuttingPcs: CuttingPcs;
+  buktiCutting: BuktiCutting;
   aksi: AksiStage;
   onTutup: () => void;
 }) {
@@ -133,6 +164,8 @@ export default function PopupKartu({
           stageBerikutnya={stageBerikutnya}
           adaPrepare={adaPrepare}
           siapBahan={siapBahan}
+          cuttingPcs={cuttingPcs}
+          buktiCutting={buktiCutting}
           aksi={aksi}
         />
       </DialogContent>
@@ -155,6 +188,8 @@ export function IsiPopup({
   stageBerikutnya,
   adaPrepare = true,
   siapBahan = {},
+  cuttingPcs = {},
+  buktiCutting = {},
   aksi,
 }: {
   kartu: KartuPdff;
@@ -167,20 +202,32 @@ export function IsiPopup({
    */
   adaPrepare?: boolean;
   siapBahan?: SiapBahan;
+  cuttingPcs?: CuttingPcs;
+  buktiCutting?: BuktiCutting;
   aksi?: AksiStage;
 }) {
   const pcs = totalPcs(kartu);
   const varian = jumlahVarian(kartu);
   const ringkas = ringkasBahan(kartu, siapBahan);
+  const ringkasCut = ringkasCutting(kartu, cuttingPcs, buktiCutting);
 
   const stageId = stage?.id;
   const bisaApprove = stageId === 'propose';
   const bisaPrepare = stageId === 'prepare';
+  const bisaCutting = stageId === 'cutting';
 
   return (
     <div className="max-h-[calc(90vh-5rem)] space-y-6 overflow-y-auto px-6 py-5">
       <SeksiIdentitas kartu={kartu} />
-      <SeksiWarnaUkuran kartu={kartu} pcs={pcs} varian={varian} adaTabelBahan={bisaApprove || bisaPrepare} />
+      <SeksiWarnaUkuran
+        kartu={kartu}
+        pcs={pcs}
+        varian={varian}
+        adaTabelBahan={bisaApprove || bisaPrepare}
+        modeCutting={bisaCutting}
+        cuttingPcs={cuttingPcs[kartu.id] ?? {}}
+        aksi={aksi}
+      />
 
       {bisaApprove && (
         <SeksiPropose kartu={kartu} tujuan={stageBerikutnya} adaPrepare={adaPrepare} aksi={aksi} />
@@ -194,7 +241,10 @@ export function IsiPopup({
           aksi={aksi}
         />
       )}
-      {!bisaApprove && !bisaPrepare && <SeksiBelumAda stage={stage} />}
+      {bisaCutting && (
+        <SeksiCutting kartu={kartu} ringkas={ringkasCut} tujuan={stageBerikutnya} bukti={buktiCutting[kartu.id] ?? {}} aksi={aksi} />
+      )}
+      {!bisaApprove && !bisaPrepare && !bisaCutting && <SeksiBelumAda stage={stage} />}
     </div>
   );
 }
@@ -225,26 +275,44 @@ function SeksiIdentitas({ kartu }: { kartu: KartuPdff }) {
   );
 }
 
-// ===== Blok rencana warna & ukuran (sama di semua stage) =====
+// ===== Blok rencana warna & ukuran =====
+//
+// Dua mode, karena isi tabelnya memang berbeda maksudnya per stage:
+//
+//   * mode Cutting : kolom "Plan Qty" diganti jadi kotak isi "Cutting Pcs".
+//                    Plan SENGAJA tidak ikut tampil. Yang dipakai di sini bukan
+//                    lagi rencana produksi, melainkan hasil potong yang sudah
+//                    terjadi — dan memamerkan angka rencana tepat di sebelahnya
+//                    membuat orang membandingkan dua hal yang memang tidak
+//                    harus sama. Selisih antara rencana dan hasil potong itu
+//                    urusan stage berikutnya (Receive), bukan Cutting.
+//   * mode plan    : kolom Plan Qty, seperti semula.
+//
+// Dan Share DIHAPUS untuk semua stage. Kolom itu menampilkan persentase porsi
+// tiap varian terhadap total plan — angka turunan dari kolom Plan Qty itu
+// sendiri. Setelah plan tidak tampil di Cutting, kolomnya tidak punya sumber
+// angka lagi di sana.
 //
 // Lebar kolomnya dipatok, bukan dibiarkan meregang. Sebelumnya tabel ini
 // `table-auto` selebar dialog: dengan tiga kolom tanpa lebar, "Variant SKU"
 // berakhir di tengah dan "Plan Qty" terdorong ke ujung kanan, sehingga dua
-// angka yang seharusnya dibaca berdampingan terpisah setengah layar. Sisa
-// lebarnya kini diisi kolom porsi, bukan dibiarkan kosong.
+// angka yang seharusnya dibaca berdampingan terpisah setengah layar.
 
 function SeksiWarnaUkuran({
   kartu,
   pcs,
   varian,
   adaTabelBahan,
+  modeCutting = false,
+  cuttingPcs = {},
+  aksi,
 }: {
   kartu: KartuPdff;
   pcs: number;
   varian: number;
   /**
    * Apakah popup ini juga menampilkan tabel BOM di bawah. Hanya Propose dan
-   * Prepare yang punya — enam stage lain isinya sengaja dikosongkan.
+   * Prepare yang punya — stage lain isinya sengaja dikosongkan.
    *
    * Tanpa penjagaan ini, popup Cutting/Receive/Upload menulis "Kesiapan bahan
    * diperiksa di tabel bawah" tepat di atas panel yang berbunyi "Belum ada isi
@@ -252,19 +320,25 @@ function SeksiWarnaUkuran({
    * dibaca pemilik saat presentasi.
    */
   adaTabelBahan: boolean;
+  /** Stage Cutting: kolom Plan Qty diganti jadi input Cutting Pcs. */
+  modeCutting?: boolean;
+  cuttingPcs?: Record<string, number>;
+  buktiCutting?: BuktiCutting;
+  aksi?: AksiStage;
 }) {
-  const baris = kartu.detail.warna.flatMap((w) =>
-    w.pcs.map((p) => ({ warna: w.nama, kode: w.kode, ukuran: p.ukuran, qty: p.qty }))
-  );
+  const baris = barisVarian(kartu);
+  const totalCutting = baris.reduce((s, b) => s + (cuttingPcs[b.kunci] ?? 0), 0);
 
   return (
     <section className="space-y-3">
       <JudulSeksi
-        judul="Color & Size Plan"
+        judul={modeCutting ? 'Color & Size' : 'Color & Size Plan'}
         keterangan={
-          adaTabelBahan
-            ? 'Satu baris mewakili satu kombinasi warna dan ukuran. Kesiapan bahan diperiksa di tabel bawah.'
-            : 'Satu baris mewakili satu kombinasi warna dan ukuran.'
+          modeCutting
+            ? 'Satu baris mewakili satu kombinasi warna dan ukuran. Isi pcs yang benar-benar sudah dipotong.'
+            : adaTabelBahan
+              ? 'Satu baris mewakili satu kombinasi warna dan ukuran. Kesiapan bahan diperiksa di tabel bawah.'
+              : 'Satu baris mewakili satu kombinasi warna dan ukuran.'
         }
       />
 
@@ -275,34 +349,53 @@ function SeksiWarnaUkuran({
               <TableHead className="w-36 text-xs">Color</TableHead>
               <TableHead className="w-16 text-xs">Size</TableHead>
               <TableHead className="text-xs">Variant SKU</TableHead>
-              <TableHead className="w-24 text-right text-xs">Plan Qty</TableHead>
-              <TableHead className="w-32 text-xs">Share</TableHead>
+              <TableHead className={`text-right text-xs ${modeCutting ? 'w-36' : 'w-24'}`}>
+                {modeCutting ? 'Cutting Pcs' : 'Plan Qty'}
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {baris.map((b) => {
-              const persen = pcs > 0 ? Math.round((b.qty / pcs) * 100) : 0;
+              const kunci = b.kunci;
               return (
-                <TableRow key={`${b.kode}-${b.ukuran}`}>
+                <TableRow key={kunci}>
                   <TableCell className="px-3 py-2">{b.warna}</TableCell>
                   <TableCell className="px-3 py-2 text-muted-foreground">{b.ukuran}</TableCell>
                   <TableCell className="truncate px-3 py-2 font-mono text-xs">
                     {skuVarian(kartu, b.kode, b.ukuran)}
                   </TableCell>
-                  <TableCell className="px-3 py-2 text-right tabular-nums">{b.qty} pcs</TableCell>
-                  <TableCell className="px-3 py-2">
-                    <span className="flex items-center gap-2">
-                      <span className="h-1.5 w-14 shrink-0 overflow-hidden rounded-full bg-muted">
-                        <span
-                          className="block h-full rounded-full bg-foreground/40"
-                          style={{ width: `${persen}%` }}
-                        />
-                      </span>
-                      <span className="text-[11px] tabular-nums text-muted-foreground">
-                        {persen}%
-                      </span>
-                    </span>
-                  </TableCell>
+                  {modeCutting ? (
+                    <TableCell className="px-3 py-2">
+                      <Input
+                        type="number"
+                        min={0}
+                        step={1}
+                        inputMode="numeric"
+                        aria-label={`Cutting pcs ${b.warna} ${b.ukuran}`}
+                        className="h-8 text-right tabular-nums"
+                        value={cuttingPcs[kunci] ?? ''}
+                        placeholder="—"
+                        onChange={(e) => {
+                          const mentah = e.target.value.trim();
+                          // Kosong DIBEDAKAN dari 0, dan itu yang membuat gerbang
+                          // bisa dihitung. Kotak yang dikosongkan berarti "belum diisi" —
+                          // varian ini belum dipotong. Angka 0 berarti sudah diisi
+                          // dan hasilnya memang nol, dan itu keputusan sah yang
+                          // harus bisa dinyatakan. Kalau keduanya disamakan, satu
+                          // saja varian yang memang tidak dipotong membuat
+                          // gerbang tidak akan pernah terbuka.
+                          if (mentah === '') {
+                            aksi?.isiCutting(kartu, kunci, NaN);
+                            return;
+                          }
+                          const n = Number(mentah);
+                          aksi?.isiCutting(kartu, kunci, Number.isFinite(n) && n >= 0 ? n : NaN);
+                        }}
+                      />
+                    </TableCell>
+                  ) : (
+                    <TableCell className="px-3 py-2 text-right tabular-nums">{b.qty} pcs</TableCell>
+                  )}
                 </TableRow>
               );
             })}
@@ -312,7 +405,11 @@ function SeksiWarnaUkuran({
 
       <div className="flex items-center justify-between text-sm">
         <span className="text-xs text-muted-foreground">{varian} variation rows</span>
-        <span className="font-semibold tabular-nums">Total plan {pcs} PCS</span>
+        {modeCutting ? (
+          <span className="font-semibold tabular-nums">Total cutting {totalCutting} PCS</span>
+        ) : (
+          <span className="font-semibold tabular-nums">Total plan {pcs} PCS</span>
+        )}
       </div>
     </section>
   );
@@ -442,6 +539,219 @@ function SeksiPrepare({
         </Button>
       </div>
     </section>
+  );
+}
+
+// ===== Stage Cutting =====
+//
+// Daftar pekerjaan Cutting: pcs hasil potong per varian (lewat tabel di atas)
+// plus dua bukti unggah. Keduanya WAJIB, dan gerbangnya sama bentuknya dengan
+// Prepare: tombol lanjut mati sampai syaratnya terpenuhi.
+//
+// Keputusan owner 25 September 2026: kedua bukti wajib. Yang dituangkan di sini
+// adalah bentuk presentation-nya, belum penyimpanan — berkasnya dibaca browser
+// dan ditampilkan sebagai object URL, tidak dikirim ke server. Alasannya sudah
+// ada di catatan grilling 24 Sep: mengunggah ke server tanpa tabel pemilik
+// menghasilkan berkas yatim, yang sudah punya tiketnya sendiri.
+
+function SeksiCutting({
+  kartu,
+  ringkas,
+  tujuan,
+  bukti,
+  aksi,
+}: {
+  kartu: KartuPdff;
+  ringkas: RingkasanCutting;
+  tujuan?: StagePapan;
+  bukti: Record<string, BerkasBukti[]>;
+  aksi?: AksiStage;
+}) {
+  const persenBukti = ringkas.totalBukti > 0 ? Math.round((ringkas.bukti / ringkas.totalBukti) * 100) : 0;
+  const persenVarian = ringkas.total > 0 ? Math.round((ringkas.terisi / ringkas.total) * 100) : 0;
+  const label = `Lanjut ke ${tujuan?.label ?? 'stage berikutnya'}`;
+
+  return (
+    <section className="space-y-3">
+      <JudulSeksi
+        judul="Bukti Cutting"
+        keterangan="Dua bukti wajib sebelum kartu boleh lanjut. Berkas belum dikirim ke server — baru ditampilkan di peramban."
+      />
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {JENIS_BUKTI_CUTTING.map((j) => (
+          <KotakBukti
+            key={j.id}
+            jenis={j.id}
+            judul={j.judul}
+            keterangan={j.keterangan}
+            terima={j.terima}
+            sudahAda={(bukti[j.id] ?? []).length > 0}
+            berkas={bukti[j.id] ?? []}
+            aksi={aksi}
+            kartu={kartu}
+          />
+        ))}
+      </div>
+
+      <div className="space-y-3 rounded-lg border p-3">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-medium">Pcs cutting per varian</span>
+              <span className="tabular-nums text-muted-foreground">
+                {ringkas.terisi}/{ringkas.total} terisi
+              </span>
+            </div>
+            <Progress value={persenVarian} className="h-2" />
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs">
+              <span className="font-medium">Bukti terkumpul</span>
+              <span className="tabular-nums text-muted-foreground">
+                {ringkas.bukti}/{ringkas.totalBukti} jenis
+              </span>
+            </div>
+            <Progress value={persenBukti} className="h-2" />
+          </div>
+        </div>
+
+        <p className="text-xs text-muted-foreground">
+          {ringkas.lengkap
+            ? `Cutting selesai dicatat. Kartu boleh masuk ${tujuan?.label ?? 'stage berikutnya'}.`
+            : 'Kartu baru bisa lanjut setelah tiap varian punya pcs cutting dan kedua bukti terunggah.'}
+        </p>
+
+        <div className="flex justify-end">
+          <Button disabled={!ringkas.lengkap} onClick={() => aksi?.lanjutStage(kartu)}>
+            {label}
+          </Button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function KotakBukti({
+  jenis,
+  judul,
+  keterangan,
+  terima,
+  sudahAda,
+  berkas,
+  aksi,
+  kartu,
+}: {
+  jenis: string;
+  judul: string;
+  keterangan: string;
+  terima: string;
+  sudahAda: boolean;
+  berkas: BerkasBukti[];
+  aksi?: AksiStage;
+  kartu: KartuPdff;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+
+  return (
+    <div
+      className={`space-y-2 rounded-lg border p-3 ${
+        sudahAda ? 'border-emerald-300 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-950/20' : ''
+      }`}
+    >
+      <div className="flex items-start gap-2">
+        {sudahAda ? (
+          <FileText className="mt-0.5 size-4 shrink-0 text-emerald-700 dark:text-emerald-400" />
+        ) : (
+          <Paperclip className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+        )}
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium">{judul}</div>
+          <div className="text-xs text-muted-foreground">{keterangan}</div>
+        </div>
+      </div>
+
+      {berkas.length > 0 && (
+        <ul className="space-y-1.5">
+          {berkas.map((b) => (
+            <li key={b.nama} className="space-y-1 rounded bg-background px-2 py-1.5 text-xs">
+              <div className="flex items-center gap-2">
+                {b.tipe.startsWith('image/') ? (
+                  // Pratinjau, bukan sekadar nama berkas: untuk "foto SS register"
+                  // isi fotonya justru satu-satunya yang perlu diperiksa sebelum
+                  // kartu boleh lanjut, jadi menampilkan namanya saja tidak
+                  // memberi user apa pun untuk diverifikasi.
+                  <img
+                    src={b.url}
+                    alt={b.nama}
+                    className="size-10 shrink-0 rounded border object-cover"
+                  />
+                ) : (
+                  <FileText className="size-4 shrink-0 text-muted-foreground" />
+                )}
+                <span className="min-w-0 flex-1 truncate">{b.nama}</span>
+                <span className="shrink-0 tabular-nums text-muted-foreground">
+                  {(b.ukuran / 1024).toFixed(0)} KB
+                </span>
+                {/* PDF (dan berkas apa pun) tidak bisa dirender di sini, jadi
+                    dibuka di tab baru. Dirender sebagai <a>, bukan <button>
+                    dengan onClick: ini memang tautan, dan sebagai tautan
+                    user bisa klik tengah atau "open in new tab" seperti pada
+                    berkas biasa. Base UI menyediakan `render` untuk ini. */}
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6 shrink-0"
+                  aria-label={`Buka ${b.nama}`}
+                  render={<a href={b.url} target="_blank" rel="noopener noreferrer" />}
+                >
+                  <ExternalLink />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-6 shrink-0 text-muted-foreground hover:text-destructive"
+                  aria-label={`Hapus ${b.nama}`}
+                  onClick={() => aksi?.hapusBukti(kartu, jenis, b.nama)}
+                >
+                  <X />
+                </Button>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {/* Input file disembunyikan, tombol yang mengetik label-nya. Pola yang
+          sama dipakai di halaman Pembelian Material, dan alasannya sama:
+          `disabled` harus dipasang pada INPUT-nya, bukan pada Button — kalau
+          Button yang dinonaktifkan, klik tetap diteruskan ke input dan
+          berkas kedua lolos masuk tanpa terlihat. */}
+      <Button
+        variant={sudahAda ? 'outline' : 'secondary'}
+        size="sm"
+        className="w-full"
+        onClick={() => input.current?.click()}
+      >
+        {sudahAda ? 'Tambah berkas lain' : 'Unggah'}
+      </Button>
+      <input
+        ref={input}
+        type="file"
+        multiple
+        accept={terima}
+        className="hidden"
+        aria-label={`Unggah ${judul}`}
+        onChange={(e) => {
+          const dipilih = Array.from(e.target.files ?? []);
+          // Dikosongkan setelah dipakai supaya berkas yang sama bisa dipilih
+          // ulang — tanpa ini, memilih berkas yang sama dua kali tidak memicu
+          // onChange, jadi tombolnya terlihat tidak bekerja.
+          e.target.value = '';
+          for (const f of dipilih) aksi?.tambahBukti(kartu, jenis, f);
+        }}
+      />
+    </div>
   );
 }
 

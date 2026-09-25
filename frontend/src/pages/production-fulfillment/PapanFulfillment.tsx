@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Plus } from 'lucide-react';
 import {
   Kanban,
@@ -11,7 +11,15 @@ import { cn } from '@/lib/utils';
 import KartuFulfillment from './KartuFulfillment';
 import PopupKartu, { type AksiStage } from './PopupKartu';
 import FormProduksiBaru from './FormProduksiBaru';
-import type { DataProduksiBaru, KartuPdff, SiapBahan, StagePapan } from './data-kanban';
+import type {
+  BerkasBukti,
+  BuktiCutting,
+  CuttingPcs,
+  DataProduksiBaru,
+  KartuPdff,
+  SiapBahan,
+  StagePapan,
+} from './data-kanban';
 import { kartuBaru, stageKartu, stageSetelah } from './data-kanban';
 
 // ===== Papan Kanban =====
@@ -56,7 +64,27 @@ export default function PapanFulfillment({
   const [kartuTambahan, setKartuTambahan] = useState<KartuPdff[]>([]);
   const [pindah, setPindah] = useState<Record<string, string>>({});
   const [siapBahan, setSiapBahan] = useState<SiapBahan>({});
+  const [cuttingPcs, setCuttingPcs] = useState<CuttingPcs>({});
+  const [buktiCutting, setBuktiCutting] = useState<BuktiCutting>({});
   const [formTerbuka, setFormTerbuka] = useState(false);
+
+  // Object URL dari pratinjau bukti cutting tidak bisa dibiarkan menggantung.
+  // Menyimpan state-nya di ref membuat cleanup terakhir bisa membaca nilai
+  // terbaru tanpa harus menggantungkan effect ini ke setiap perubahan — kalau
+  // dependensinya ikut `buktiCutting`, effect akan mencabut URL berkas yang
+  // masih tampil setiap kali berkas lain ditambahkan.
+  const buktiRef = useRef(buktiCutting);
+  buktiRef.current = buktiCutting;
+  useEffect(
+    () => () => {
+      for (const perJenis of Object.values(buktiRef.current)) {
+        for (const daftar of Object.values(perJenis)) {
+          for (const b of daftar) URL.revokeObjectURL(b.url);
+        }
+      }
+    },
+    []
+  );
 
   // Kartu bawaan + kartu yang baru ditambahkan lewat form.
   const semua = useMemo(() => [...kartu, ...kartuTambahan], [kartu, kartuTambahan]);
@@ -106,6 +134,55 @@ export default function PapanFulfillment({
       });
     },
     siapKartu: (k) => siapBahan[k.id] ?? [],
+    isiCutting: (k, kunci, pcs) => {
+      setCuttingPcs((lama) => {
+        const isiKartu: Record<string, number> = { ...(lama[k.id] ?? {}) };
+        // NaN berarti kotak dikosongkan. Kunci DIHAPUS, bukan diisi NaN: kunci
+        // yang masih ada dengan nilai NaN akan lolos pemeriksaan "sudah
+        // terisi" di ringkasan, dan gerbangnya terbuka untuk varian yang
+        // belum diisi. Lihat catatan di `ringkasCutting()`.
+        if (Number.isNaN(pcs)) delete isiKartu[kunci];
+        else isiKartu[kunci] = pcs;
+        return { ...lama, [k.id]: isiKartu };
+      });
+    },
+    tambahBukti: (k, jenis, berkas) => {
+      setBuktiCutting((lama) => {
+        const jenisKartu: Record<string, BerkasBukti[]> = { ...(lama[k.id] ?? {}) };
+        const daftar = [...(jenisKartu[jenis] ?? [])];
+        // Berkas dengan nama sama tidak dihitung dua kali: `multiple` memungkinkan
+        // hal itu, dan tanpa penjagaan dua baris dengan nama identik membuat
+        // tombol hapus pertama ikut menghapus yang kedua diam-diam.
+        if (!daftar.some((b) => b.nama === berkas.name)) {
+          daftar.push({
+            nama: berkas.name,
+            ukuran: berkas.size,
+            tipe: berkas.type,
+            url: URL.createObjectURL(berkas),
+          });
+        } else {
+          // Kembar yang ditolak tidak boleh menggantungkan object URL sia-sia:
+          // tidak ada yang akan pernah merevoke-nya.
+          return lama;
+        }
+        jenisKartu[jenis] = daftar;
+        return { ...lama, [k.id]: jenisKartu };
+      });
+    },
+    hapusBukti: (k, jenis, nama) => {
+      setBuktiCutting((lama) => {
+        const jenisKartu: Record<string, BerkasBukti[]> = { ...(lama[k.id] ?? {}) };
+        const sisa = (jenisKartu[jenis] ?? []).filter((b) => b.nama !== nama);
+        // Object URL tidak dikumpulkan garbage collector seperti memori biasa —
+        // satu-satunya cara melepaskannya adalah revoke eksplisit, dan tanpa
+        // ini setiap unggahan menahan isi berkasnya sampai halaman ditutup.
+        for (const b of jenisKartu[jenis] ?? []) {
+          if (b.nama === nama) URL.revokeObjectURL(b.url);
+        }
+        jenisKartu[jenis] = sisa;
+        return { ...lama, [k.id]: jenisKartu };
+      });
+    },
   };
 
   function tambahProduksi(data: DataProduksiBaru) {
@@ -206,6 +283,8 @@ export default function PapanFulfillment({
         adaPrepare={stages.some((s) => s.id === 'prepare')}
         sumber={sumber}
         siapBahan={siapBahan}
+        cuttingPcs={cuttingPcs}
+        buktiCutting={buktiCutting}
         aksi={aksi}
         onTutup={() => setTerbukaId(null)}
       />

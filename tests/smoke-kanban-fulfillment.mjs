@@ -192,10 +192,19 @@ const isiSemuanya = Object.fromEntries(varianCutting.map((v) => [v.kunci, 10]));
 
 // Dua jenis bukti, masing-masing dengan berkasnya sendiri. Keduanya harus ada
 // dan tidak saling menggantikan.
+//
+// Kolom "url" ikut diisi karena popup harus bisa MENAMPILKAN hasil unggahan.
+// Kalau kolom ini dihapus dari BerkasBukti, gerbang tetap hijau (ia hanya
+// menghitung jenisnya) sementara pratinjaunya hilang total - persis bug yang
+// sudah pernah terjadi sekali di fitur ini dan tidak ditangkap tes mana pun.
+//
+// Catatan: file ini ditulis ke dalam template literal entry Vite, jadi TIDAK
+// boleh memakai backtick di dalam komentar - backtick menutup string-nya dan
+// seluruh bundel gagal dibuild.
 const duaJenisBukti = {
   [kartuCutting.id]: {
-    'laporan-potong': [{ nama: 'laporan.pdf', ukuran: 100, tipe: 'application/pdf' }],
-    'register-cutting': [{ nama: 'register.png', ukuran: 100, tipe: 'image/png' }],
+    'laporan-potong': [{ nama: 'laporan.pdf', ukuran: 100, tipe: 'application/pdf', url: 'blob:laporan' }],
+    'register-cutting': [{ nama: 'register.png', ukuran: 100, tipe: 'image/png', url: 'blob:register' }],
   },
 };
 
@@ -206,7 +215,7 @@ export const gerbangCutting = {
   jumlahVarian: varianCutting.length,
   totalPlan: totalPcs(kartuCutting),
   jenisBukti: JENIS_BUKTI_CUTTING.map((b) => b.id),
-  // Kutak kosong -> tertutup.
+  // Kosong -> tertutup.
   kosong: ringkasCutting(kartuCutting, {}, {}),
   // Pcs penuh, bukti belum ada -> masih tertutup.
   tanpaBukti: ringkasCutting(kartuCutting, { [kartuCutting.id]: isiSemuanya }, {}),
@@ -223,11 +232,11 @@ export const gerbangCutting = {
   // Hanya SATU jenis bukti -> tertutup. Ini yang akan lolos kalau bukti
   // disimpan dalam satu daftar dan tidak dipisah per jenis.
   satuJenis: ringkasCutting(kartuCutting, { [kartuCutting.id]: isiSemuanya }, {
-    [kartuCutting.id]: { 'laporan-potong': [{ nama: 'a.pdf', ukuran: 1, tipe: '' }] },
+    [kartuCutting.id]: { 'laporan-potong': [{ nama: 'a.pdf', ukuran: 1, tipe: '', url: 'blob:a' }] },
   }),
   // Berkas di jenis yang salah tidak boleh dihitung.
   jenisSalah: ringkasCutting(kartuCutting, { [kartuCutting.id]: isiSemuanya }, {
-    [kartuCutting.id]: { 'register-cutting': [{ nama: 'a.pdf', ukuran: 1, tipe: '' }] },
+    [kartuCutting.id]: { 'register-cutting': [{ nama: 'a.pdf', ukuran: 1, tipe: '', url: 'blob:a' }] },
   }),
 };
 
@@ -838,6 +847,27 @@ popupCuttingTerisi.includes(`Total cutting ${totalCuttingContoh} PCS`)
 !popupCuttingTerisi.includes('Total plan')
   ? ok('popup Cutting tidak menulis "Total plan"')
   : salah('Total plan di Cutting', 'rencana total masih tertulis di stage Cutting');
+
+// Pratinjau bukti. Tanpa ini, daftar nama berkas lolos sebagai "bukti terkumpul"
+// padahal owner tidak pernah bisa melihat apa yang ia unggah — dan untuk foto
+// register, isi fotonya justru satu-satunya yang perlu diperiksa.
+// Dicari sebagai `src="..."`, bukan sekadar "blob:register": tautan buka di
+// bawah juga memuat URL yang sama persis, jadi pencarian tanpa atribut akan
+// tetap hijau walau pratinjau gambarnya dihapus - persis yang terjadi saat
+// mutasi M2 dicoba.
+popupCuttingTerisi.includes('src="blob:register"')
+  ? ok('pratinjau gambar memakai object URL')
+  : salah('pratinjau gambar', 'src tidak ada; yang tampil bukan berkasnya');
+popupCuttingTerisi.includes('<img')
+  ? ok('bukti gambar punya pratinjau')
+  : salah('pratinjau gambar', 'tidak ada elemen <img> di daftar bukti');
+// PDF (dan berkas gambar) harus bisa dibuka. Tombolnya dirender sebagai <a>
+// dengan href sungguhan, jadi tautannya benar-benar ada di markup - kalau
+// masih onClick, renderToStaticMarkup tidak akan menulis apa pun dan berkas
+// jadi mustahil dibaca tanpa cara lain membukanya.
+popupCuttingTerisi.includes('href="blob:laporan"')
+  ? ok('berkas punya tautan untuk dibuka di tab baru')
+  : salah('tautan buka berkas', 'tidak ada href; berkas tidak bisa dibaca dari popup');
 
 const g = gerbangCutting;
 g.jumlahVarian > 0

@@ -419,6 +419,165 @@ export function ringkasBahan(kartu: KartuPdff, siap: SiapBahan): RingkasanBahan 
   };
 }
 
+// ===== Cutting =====
+//
+// Data cutting disimpan di luar kartu, sama seperti `SiapBahan`: kartu contoh
+// di sini adalah data pratinjau, dan angka yang diketik orang di popup tidak
+// boleh ikut tersimpan di dalamnya — kalau iya, setiap kartu perlu salinannya
+// sendiri dan angka hasil ketik orang hilang begitu halamannya dimuat ulang.
+
+/**
+ * Pcs hasil cutting per varian, per kartu. Kuncinya dari `barisVarian()`. */
+export type CuttingPcs = Record<string, Record<string, number>>;
+
+/**
+ * Berkas bukti cutting, dua tingkat: id kartu -> id jenis bukti -> daftar berkas.
+ *
+ * Dua tingkat, bukan satu, karena satu kartu punya DUA jenis bukti yang wajib
+ * dan keduanya boleh lebih dari satu berkas. Kalau satu tingkat saja, kedua
+ * jenis berbagi satu daftar dan mustahil tahu mana yang sudah terkumpul — satu
+ * file potong kain saja akan terlihat seperti dua bukti lengkap.
+ */
+export type BuktiCutting = Record<string, Record<string, BerkasBukti[]>>;
+
+/**
+ * Satu berkas yang dipilih pengguna.
+ *
+ * Sengaja bukan `File`: `File` tidak bisa di-*snapshot* ke markup server, dan
+ * state React harus bisa dibaca ulang setelah render. Yang disimpan di state
+ * data deskriptif — nama, ukuran, tipe — plus `url` hasil
+ * `URL.createObjectURL`, yang cukup untuk menampilkan pratinjau dan membuka
+ * PDF. Berkas aslinya tetap dipegang browser lewat object URL itu; tidak ada
+ * yang dikirim ke server.
+ */
+export interface BerkasBukti {
+  nama: string;
+  ukuran: number;
+  tipe: string;
+  /**
+   * `blob:` URL dari `URL.createObjectURL(file)`, dibuat saat berkas dipilih.
+   *
+   * Wajib ada karena tanpa ini user tidak bisa MELIHAT apa yang baru diunggah
+   * — daftar nama berkas bukan bukti apa pun, dan untuk "foto SS register"
+   * isi fotonya justru satu-satunya yang perlu diperiksa. URL-nya dibuang
+   * bersama berkasnya; jangan disimpan lebih lama dari umur component-nya.
+   */
+  url: string;
+}
+
+/** Dua jenis bukti yang wajib ada sebelum kartu boleh keluar dari Cutting. */
+export const JENIS_BUKTI_CUTTING = [
+  {
+    id: 'laporan-potong',
+    judul: 'Laporan Potong Kain',
+    keterangan: 'PDF atau foto laporan potong kain.',
+    terima: '.pdf,.jpg,.jpeg,.png,.webp',
+  },
+  {
+    id: 'register-cutting',
+    judul: 'Foto SS Register Cutting PDFF',
+    keterangan: 'Tangkapan layar register cutting PDFF.',
+    terima: '.jpg,.jpeg,.png,.webp',
+  },
+] as const;
+
+export type IdBuktiCutting = (typeof JENIS_BUKTI_CUTTING)[number]['id'];
+
+/** Kunci jenis bukti yang dipanggil dari form — dipakai sebagai penanda silang. */
+export const SEMUA_ID_BUKTI: IdBuktiCutting[] = JENIS_BUKTI_CUTTING.map((b) => b.id);
+
+/**
+ * Ringkasan stage Cutting: sudahkah pekerjaan cutting satu kartu selesai.
+ *
+ * Punya tiga syarat, dan semuanya harus benar:
+ *   1. SETIAP varian punya pcs cutting yang sudah diisi (boleh 0 — 0 itu
+ *      keputusan "tidak ada yang dipotong dari varian ini", bukan "belum diisi";
+ *      yang membedakan keduanya adalah kotak input yang masih kosong).
+ *   2. Kedua jenis bukti sudah diunggah.
+ *
+ * Syarat (1) sengaja membedakan "0" dari "kosong". Kalau angka 0 diperlakukan
+ * sama dengan belum diisi, maka varian yang memang tidak dipotong tidak akan
+ * pernah bisa diselesaikan — dan gerbangnya mustahil dibuka tanpa data palsu.
+ */
+export interface RingkasanCutting {
+  /** Berapa varian yang pcs cutting-nya sudah diisi. */
+  terisi: number;
+  /** Total varian di kartu ini. */
+  total: number;
+  /** Berapa jenis bukti yang sudah terisi. */
+  bukti: number;
+  /** Total jenis bukti yang wajib ada. */
+  totalBukti: number;
+  /** Total pcs hasil cutting. */
+  totalPcs: number;
+  /** Benar kalau kedua syarat di atas terpenuhi. */
+  lengkap: boolean;
+}
+
+export function ringkasCutting(
+  kartu: KartuPdff,
+  pcs: CuttingPcs,
+  bukti: BuktiCutting
+): RingkasanCutting {
+  const varian = barisVarian(kartu);
+  const isiKartu: Record<string, number> = pcs[kartu.id] ?? {};
+  const terisi = varian.filter((v) => isiKartu[v.kunci] !== undefined).length;
+  const buktiKartu: Record<string, BerkasBukti[]> = bukti[kartu.id] ?? {};
+  let buktiTerisi = 0;
+  for (const id of SEMUA_ID_BUKTI) {
+    if ((buktiKartu[id] ?? []).length > 0) buktiTerisi++;
+  }
+  return {
+    terisi,
+    total: varian.length,
+    bukti: buktiTerisi,
+    totalBukti: SEMUA_ID_BUKTI.length,
+    totalPcs: varian.reduce((s, v) => s + (isiKartu[v.kunci] ?? 0), 0),
+    lengkap: terisi === varian.length && buktiTerisi === SEMUA_ID_BUKTI.length,
+  };
+}
+
+/**
+ * Satu baris warna/ukuran, flatten dari `detail.warna`, lengkap dengan kuncinya.
+ *
+ * `kunci` dihitung DI SINI, sekali jalan, bukan di setiap tempat yang
+ * membutuhkannya. Kalau tiap pemanggil menghitungnya sendiri, tiap pemanggil
+ * harus membangun ulang peta nomor kemunculan dari nol — dan pemanggil yang
+ * paling sering jalan (satu per baris tabel) berubah jadi O(baris^2). Yang lebih
+ * penting daripada kecepatan: kalau kuncinya dihitung di dua tempat dengan cara
+ * berbeda, input cutting yang mengetik orang menempel ke baris yang salah.
+ *
+ * `[kodeWarna, ukuran]` saja tidak cukup sebagai kunci: satu warna boleh punya
+ * ukuran yang sama tercatat dua kali, dan dua baris seperti itu akan berbagi
+ * satu kunci sehingga mengetik angka di satu baris ikut mengubah baris lain.
+ */
+export interface BarisVarian {
+  warna: string;
+  kode: string;
+  ukuran: string;
+  qty: number;
+  /** Kunci stabil baris ini di dalam kartunya — dihitung oleh `barisVarian()`. */
+  kunci: string;
+}
+
+export function barisVarian(kartu: KartuPdff): BarisVarian[] {
+  const nomor = new Map<string, number>();
+  return kartu.detail.warna.flatMap((w) =>
+    w.pcs.map((p) => {
+      const teks = `${w.kode}|${p.ukuran}`;
+      const ke = (nomor.get(teks) ?? 0) + 1;
+      nomor.set(teks, ke);
+      return {
+        warna: w.nama,
+        kode: w.kode,
+        ukuran: p.ukuran,
+        qty: p.qty,
+        kunci: ke === 1 ? teks : `${teks}#${ke}`,
+      };
+    })
+  );
+}
+
 /**
  * Stage setelah `id` di papan ini. `undefined` kalau `id` kolom terakhir atau
  * tidak ada di papan.
