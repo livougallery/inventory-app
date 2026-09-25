@@ -115,7 +115,10 @@ import { MemoryRouter } from 'react-router-dom';
 import App from './src/App';
 import PapanFulfillment from './src/pages/production-fulfillment/PapanFulfillment';
 import { IsiPopup, labelSumber } from './src/pages/production-fulfillment/PopupKartu';
-import { TabelWarna, TabelBahan, pisahBahan, kodeUnik } from './src/pages/production-fulfillment/FormProduksiBaru';
+import { TabelWarna, TabelBahan, pisahBahan, kodeUnik, isiDariProduk, vendorCocok } from './src/pages/production-fulfillment/FormProduksiBaru';
+import { IsiDetailProduk } from './src/pages/register-produk/DetailProduk';
+import { PRODUK_REGISTER, barisRegister, cariProduk, namaProduk } from './src/lib/produk';
+import { KATEGORI_VENDOR } from './src/lib/opsi';
 import {
   KARTU_PRODUCTION, KARTU_WHITELABEL,
   PAPAN_PRODUCTION, PAPAN_WHITELABEL,
@@ -197,6 +200,74 @@ export const halTabel = renderToStaticMarkup(
     <App />
   </MemoryRouter>
 );
+export const halRegister = renderToStaticMarkup(
+  <MemoryRouter initialEntries={['/modul/register-produk']}>
+    <App />
+  </MemoryRouter>
+);
+
+// ===== Register Produk: katalog, daftar POS, dan pengisian otomatis form =====
+//
+// Yang diperiksa di sini bukan "halamannya terbuka", tapi bahwa angka yang
+// tampil di daftar dan angka yang mengisi form produksi BERASAL DARI SUMBER
+// YANG SAMA. Dua daftar yang mirip tapi tidak sama adalah kesalahan yang paling
+// mudah terjadi di sini — dan akibatnya baru terlihat saat presentasi, ketika
+// produk yang baru dipilih di Register tidak mengisi form produksi.
+
+export const katalogProduk = PRODUK_REGISTER.map((p) => ({
+  id: p.id,
+  nama: p.nama,
+  kategori: p.kategori,
+  harga: p.harga,
+  designCode: p.spesifikasi.designCode,
+  jumlahWarna: p.spesifikasi.warna.length,
+  jumlahKain: p.spesifikasi.kain.length,
+  jumlahAksesori: p.spesifikasi.aksesori.length,
+  totalPcs: p.spesifikasi.warna.reduce(
+    (s, w) => s + w.pcs.reduce((a, x) => a + x.qty, 0),
+    0
+  ),
+}));
+
+export const barisPos = barisRegister();
+
+// Isi form untuk SETIAP produk, dihitung di dalam bundel supaya yang diperiksa
+// benar-benar fungsi yang dipakai formnya.
+export const isiForm = PRODUK_REGISTER.map((p) => ({
+  id: p.id,
+  nama: p.nama,
+  ...isiDariProduk(p.spesifikasi),
+}));
+
+// Kategori vendor di dua papan: yang cocok harus dapat LABEL-nya (bukan kodenya),
+// dan yang tidak ada di daftar papan itu harus kosong — bukan dipaksa masuk.
+export const vendorPerPapan = PRODUK_REGISTER.map((p) => ({
+  id: p.id,
+  kode: p.spesifikasi.kategoriVendor,
+  production: vendorCocok(p.spesifikasi.kategoriVendor, KATEGORI_VENDOR.production),
+  whitelabel: vendorCocok(p.spesifikasi.kategoriVendor, KATEGORI_VENDOR.white_label),
+}));
+
+export const saranNama = namaProduk();
+export const cariAda = cariProduk(PRODUK_REGISTER[0].nama)?.id ?? null;
+export const cariTidakAda = cariProduk('Produk Yang Tidak Terdaftar') ?? null;
+// Sebagian nama pun tidak boleh cocok: pengisian otomatis di tengah pengetikan
+// akan menimpa isian yang sudah dikerjakan pengguna.
+export const cariSebagian = cariProduk(PRODUK_REGISTER[0].nama.slice(0, 4)) ?? null;
+
+// Katalog dan daftar kategori vendor dioper APA ADANYA ke skrip pemeriksa.
+// Menyalin isinya di sana akan membuat pemeriksaan cocok dengan salinannya
+// sendiri — lulus walaupun katalognya berubah.
+export { PRODUK_REGISTER };
+export { KATEGORI_VENDOR };
+
+// Halaman detail dirender terpisah — DialogContent memakai portal, jadi isinya
+// tidak ikut ter-render lewat rutenya.
+export const detailPerProduk = PRODUK_REGISTER.map((p) => ({
+  id: p.id,
+  html: renderToStaticMarkup(<IsiDetailProduk produk={p} />),
+}));
+
 // ===== Tabel di form "Tambah Produksi" =====
 //
 // Tabelnya dipisah dari Dialog supaya bisa dirender di sini: DialogContent
@@ -271,6 +342,9 @@ export { bahanKartu };
 // Jumlah warna contoh ikut diekspor supaya pemeriksa bisa membandingkan jumlah
 // baris per-warna tanpa menyalin datanya — salinan yang bisa berbeda diam-diam.
 export { barisWarnaContoh };
+// Dipakai skrip pemeriksa di blok Register Produk: baris bahan hasil pengisian
+// otomatis harus diuji dengan pemisah yang SAMA seperti form, bukan salinannya.
+export { pisahBahan };
 
 // ===== Alur pindah stage =====
 
@@ -485,7 +559,7 @@ const url = pathToFileURL(bundel).href;
 
 const m = await import(url);
 
-const { produksi, whitelabel, popupPerStage, popupProposeWL, popupTanpaStage, labelPopup, fakta, faktaWL, alur, bahanKartu, tabelWarna, tabelBahan, tabelBahanKosong, bahanTerpisah, barisWarnaContoh, halPapan, halTabel } =
+const { produksi, whitelabel, popupPerStage, popupProposeWL, popupTanpaStage, labelPopup, fakta, faktaWL, alur, bahanKartu, tabelWarna, tabelBahan, tabelBahanKosong, bahanTerpisah, barisWarnaContoh, pisahBahan, halPapan, halTabel, halRegister, katalogProduk, barisPos, isiForm, vendorPerPapan, saranNama, cariAda, cariTidakAda, cariSebagian, detailPerProduk, PRODUK_REGISTER, KATEGORI_VENDOR } =
   m;
 
 // ===== 1. Papan Production =====
@@ -1269,6 +1343,288 @@ const crumbHalaman = crumbs.indexOf('Production Fulfillment');
 crumbProgress >= 0 && crumbHalaman > crumbProgress
   ? ok('breadcrumb menaruh section sebelum nama halaman')
   : salah('urutan breadcrumb', `Progress=${crumbProgress}, halaman=${crumbHalaman}`);
+
+// ===== Register Produk =====
+
+console.log('\n== Register Produk: section, daftar POS, dan pengisian otomatis ==');
+
+// -- Section REGISTER di sidebar, di antara Master Data dan Progress
+//
+// Dipersempit ke wilayah <nav>, sama seperti pemeriksaan section di atas:
+// kata "Register" juga muncul di banner halaman dan di judul produk, jadi
+// mencari di seluruh halaman akan lulus walau sectionnya tidak ada.
+const navRegister = halRegister.slice(
+  halRegister.indexOf('<nav'),
+  halRegister.indexOf('</nav>')
+);
+const posisiRegister = navRegister.indexOf('Register');
+const posisiMasterR = navRegister.indexOf('Master Data');
+const posisiProgressR = navRegister.indexOf('Progress');
+const posisiMenuRegister = navRegister.indexOf('/modul/register-produk"');
+
+posisiRegister > 0
+  ? ok('sidebar punya section "Register"')
+  : salah('section Register', 'tidak ditemukan di sidebar');
+
+// Urutannya Master Data → Register → Progress, sesuai permintaan owner.
+// Ketiganya diperiksa sekaligus: satu perbandingan saja akan lulus walaupun
+// section ketiga hilang, karena `-1` membuat perbandingan apa pun jadi benar.
+posisiMasterR > 0 && posisiRegister > posisiMasterR && posisiProgressR > posisiRegister
+  ? ok('section Register berada di antara Master Data dan Progress')
+  : salah(
+      'urutan section',
+      `Master Data=${posisiMasterR}, Register=${posisiRegister}, Progress=${posisiProgressR}`
+    );
+
+posisiMenuRegister > posisiRegister && posisiRegister > 0
+  ? ok('menu Register Produk berada di section Register')
+  : salah('menu Register Produk', 'tidak berada setelah judul section Register');
+
+// -- Halaman Register benar-benar halaman Register, bukan halaman lain
+const isiRegister = (() => {
+  const mulai = halRegister.indexOf('<main');
+  const akhir = halRegister.lastIndexOf('</main>');
+  return mulai >= 0 && akhir > mulai ? halRegister.slice(mulai, akhir) : '';
+})();
+
+isiRegister.includes('Register Produk') && isiRegister.includes('Total stock')
+  ? ok('halaman Register memuat daftar produknya')
+  : salah('halaman Register', 'tabelnya tidak ter-render di rutenya');
+
+!isiRegister.includes('Production Fulfillment') && isiRegister.length > 0
+  ? ok('halaman Register bukan halaman lain')
+  : salah('isi halaman Register', 'memuat isi halaman lain');
+
+// Tab "Products" ADA, tab "Variant" TIDAK — owner memilih satu tab saja.
+isiRegister.includes('>Products<')
+  ? ok('halaman Register punya tab Products')
+  : salah('tab Products', 'tidak ada di halaman Register');
+
+!isiRegister.includes('>Variant<')
+  ? ok('halaman Register TIDAK punya tab Variant')
+  : salah('tab Variant', 'ikut dipasang padahal owner memilih Products saja');
+
+// -- Daftar POS: satu baris per varian, dan angkanya konsisten
+//
+// Jumlah baris dihitung dari katalognya, bukan ditulis tetap di sini: angka
+// tetap akan terus "benar" walaupun produknya ditambah, dan justru saat
+// menambah produk itulah pemeriksaan ini paling berguna.
+const jumlahVarianKatalog = katalogProduk.reduce(
+  (s, p) =>
+    s +
+    PRODUK_REGISTER.find((x) => x.id === p.id).spesifikasi.warna.reduce(
+      (a, w) => a + w.pcs.length,
+      0
+    ),
+  0
+);
+
+barisPos.length === jumlahVarianKatalog
+  ? ok(`daftar POS punya satu baris per varian (${barisPos.length} baris)`)
+  : salah('jumlah baris POS', `dapat ${barisPos.length}, harus ${jumlahVarianKatalog}`);
+
+// Total stok = masuk + menunggu, dan nilai sisa = total × harga. Diperiksa di
+// SEMUA baris, bukan satu contoh: rumus yang benar di satu baris bisa salah di
+// baris lain kalau ada cabang yang berbeda.
+const stokSalah = barisPos.filter((b) => b.totalStok !== b.stokMasuk + b.menunggu);
+const nilaiSalah = barisPos.filter((b) => b.nilaiSisa !== b.totalStok * b.harga);
+
+stokSalah.length === 0
+  ? ok('total stok tiap baris = stock in + waiting for')
+  : salah('total stok', `${stokSalah.length} baris tidak cocok: ${stokSalah[0]?.id}`);
+
+nilaiSalah.length === 0
+  ? ok('nilai sisa tiap baris = total stok x harga')
+  : salah('nilai sisa', `${nilaiSalah.length} baris tidak cocok: ${nilaiSalah[0]?.id}`);
+
+// Stok jual tidak pernah melebihi total — kalau melebihi, ada stok yang
+// terhitung dua kali.
+const jualLebih = barisPos.filter((b) => b.stokJual > b.totalStok);
+jualLebih.length === 0
+  ? ok('stok jual tidak melebihi total stok')
+  : salah('stok jual', `${jualLebih.length} baris melebihi total: ${jualLebih[0]?.id}`);
+
+// Kode varian harus unik: dua baris berkode sama membuat satu baris menimpa
+// yang lain begitu daftarnya di-key oleh kode.
+const kodeUnikVarian = new Set(barisPos.map((b) => b.kodeVarian));
+kodeUnikVarian.size === barisPos.length
+  ? ok('kode varian unik di seluruh daftar')
+  : salah('kode varian', `${barisPos.length} baris tapi cuma ${kodeUnikVarian.size} kode unik`);
+
+// -- Pengisian otomatis form produksi
+//
+// Inilah inti permintaannya: memilih produk mengisi seluruh form. Yang
+// diperiksa bukan "fungsinya mengembalikan sesuatu", tapi bahwa ISINYA cocok
+// dengan katalognya — jumlah warna, qty per ukuran, dan daftar bahannya.
+const formSalahWarna = isiForm.filter((f) => {
+  const p = PRODUK_REGISTER.find((x) => x.id === f.id);
+  return f.warna.length !== p.spesifikasi.warna.length;
+});
+
+formSalahWarna.length === 0
+  ? ok('pengisian otomatis menyalin semua warna produk')
+  : salah('warna terisi', `${formSalahWarna.length} produk jumlah warnanya tidak cocok`);
+
+// Qty per ukuran: angka yang ada di katalog harus muncul di form, dan ukuran
+// yang tidak direncanakan harus KOSONG — bukan "0". Field berisi "0" terbaca
+// sebagai rencana nol pcs, padahal ukuran itu memang tidak dibuat.
+const qtySalah = [];
+for (const f of isiForm) {
+  const p = PRODUK_REGISTER.find((x) => x.id === f.id);
+  for (const w of p.spesifikasi.warna) {
+    const baris = f.warna.find((x) => x.kode === w.kode);
+    if (!baris) {
+      qtySalah.push(`${f.nama}/${w.kode} hilang`);
+      continue;
+    }
+    for (const ukuran of ['S', 'M', 'L', 'XL']) {
+      const asli = w.pcs.find((x) => x.ukuran === ukuran)?.qty ?? 0;
+      const terisi = baris.pcs[ukuran] ?? '';
+      const harus = asli > 0 ? String(asli) : '';
+      if (terisi !== harus) qtySalah.push(`${f.nama}/${w.kode}/${ukuran}: "${terisi}" != "${harus}"`);
+    }
+  }
+}
+
+qtySalah.length === 0
+  ? ok('qty per ukuran tersalin apa adanya, ukuran kosong tetap kosong')
+  : salah('qty terisi', qtySalah.slice(0, 3).join('; '));
+
+// Bahan: kain dan aksesori ikut terisi, dengan jenisnya masing-masing.
+const bahanSalah = isiForm.filter((f) => {
+  const p = PRODUK_REGISTER.find((x) => x.id === f.id);
+  const kain = f.bahan.filter((b) => b.jenis === 'kain').length;
+  const aksesori = f.bahan.filter((b) => b.jenis === 'aksesori').length;
+  return kain !== p.spesifikasi.kain.length || aksesori !== p.spesifikasi.aksesori.length;
+});
+
+bahanSalah.length === 0
+  ? ok('pengisian otomatis menyalin bahan beserta jenisnya')
+  : salah('bahan terisi', `${bahanSalah.length} produk bahannya tidak cocok`);
+
+// Baris bahan yang terisi harus benar-benar lolos jadi baris BOM. Form
+// mengabaikan baris tanpa nama atau tanpa qty, jadi pengisian otomatis yang
+// menghasilkan angka tidak sah akan terlihat "terisi" di layar tapi kosong di
+// kartunya — tanpa error apa pun.
+const bahanJadiBom = isiForm.map((f) => {
+  const p = PRODUK_REGISTER.find((x) => x.id === f.id);
+  const barisWarna = p.spesifikasi.warna.map((w) => ({
+    nama: w.nama,
+    kode: w.kode,
+    pcs: w.pcs,
+  }));
+  const { kain, aksesori } = pisahBahan(f.bahan, barisWarna);
+  return { id: f.id, kain: kain.length, aksesori: aksesori.length };
+});
+
+const bahanHilang = bahanJadiBom.filter((b) => {
+  const p = PRODUK_REGISTER.find((x) => x.id === b.id);
+  return b.kain !== p.spesifikasi.kain.length || b.aksesori !== p.spesifikasi.aksesori.length;
+});
+
+bahanHilang.length === 0
+  ? ok('bahan hasil pengisian otomatis lolos jadi baris BOM')
+  : salah(
+      'bahan jadi BOM',
+      `${bahanHilang.length} produk kehilangan baris bahan saat dipisah`
+    );
+
+// -- Kategori vendor: cocok di papan yang tepat, kosong di papan yang lain
+//
+// Nilai yang dikembalikan harus LABEL ("Konveksi"), bukan kode ("konveksi"):
+// dropdownnya menyimpan label, jadi kode yang dikembalikan membuat dropdown
+// tampak kosong walaupun fungsinya "bekerja".
+const produksiSalah = vendorPerPapan.filter(
+  (v) => v.production !== (KATEGORI_VENDOR.production.find((o) => o.value === v.kode)?.label ?? '')
+);
+
+produksiSalah.length === 0
+  ? ok('kategori vendor terisi labelnya di papan Production')
+  : salah(
+      'kategori vendor Production',
+      `${produksiSalah[0]?.kode} -> "${produksiSalah[0]?.production}"`
+    );
+
+// Katalog Register berisi produk produksi; di papan White Label daftarnya
+// berbeda, jadi TIDAK boleh ada yang terisi — nilai di luar pilihan akan
+// tampil di dropdown seolah sah.
+const wlTerisi = vendorPerPapan.filter((v) => v.whitelabel !== '');
+wlTerisi.length === 0
+  ? ok('kategori vendor produksi TIDAK dipaksa masuk ke papan White Label')
+  : salah('kategori vendor White Label', `terisi "${wlTerisi[0]?.whitelabel}" padahal tidak ada di daftarnya`);
+
+// -- Pencarian produk untuk pengisian otomatis
+saranNama.length === PRODUK_REGISTER.length
+  ? ok('saran nama produk berisi seluruh katalog')
+  : salah('saran nama', `${saranNama.length} nama untuk ${PRODUK_REGISTER.length} produk`);
+
+cariAda === PRODUK_REGISTER[0].id
+  ? ok('nama produk yang terdaftar ditemukan')
+  : salah('cari produk', `dapat "${cariAda}"`);
+
+cariTidakAda === null
+  ? ok('nama yang tidak terdaftar tidak memicu pengisian otomatis')
+  : salah('cari produk asing', 'ditemukan padahal tidak ada di katalog');
+
+// Sebagian nama pun tidak boleh cocok: pengisian di tengah pengetikan menimpa
+// isian yang sudah dikerjakan pengguna.
+cariSebagian === null
+  ? ok('nama sebagian tidak memicu pengisian otomatis')
+  : salah('cari sebagian', `"${PRODUK_REGISTER[0].nama.slice(0, 4)}" ikut cocok`);
+
+// -- Detail produk
+const detailKosong = detailPerProduk.filter((d) => d.html.length < 500);
+detailKosong.length === 0
+  ? ok('detail tiap produk ter-render berisi')
+  : salah('detail produk', `${detailKosong.length} detail kosong: ${detailKosong[0]?.id}`);
+
+// Isi detail harus memuat angka yang sama dengan katalognya — kalau tidak,
+// yang dibaca owner di dialognya bukan data yang sama dengan yang di daftar.
+//
+// Yang dibandingkan KODE DESAINnya, bukan namanya: nama produk dirender di
+// DialogTitle, di luar badan dialog, dan `DialogContent` memakai portal —
+// portal tidak ikut ter-render di server, jadi judulnya memang tidak ada di
+// markup yang diperiksa di sini. Kode desain ada DI DALAM badan dialog dan
+// tetap unik per produk, jadi ia menandai "detail ini milik produk yang mana"
+// sama tegasnya.
+const detailSalah = detailPerProduk
+  .map((d) => {
+    const p = PRODUK_REGISTER.find((x) => x.id === d.id);
+    const total = p.spesifikasi.warna.reduce(
+      (s, w) => s + w.pcs.reduce((a, x) => a + x.qty, 0),
+      0
+    );
+    const kurang = [];
+    if (!d.html.includes(p.spesifikasi.designCode)) kurang.push(`kode ${p.spesifikasi.designCode}`);
+    // Frasa utuhnya, bukan angkanya saja: angka telanjang seperti "80" cocok
+    // juga di dalam "480", jadi pemeriksaan itu bisa lulus pada detail produk
+    // yang salah. `renderToStaticMarkup` tidak menyisipkan penanda komentar di
+    // antara teks dan nilainya, jadi frasanya utuh di markup.
+    if (!d.html.includes(`total ${total} PCS`)) kurang.push(`total ${total} PCS`);
+    return { id: d.id, kurang };
+  })
+  .filter((d) => d.kurang.length > 0);
+
+detailSalah.length === 0
+  ? ok('detail produk memuat kode desain dan total pcs yang benar')
+  : salah(
+      'isi detail',
+      detailSalah.map((d) => `${d.id} tanpa ${d.kurang.join(' & ')}`).join('; ')
+    );
+
+// Detail harus menampilkan SELURUH warna dan bahan produknya, bukan sebagian.
+const detailTidakLengkap = detailPerProduk.filter((d) => {
+  const p = PRODUK_REGISTER.find((x) => x.id === d.id);
+  return (
+    !p.spesifikasi.warna.every((w) => d.html.includes(w.nama)) ||
+    !p.spesifikasi.kain.every((k) => d.html.includes(k.nama)) ||
+    !p.spesifikasi.aksesori.every((a) => d.html.includes(a.nama))
+  );
+});
+
+detailTidakLengkap.length === 0
+  ? ok('detail produk memuat semua warna dan bahannya')
+  : salah('kelengkapan detail', `${detailTidakLengkap.length} detail tidak lengkap`);
 
 // ===== Hasil =====
 

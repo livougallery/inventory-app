@@ -72,6 +72,9 @@ function createApp(options = {}) {
     '/modul/material-grid',
     '/modul/product',
     '/modul/whitelabel',
+    // Register Produk — section REGISTER, halaman sendiri (bukan bagian dari
+    // /modul/product): yang dibaca di sana angka stok per varian.
+    '/modul/register-produk',
     // Papan kanban Production Fulfillment, di section Progress.
     '/modul/production-fulfillment',
     // Tabel 40 kolomnya — halaman TERPISAH sejak papan dipindah ke Progress.

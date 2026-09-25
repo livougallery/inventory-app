@@ -18,6 +18,7 @@ import {
   Calculator,
   PackageCheck,
   ListTree,
+  ClipboardList,
 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
@@ -124,6 +125,27 @@ const modulBaru: NavItem[] = [
 ];
 
 /**
+ * Register Produk, di section REGISTER.
+ *
+ * Section sendiri, bukan ikut "Master Data", meski isinya juga daftar produk.
+ * Yang dibaca di sini angka yang bergerak tiap hari — stok per varian dan
+ * harga jualnya — sedangkan Master Data berisi identitas yang jarang berubah.
+ * Menggabungkannya membuat satu section bercampur dua jenis isi, dan yang
+ * paling sering dibuka justru terkubur di antara yang paling jarang diubah.
+ *
+ * Posisinya di antara Master Data dan Progress, sesuai permintaan owner:
+ * data induk dulu, lalu pencatatan, baru pekerjaan yang sedang berjalan.
+ */
+const menuRegister: NavItem[] = [
+  {
+    path: '/modul/register-produk',
+    label: 'Register Produk',
+    icon: ClipboardList,
+    section: 'Register',
+  },
+];
+
+/**
  * Papan kanban Production Fulfillment, di section PROGRESS.
  *
  * Judul sectionnya "Progress" (huruf besar-kecilnya diseragamkan dengan
@@ -139,13 +161,17 @@ const papanProgress: NavItem[] = [
   },
 ];
 
-// Mode video: modul pratinjau dalam dua section — Master Data (tabel) dan
-// Progress (papan). Urutannya mengikuti alur kerja: data induk dulu, lalu
-// pekerjaan yang sedang berjalan.
+// Mode video: modul pratinjau dalam tiga section — Master Data (tabel),
+// Register (pencatatan produk), dan Progress (papan). Urutannya mengikuti alur
+// kerja: data induk dulu, lalu pencatatan, lalu pekerjaan yang sedang berjalan.
 const navSectionsVideo: NavSection[] = [
   {
     title: 'Master Data',
     items: modulBaru,
+  },
+  {
+    title: 'Register',
+    items: menuRegister,
   },
   {
     title: 'Progress',

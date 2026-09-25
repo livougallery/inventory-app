@@ -1,4 +1,4 @@
-import { useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
+import { useMemo, useState, type Dispatch, type ReactNode, type SetStateAction } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,6 +19,7 @@ import {
 } from '@/components/ui/select';
 import { Plus, Trash2 } from 'lucide-react';
 import { KATEGORI_VENDOR, PIC, SIZE } from '@/lib/opsi';
+import { cariProduk, namaProduk, type SpesifikasiProduksi } from '@/lib/produk';
 import type {
   BarisWarna,
   DataProduksiBaru,
@@ -230,6 +231,112 @@ function tanggalTampil(iso: string): string {
   return nama ? `${hari} ${nama} ${tahun}` : iso;
 }
 
+// ===== Pengisian otomatis dari Register Produk =====
+//
+// Memilih produk yang sudah terdaftar mengisi seluruh form ini, dan semuanya
+// tetap bisa diubah setelahnya. Tujuannya memperpendek pengisian: yang biasanya
+// diketik ulang (kode desain, kategori, rencana warna per ukuran, daftar bahan)
+// sudah ada di Register, dan mengetiknya lagi hanya menambah kesempatan salah.
+//
+// Bentuk keluarannya `WarnaForm`/`BahanForm` — bentuk STATE FORM, bukan bentuk
+// katalog. Konversinya sengaja lewat fungsi ini, bukan disebar di dalam
+// komponennya: satu tempat yang bisa diperiksa, dan satu tempat yang salah
+// kalau bentuk salah satunya berubah.
+//
+// Fungsi ini TIDAK menyentuh `dateRequest` dan `pic`: keduanya bukan sifat
+// produk melainkan keputusan orang yang mengisi form hari itu, dan mengisinya
+// dari katalog berarti menebak. Nilai awalnya sudah terisi (hari ini, PIC
+// pertama), jadi formnya tetap lengkap tanpa ditebak.
+
+/** Isi baris warna & bahan dari spesifikasi produk Register. */
+export function isiDariProduk(sp: SpesifikasiProduksi): {
+  warna: WarnaForm[];
+  bahan: BahanForm[];
+} {
+  const warna: WarnaForm[] = sp.warna.map((w) =>
+    barisKosong<WarnaForm>({
+      nama: w.nama,
+      kode: w.kode,
+      // Ukuran yang tidak direncanakan dikosongkan, bukan diisi "0" — sama
+      // seperti baris awal form ini, dan `angka()` memperlakukan keduanya
+      // sama saja saat dihitung.
+      pcs: Object.fromEntries(
+        UKURAN.map((u) => {
+          const qty = w.pcs.find((p) => p.ukuran === u)?.qty ?? 0;
+          return [u, qty > 0 ? String(qty) : ''];
+        })
+      ),
+    })
+  );
+
+  const bahan: BahanForm[] = [
+    ...sp.kain.map((k) => {
+      const pemakaian = Object.values(k.perWarna).map((v) => v.perPcs);
+      const stok = Object.values(k.perWarna)
+        .map((v) => v.tersedia)
+        .filter((n): n is number => n !== undefined);
+
+      return barisKosong<BahanForm>({
+        jenis: 'kain' as const,
+        nama: k.nama,
+        // Satu baris kain di form ini cuma punya SATU angka pemakaian dan SATU
+        // angka stok, sedangkan kain di Register boleh berbeda per warna.
+        // Arah pembulatannya sengaja dipilih yang paling aman untuk badge
+        // kekurangan: pemakaian diambil yang TERBESAR dan stok yang TERKECIL,
+        // supaya kebutuhan bahan tidak pernah tampak lebih kecil daripada
+        // kenyataan. Menampilkan kekurangan yang ternyata tidak ada hanya
+        // merepotkan; tidak menampilkan yang ada membuat produksi kekurangan
+        // bahan — dan gate Prepare tidak menahannya.
+        // Kain tanpa satu pun warna di `perWarna` dikosongkan, bukan diisi
+        // angka hasil `Math.max()` dari daftar kosong: `Math.max()` tanpa
+        // argumen mengembalikan `-Infinity`, dan `String(-Infinity)` adalah
+        // teks "-Infinity" yang akan mengendap di field qty sebagai nilai yang
+        // terlihat seperti angka. Field kosong ditolak `pisahBahan()` seperti
+        // baris setengah terisi lainnya — gagal dengan berisik, bukan tersimpan
+        // sebagai angka karangan.
+        perPcs: pemakaian.length ? String(Math.max(...pemakaian)) : '',
+        satuan: k.satuan,
+        tersedia: stok.length ? String(Math.min(...stok)) : '',
+      });
+    }),
+    ...sp.aksesori.map((a) =>
+      barisKosong<BahanForm>({
+        jenis: 'aksesori' as const,
+        nama: a.nama,
+        perPcs: String(a.perPcs),
+        satuan: a.satuan,
+        tersedia: a.tersedia === undefined ? '' : String(a.tersedia),
+      })
+    ),
+  ];
+
+  return { warna, bahan };
+}
+
+/**
+ * Label kategori vendor untuk kode ini di papan yang sedang dibuka, atau ''
+ * bila kodenya tidak ada di daftar papan itu.
+ *
+ * Katalog Register berisi produk PRODUKSI (inhouse/konveksi/garment), sedangkan
+ * papan White Label memakai daftar lain (china/thailand/indonesia). Mengisi
+ * kategori produksi ke papan White Label menghasilkan dropdown yang menampilkan
+ * nilai di luar pilihannya — terlihat seperti terisi, padahal tidak sah.
+ *
+ * Yang tidak cocok dibiarkan kosong dan dipilih sendiri oleh penggunanya, bukan
+ * ditebak.
+ *
+ * Yang dikembalikan LABEL, bukan kodenya: `Select` kategori vendor di form ini
+ * menyimpan label (`value={o.label}`), jadi state-nya berisi "Konveksi", bukan
+ * "konveksi". Mengembalikan kode di sini membuat dropdownnya kosong tanpa error
+ * — terlihat seperti pengisian otomatisnya tidak bekerja.
+ */
+export function vendorCocok(
+  kode: string,
+  opsi: readonly { value: string; label: string }[]
+): string {
+  return opsi.find((o) => o.value === kode)?.label ?? '';
+}
+
 /**
  * Baris "tambah" di kaki tabel.
  *
@@ -269,6 +376,49 @@ function TombolTambah({ label, onClick }: { label: string; onClick: () => void }
     >
       <Plus /> {label}
     </Button>
+  );
+}
+
+/**
+ * Daftar saran nama produk di bawah isian Product Name.
+ *
+ * Dipasang sebagai `<div>` berisi `<button>`, bukan `<select>` atau combobox:
+ * yang dipilih di sini bukan nilai dari daftar tertutup — namanya tetap boleh
+ * diketik bebas, dan daftar ini cuma jalan pintas.
+ *
+ * `onMouseDown` + `preventDefault`, bukan `onClick`: tanpa itu, isian di
+ * atasnya kehilangan fokus lebih dulu (`onBlur` menutup daftarnya), dan kliknya
+ * tidak pernah sampai ke tombol ini. Gejalanya khas — daftarnya berkedip lalu
+ * hilang, dan pilihannya tidak pernah masuk.
+ */
+function SaranProduk({
+  saran,
+  onPilih,
+}: {
+  saran: string[];
+  onPilih: (nama: string) => void;
+}) {
+  if (saran.length === 0) return null;
+
+  return (
+    <div className="absolute left-0 right-0 top-full z-50 mt-1 overflow-hidden rounded-lg border bg-popover shadow-md">
+      <p className="border-b bg-muted/40 px-3 py-1.5 text-[11px] text-muted-foreground">
+        Produk terdaftar — memilih salah satu mengisi form di bawah
+      </p>
+      {saran.map((n) => (
+        <button
+          key={n}
+          type="button"
+          className="block w-full px-3 py-2 text-left text-sm hover:bg-accent hover:text-accent-foreground"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            onPilih(n);
+          }}
+        >
+          {n}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -653,8 +803,123 @@ export default function FormProduksiBaru({
   const [warna, setWarna] = useState<WarnaForm[]>(awalWarna);
   const [bahan, setBahan] = useState<BahanForm[]>(awalBahan);
   const [error, setError] = useState('');
+  const [saranTerbuka, setSaranTerbuka] = useState(false);
+  /**
+   * Nama produk yang terakhir mengisi form ini secara otomatis.
+   *
+   * Disimpan supaya pengguna tahu kenapa formnya tiba-tiba terisi — tanpa
+   * penanda, angka yang muncul sendiri di form sepanjang ini terbaca seperti
+   * ketikan sendiri, dan itu berbahaya saat yang mengisi tidak sadar angkanya
+   * dari katalog. Dikosongkan begitu salah satu field diubah sendiri.
+   */
+  const [terisiDari, setTerisiDari] = useState('');
 
   const opsiVendor = KATEGORI_VENDOR[sumber === 'production' ? 'production' : 'white_label'];
+
+  // Saran nama produk dari katalog Register. Dipakai hanya sebagai daftar
+  // saran: nama yang belum terdaftar tetap boleh diketik apa adanya, karena
+  // form ini juga dipakai untuk usulan yang produknya memang belum ada di
+  // Register.
+  const saran = useMemo(() => namaProduk(), []);
+
+  /**
+   * Isi seluruh form dari produk Register yang namanya cocok.
+   *
+   * Dipanggil saat pengguna memilih saran atau mengetik nama yang persis sama,
+   * BUKAN saat mengetik sebagian — mengisi form di tengah pengetikan berarti
+   * menimpa apa yang sudah diisi pengguna berdasarkan nama yang kebetulan
+   * berawalan sama.
+   *
+   * Yang dikembalikan: true kalau ada yang terisi, supaya pemanggilnya bisa
+   * memberi tahu pengguna bahwa formnya berubah. Pengisian yang diam-diam
+   * berbahaya di form sepanjang ini — angkanya terlihat seperti ketikan sendiri.
+   */
+  function isiOtomatis(nama: string) {
+    const produk = cariProduk(nama);
+    if (!produk) {
+      // Namanya berubah jadi tidak terdaftar, tapi form masih memegang angka
+      // produk SEBELUMNYA. Membiarkan begitu berarti ada yang sedang membuat
+      // produksi "Rowe Tee 2" sementara warna, ukuran, dan bahannya masih
+      // angka Rowe Tee — dan penandanya masih menyebut Rowe Tee, jadi
+      // ketidakcocokannya tidak kelihatan. Mengosongkan form lebih jujur:
+      // isinya hilang, tapi tidak pernah disalahartikan sebagai milik produk
+      // yang sedang diketik.
+      //
+      // Hanya kalau form sebelumnya memang diisi otomatis. Kalau belum, isi
+      // formnya milik pengguna sendiri, dan mengosongkannya di sini berarti
+      // menghapus kerjakannya.
+      if (terisiDari !== '') {
+        setDesignCode('');
+        setKategori('');
+        setKategoriVendor('');
+        setNamaVendor('Livou');
+        setWarna(awalWarna);
+        setBahan(awalBahan);
+        setTerisiDari('');
+      }
+      return false;
+    }
+
+    const sp = produk.spesifikasi;
+    const { warna: warnaBaru, bahan: bahanBaru } = isiDariProduk(sp);
+
+    setDesignCode(sp.designCode);
+    // Kategori diambil dari `produk.kategori`, bukan `sp.kategori` yang isinya
+    // sama persis. Dua-duanya ada di model, dan mengambil yang satu di sini
+    // sementara daftar Register membaca yang lain berarti: begitu katalog
+    // nanti punya produk yang kategorinya berbeda di dua tempat, tabel
+    // menampilkan satu dan form mengisi yang lain — tanpa error apa pun.
+    // Yang jadi rujukan adalah yang dilihat pengguna di daftar.
+    setKategori(produk.kategori);
+    setBatch(sp.batch);
+    setKategoriVendor(vendorCocok(sp.kategoriVendor, opsiVendor));
+    setNamaVendor(sp.namaVendor);
+    setWarna(warnaBaru);
+    setBahan(bahanBaru);
+    setError('');
+    setTerisiDari(produk.nama);
+    return true;
+  }
+
+  /**
+   * Setter yang sekaligus menghapus penanda "terisi otomatis".
+   *
+   * Dipakai untuk SETIAP field yang boleh diubah manual. Kenapa dibungkus,
+   * bukan mengandalkan `isiOtomatis` saja: penandanya ada supaya pengguna
+   * tahu angka di form datang dari katalog, bukan dari ketikan sendiri. Begitu
+   * ada satu angka yang diubah manual, penanda itu sudah tidak jujur — dia
+   * masih menyebut produk katalog padahal isinya campuran. Menghapus
+   * penandanya lebih jujur daripada menebak produk mana yang sebagian
+   * isinya masih cocok.
+   *
+   * Penanda tidak dihapus waktu program mengisi sendiri, karena di situ
+   * `terisiDari` baru ikut ditulis; pemanggil memakai setter ASLI di sana.
+   */
+  function tulisManual<T>(set: Dispatch<SetStateAction<T>>) {
+    return (nilai: SetStateAction<T>) => {
+      setTerisiDari('');
+      set(nilai);
+    };
+  }
+
+  const setDesignCodeManual = tulisManual(setDesignCode);
+  const setKategoriManual = tulisManual(setKategori);
+  const setBatchManual = tulisManual(setBatch);
+  const setKategoriVendorManual = tulisManual(setKategoriVendor);
+  const setNamaVendorManual = tulisManual(setNamaVendor);
+  const setWarnaManual = tulisManual(setWarna);
+  const setBahanManual = tulisManual(setBahan);
+
+  /**
+   * Dipanggil tiap kali nama produk berubah.
+   *
+   * Pengisian hanya terjadi saat namanya BENAR-BENAR cocok dengan produk yang
+   * terdaftar — dicek lewat `cariProduk`, bukan lewat kecocokan awalan.
+   */
+  function ubahNama(v: string) {
+    setProductName(v);
+    isiOtomatis(v);
+  }
 
   // Total rencana pcs — angka yang sama dengan yang nanti tampil di kartu,
   // dihitung dari baris varian, bukan diketik terpisah.
@@ -675,6 +940,8 @@ export default function FormProduksiBaru({
     setWarna(awalWarna);
     setBahan(awalBahan);
     setError('');
+    setSaranTerbuka(false);
+    setTerisiDari('');
   }
 
   function simpan() {
@@ -767,12 +1034,40 @@ export default function FormProduksiBaru({
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <Label htmlFor="baru-nama">Product Name</Label>
-              <Input
-                id="baru-nama"
-                value={productName}
-                onChange={(e) => setProductName(e.target.value)}
-                placeholder="Celeste Dress"
-              />
+              {/* Isian + daftar saran, bukan dropdown tertutup.
+                  Nama produk yang belum terdaftar di Register tetap boleh
+                  diketik: form ini juga tempat usulan yang produknya memang
+                  belum ada. Daftar saran cuma mempercepat yang sudah ada —
+                  memilihnya mengisi seluruh form di bawahnya.
+
+                  `onBlur` yang menutup daftarnya, bukan `onChange`: menutup
+                  saat mengetik membuat saran hilang begitu satu huruf
+                  terketik, dan justru di saat itulah daftarnya dibutuhkan. */}
+              <div className="relative">
+                <Input
+                  id="baru-nama"
+                  value={productName}
+                  onChange={(e) => ubahNama(e.target.value)}
+                  onBlur={() => setSaranTerbuka(false)}
+                  onFocus={() => setSaranTerbuka(true)}
+                  placeholder="Celeste Dress"
+                  autoComplete="off"
+                />
+                {saranTerbuka && productName.trim() !== '' && (
+                  <SaranProduk
+                    saran={saran.filter((n) =>
+                      n.toLowerCase().includes(productName.trim().toLowerCase())
+                    )}
+                    onPilih={(n) => {
+                      // Lewat `ubahNama`, bukan `setProductName` langsung:
+                      // memilih saran dan mengetik nama yang sama persis harus
+                      // mengisi form dengan cara yang sama.
+                      ubahNama(n);
+                      setSaranTerbuka(false);
+                    }}
+                  />
+                )}
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -780,7 +1075,7 @@ export default function FormProduksiBaru({
               <Input
                 id="baru-kode"
                 value={designCode}
-                onChange={(e) => setDesignCode(e.target.value)}
+                onChange={(e) => setDesignCodeManual(e.target.value)}
                 placeholder="CSC-DRS-31"
               />
             </div>
@@ -790,7 +1085,7 @@ export default function FormProduksiBaru({
               <Input
                 id="baru-kategori"
                 value={kategori}
-                onChange={(e) => setKategori(e.target.value)}
+                onChange={(e) => setKategoriManual(e.target.value)}
                 placeholder="Dress"
               />
             </div>
@@ -800,14 +1095,17 @@ export default function FormProduksiBaru({
               <Input
                 id="baru-batch"
                 value={batch}
-                onChange={(e) => setBatch(e.target.value)}
+                onChange={(e) => setBatchManual(e.target.value)}
                 placeholder="B-04"
               />
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="baru-vendor-kategori">Vendor Category</Label>
-              <Select value={kategoriVendor} onValueChange={(v) => setKategoriVendor(v ?? '')}>
+              <Select
+                value={kategoriVendor}
+                onValueChange={(v) => setKategoriVendorManual(v ?? '')}
+              >
                 <SelectTrigger id="baru-vendor-kategori" className="w-full">
                   <SelectValue placeholder="Pilih kategori" />
                 </SelectTrigger>
@@ -826,7 +1124,7 @@ export default function FormProduksiBaru({
               <Input
                 id="baru-vendor"
                 value={namaVendor}
-                onChange={(e) => setNamaVendor(e.target.value)}
+                onChange={(e) => setNamaVendorManual(e.target.value)}
                 placeholder="Livou"
               />
             </div>
@@ -867,7 +1165,7 @@ export default function FormProduksiBaru({
               </p>
             </div>
 
-            <TabelWarna warna={warna} setWarna={setWarna} />
+            <TabelWarna warna={warna} setWarna={setWarnaManual} />
           </section>
 
           {/* ── Bahan ────────────────────────────────────────────────── */}
@@ -880,12 +1178,23 @@ export default function FormProduksiBaru({
               </p>
             </div>
 
-            <TabelBahan bahan={bahan} setBahan={setBahan} />
+            <TabelBahan bahan={bahan} setBahan={setBahanManual} />
           </section>
 
           {error && (
             <p className="text-sm text-red-600" role="alert">
               {error}
+            </p>
+          )}
+
+          {/* Penanda bahwa formnya terisi dari katalog, bukan diketik.
+              Tanpa ini, angka yang muncul sendiri di form sepanjang ini
+              terbaca seperti ketikan sendiri — dan yang mengisi jadi tidak
+              tahu bahwa angkanya masih bisa (dan mungkin perlu) disesuaikan. */}
+          {terisiDari && (
+            <p className="text-xs text-muted-foreground">
+              Terisi otomatis dari produk <span className="font-medium">{terisiDari}</span> di
+              Register. Semua isian di atas masih bisa diubah.
             </p>
           )}
 

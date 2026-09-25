@@ -12,6 +12,7 @@ import HPP from './pages/HPP';
 import Material from './pages/Material';
 import MaterialGrid from './pages/MaterialGrid';
 import Product from './pages/Product';
+import RegisterProduk from './pages/RegisterProduk';
 import Whitelabel from './pages/Whitelabel';
 import ProductionFulfillment from './pages/ProductionFulfillment';
 import PapanProduksi from './pages/production-fulfillment/PapanProduksi';
@@ -107,6 +108,14 @@ function App() {
       <Route path="/modul/whitelabel" element={
         <Shell>
           <Whitelabel />
+        </Shell>
+      } />
+      {/* Register Produk, di section REGISTER. Halaman sendiri, bukan bagian
+          dari /modul/product: yang dibaca di sana angka stok per varian, dan
+          itu daftar yang jauh lebih panjang daripada tabel identitas produk. */}
+      <Route path="/modul/register-produk" element={
+        <Shell>
+          <RegisterProduk />
         </Shell>
       } />
       {/* Papan kanban, di section PROGRESS. URL lamanya (`/modul/production-
