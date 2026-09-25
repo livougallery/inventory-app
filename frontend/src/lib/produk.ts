@@ -1,8 +1,8 @@
 // ===== Katalog produk (data contoh) =====
 //
-// Satu sumber untuk dua tempat yang memang harus sepakat:
+// Satu sumber untuk dua tempat yang memang harus Sizes:
 //
-//   - halaman REGISTER > Register Produk (daftar ala POS)
+//   - halaman REGISTER > Register Produk (daftar kartu produk)
 //   - pengisian otomatis form "Tambah Produksi" di PROGRESS
 //
 // Kalau keduanya punya daftarnya sendiri-sendiri, cepat atau lambat isinya
@@ -47,46 +47,100 @@ export interface SpesifikasiProduksi {
   aksesori: SpesifikasiAksesori[];
 }
 
-/** Satu baris varian di daftar Register — satu warna + satu ukuran. */
-export interface BarisRegister {
+/**
+ * Satu varian di dalam kartu produk: satu warna + satu ukuran.
+ *
+ * Varian tidak lagi jadi baris daftar. Satu produk punya beberapa varian, dan
+ * menyajikannya satu per satu membuat satu produk yang punya delapan varian
+ * memakan delapan baris — persis kebalikan yang diminta pemilik: yang ingin
+ * dibaca lebih dulu adalah "produk ini", lalu varian-variannya menyusul di
+ * dalamnya.
+ */
+export interface VarianRegister {
   id: string;
-  productId: string;
-  nama: string;
-  kategori: string;
-  /** Kode desain produk, mis. LVU-TOP-11. */
-  kode: string;
   /**
    * Kode warnanya saja, mis. HTP.
    *
-   * Bawaan katalog, bukan kolom tabel: daftar Register menampilkan `warna`
-   * (nama, mis. "Hitam Putih") sebagai kolomnya. Field ini disimpan supaya
-   * pencarian bisa mencocokkan kode pendek tanpa harus mem-parse `kodeVarian`,
-   * dan akan dipakai begitu pencarian itu dibuat.
+   * Bawaan katalog, bukan kolom tampilan: yang tampil di kartu adalah `warna`
+   * (nama, mis. "Hitam"). Field ini disimpan supaya pencarian bisa mencocokkan
+   * kode pendek tanpa harus mem-parse `kodeVarian`.
    */
   kodeWarna: string;
   /** Kode varian lengkap: desain + warna + ukuran, mis. LVU-TOP-11-HTP-M. */
   kodeVarian: string;
   warna: string;
   size: string;
+  /** Stok varian ini yang sudah masuk gudang. */
+  stokMasuk: number;
+  /**
+   * Stok varian ini yang bisa dijual.
+   *
+   * Tidak dihitung dari `stokMasuk`: sebagian stok bisa sudah terikat pesanan,
+   * jadi bisa lebih kecil — dan itu keadaan nyata yang perlu terlihat, bukan
+   * pembulatan. Kalau varian tidak punya angka khusus, sama dengan stok masuk.
+   */
+  stokJual: number;
+  /**
+   * Stok varian ini yang masih menunggu diproses (mis. belum lolos QC).
+   *
+   * TIDAK ditampilkan sebagai kolom — pemilik meminta kolom "Waiting for"
+   * dihapus. Disimpan karena barang yang menunggu tetap ada di gudang, jadi
+   * harus ikut masuk hitungan `totalStok`.
+   */
+  stokMenunggu: number;
+}
+
+/** Satu kartu produk di daftar Register — satu produk, bukan satu varian. */
+export interface KartuRegister {
+  id: string;
+  nama: string;
+  kategori: string;
+  /** Kode desain produk, mis. LVU-TOP-11. */
+  kode: string;
+  /**
+   * Brand dan tanggal daftar.
+   *
+   * Tidak tampil di kartu daftar, tapi tidak sia-sia: kartu ini tidak pernah
+   * jadi satu-satunya jalan ke detail — ada halaman detail yang butuh keduanya,
+   * dan memetiknya dari katalog lagi di tempat lain berarti satu produk bisa
+   * tampil dengan brand berbeda di dua layar.
+   */
   brand: string;
   /** Foto produk. `null` = belum ada berkas, ditampilkan sebagai penanda. */
   foto: string | null;
   registerDate: string;
   /** Harga jual per pcs. */
   harga: number;
-  /** Stok yang sudah masuk gudang. */
-  stokMasuk: number;
-  /** Stok yang bisa dijual — sebagian bisa tertahan untuk pesanan. */
-  stokJual: number;
+  varian: VarianRegister[];
+  /** Jumlah warna berbeda di produk ini. */
+  jumlahWarna: number;
+  /** Jumlah varian (warna × ukuran) di produk ini. */
+  jumlahVarian: number;
   /**
-   * Stok yang sedang menunggu diproses (mis. belum lolos QC).
+   * Stok masuk, dijumlahkan dari seluruh varian produk ini.
    *
-   * Nol berarti tidak ada yang menunggu — dan itu ditampilkan sebagai 0, bukan
-   * sebagai tanda hubung: "tidak ada yang menunggu" adalah kabar, sedangkan
-   * kosong terbaca sebagai "tidak diketahui".
+   * Tidak tampil sendiri di kartu — kartu ini sudah menampilkan stok tiap
+   * varian satu per satu, dan jumlahannya bisa dibaca dari situ. Yang tetap
+   * dipakai adalah hitungan `totalStok` di bawah.
    */
-  menunggu: number;
-  /** Total stok = masuk + menunggu. */
+  totalMasuk: number;
+  /**
+   * Stok yang bisa dijual, dijumlahkan dari seluruh varian produk ini.
+   *
+   * Sengaja ditampilkan BERBEDA dari `totalStok`: sebagian stok sudah terikat
+   * pesanan atau belum lolos, jadi tidak bisa langsung dijual. Dua angka ini
+   * diletakkan berdampingan di kartu, dan tanpa itu orang akan menghitung
+   * sendiri, menemukan selisih, lalu mengira kartu tersebut rusak.
+   */
+  totalJual: number;
+  /**
+   * Total stok = stok masuk + stok yang masih menunggu diproses.
+   *
+   * Yang menunggu tidak lagi tampil sebagai kolom — pemilik meminta kolom itu
+   * dihapus dari tampilan. TETAP ikut dihitung di sini: membuangnya dari rumus
+   * akan membuat "Total Stock" lebih kecil daripada barang yang benar-benar ada
+   * di gudang, dan itu mengubah angka, bukan cuma cara menampilkannya.
+   */
   totalStok: number;
   /** Nilai sisa: total stok × harga jual. */
   nilaiSisa: number;
@@ -316,14 +370,14 @@ export const PRODUK_REGISTER: ProdukRegister[] = [
  * Stok contoh per varian, di-key `productId|kodeWarna|size`.
  *
  * Dipisah dari katalog di atas karena ini angka GUDANG, bukan spesifikasi
- * produk — dan bentuknya peta, bukan angka yang ditulis di dalam barisnya:
- * satu varian punya tiga angka stok yang harus konsisten satu sama lain
- * (masuk + menunggu = total), dan angka-angka yang ditulis terpisah di 14
- * baris adalah 14 kesempatan untuk tidak konsisten.
+ * produk — dan bentuknya peta, bukan angka yang ditulis di dalam kartu
+ * produknya: satu varian punya tiga angka stok yang harus konsisten satu sama
+ * lain (masuk + menunggu = total), dan angka-angka yang ditulis terpisah di 23
+ * baris adalah 23 kesempatan untuk tidak konsisten.
  *
- * `stokJual` sengaja TIDAK dihitung dari total: sebagian stok bisa sudah
- * terikat pesanan, jadi bisa lebih kecil — dan itu keadaan nyata yang perlu
- * terlihat, bukan pembulatan.
+ * `jual` sengaja TIDAK dihitung dari total: sebagian stok bisa sudah terikat
+ * pesanan, jadi bisa lebih kecil — dan itu keadaan nyata yang perlu terlihat,
+ * bukan pembulatan.
  */
 const STOK: Record<string, { masuk: number; menunggu: number; jual?: number }> = {
   'PRD-01|HTP|S': { masuk: 40, menunggu: 0 },
@@ -352,58 +406,69 @@ const STOK: Record<string, { masuk: number; menunggu: number; jual?: number }> =
 };
 
 /**
- * Rombak katalog jadi baris per varian — bentuk yang dibaca daftar POS.
+ * Rombak katalog jadi satu kartu per produk — bentuk yang dibaca daftar
+ * Register.
  *
- * Satu baris = satu varian (warna + ukuran), bukan satu produk: itulah yang
- * punya stok dan harga sendiri, dan itu yang dicari saat memeriksa "ukuran M
- * yang hitam masih ada berapa".
+ * Satu kartu = satu produk. Varan (warna + ukuran) dikumpulkan DI DALAMNYA
+ * dan tidak lagi jadi baris sendiri, karena dari cara Daftar master dibaca orang
+ * sudah bisa eventuais: yang dicari lebih dulu "produk ini ada berapa", bukan
+ * "varian ketiga produk ini ada berapa".
  *
  * Urutannya mengikuti urutan katalog lalu urutan warna di spesifikasinya —
- * bukan diurut ulang di sini, supaya dua varian satu produk selalu muncul
- * berdampingan dan mata bisa membandingkannya.
+ * bukan diurut ulang di sini, supaya dua varian satu produk selalu berdampingan
+ * dan mata bisa membandingkannya.
  */
-export function barisRegister(): BarisRegister[] {
-  const hasil: BarisRegister[] = [];
+export function kartuRegister(): KartuRegister[] {
+  return PRODUK_REGISTER.map((p) => {
+    const varian: VarianRegister[] = [];
 
-  for (const p of PRODUK_REGISTER) {
     for (const w of p.spesifikasi.warna) {
       for (const ukuran of w.pcs) {
         const stok = STOK[`${p.id}|${w.kode}|${ukuran.ukuran}`];
-        // Varian yang stoknya belum pernah dicatat tetap ditampilkan, dengan
-        // angka nol. Menyembunyikannya membuat produk yang baru didaftarkan
-        // tampak tidak punya varian sama sekali.
-        const masuk = stok?.masuk ?? 0;
-        const menunggu = stok?.menunggu ?? 0;
-        const totalStok = masuk + menunggu;
-
-        hasil.push({
+        // Varian yang stoknya belum pernah dicatat tetap dihitung, dengan angka
+        // nol. Menghilangkannya membuat produk yang baru didaftarkan terlihat
+        // tidak punya varian sama sekali.
+        varian.push({
           id: `${p.id}-${w.kode}-${ukuran.ukuran}`,
-          productId: p.id,
-          nama: p.nama,
-          kategori: p.kategori,
-          kode: p.spesifikasi.designCode,
           kodeWarna: w.kode,
           kodeVarian: `${p.spesifikasi.designCode}-${w.kode}-${ukuran.ukuran}`,
           warna: w.nama,
           size: ukuran.ukuran,
-          brand: p.brand,
-          foto: p.foto,
-          registerDate: p.registerDate,
-          harga: p.harga,
-          stokMasuk: masuk,
-          stokJual: stok?.jual ?? masuk,
-          menunggu,
-          totalStok,
-          // Nilai sisa dihitung dari TOTAL stok, bukan stok jual: yang dinilai
-          // di gudang adalah seluruh barang yang ada, termasuk yang belum bisa
-          // dijual.
-          nilaiSisa: totalStok * p.harga,
+          stokMasuk: stok?.masuk ?? 0,
+          stokJual: stok?.jual ?? stok?.masuk ?? 0,
+          stokMenunggu: stok?.menunggu ?? 0,
         });
       }
     }
-  }
 
-  return hasil;
+    const totalMasuk = varian.reduce((s, v) => s + v.stokMasuk, 0);
+    const totalJual = varian.reduce((s, v) => s + v.stokJual, 0);
+    // "Menunggu" tidak lagi jadi kolom, tapi barang yang menunggu tetap ada di
+    // gudang — jadi ia tetap masuk hitungan total. Mengeluarkannya bukan sekadar
+    // menyembunyikan angka, itu membuat total lebih kecil dari kenyataan.
+    const totalStok = totalMasuk + varian.reduce((s, v) => s + v.stokMenunggu, 0);
+
+    return {
+      id: p.id,
+      nama: p.nama,
+      kategori: p.kategori,
+      kode: p.spesifikasi.designCode,
+      brand: p.brand,
+      foto: p.foto,
+      registerDate: p.registerDate,
+      harga: p.harga,
+      varian,
+      jumlahWarna: p.spesifikasi.warna.length,
+      jumlahVarian: varian.length,
+      totalMasuk,
+      totalJual,
+      totalStok,
+      // Nilai sisa dihitung dari TOTAL stok, bukan stok jual: yang dinilai
+      // di gudang adalah seluruh barang yang ada, termasuk yang belum bisa
+      // dijual.
+      nilaiSisa: totalStok * p.harga,
+    };
+  });
 }
 
 /** Produk yang punya varian dengan nama itu — untuk pengisian otomatis form. */

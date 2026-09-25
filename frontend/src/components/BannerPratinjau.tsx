@@ -16,12 +16,12 @@ interface BannerPratinjauProps {
   /**
    * Bentuk yang ditampilkan halaman ini.
    *
-   * Halaman papan kanban tidak punya "urutan kolom dan lebar tabel" untuk
-   * dinilai, jadi kalimat bawaan yang menyebut tabel akan menyesatkan di sana —
-   * dan banner ini justru yang dibaca pemilik untuk tahu apa yang sedang
-   * dilihatnya. `jumlahKolom` diabaikan pada bentuk papan.
+   * Tidak semua halaman memakai tabel, dan kalimat bawaan yang menyebut tabel
+   * akan menyesatkan di halaman yang memang tidak punya tabel — banner ini
+   * justru yang dibaca pemilik untuk tahu apa yang sedang dilihatnya.
+   * `jumlahKolom` diabaikan pada bentuk papan dan kartu.
    */
-  bentuk?: 'tabel' | 'papan';
+  bentuk?: 'tabel' | 'papan' | 'kartu';
 }
 
 export default function BannerPratinjau({
@@ -29,26 +29,28 @@ export default function BannerPratinjau({
   jumlahKolom,
   bentuk = 'tabel',
 }: BannerPratinjauProps) {
+  // Kalimat penutup sengaja ditulis SEKALI di sini, bukan diulang di tiap
+  // bentuk. Kalimat itu yang paling penting: tanpanya, pemilik bisa saja
+  // mengira angka di layar itu data asli. Kalau nanti kalimatnya diubah,
+  // semuanya ikut berubah — bukan diam-diam tertinggal di bentuk lain.
+  const penutup =
+    ' Isinya bukan data transaksi yang sebenarnya. Koneksi ke database dikerjakan setelah tampilan disetujui.';
+
+  const pembuka =
+    bentuk === 'papan'
+      ? `Papan ${modul} menampilkan data contoh supaya sebaran kartu antar tahap bisa dinilai dulu.`
+      : bentuk === 'kartu'
+        ? `Daftar ${modul} menampilkan data contoh supaya susunan kartu produknya bisa dinilai dulu.`
+        : `Tabel ${modul}${jumlahKolom ? ` (${jumlahKolom} kolom)` : ''} menampilkan data contoh supaya urutan kolom dan lebar tabel bisa dinilai dulu.`;
+
   return (
     <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:border-amber-700 dark:bg-amber-950 dark:text-amber-100">
       <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
       <div className="space-y-1 text-sm">
         <p className="font-medium">Pratinjau tampilan — belum terhubung ke database</p>
         <p className="text-amber-800 dark:text-amber-200">
-          {bentuk === 'papan' ? (
-            <>
-              Papan {modul} menampilkan data contoh supaya sebaran kartu antar tahap bisa
-              dinilai dulu. Isinya bukan data transaksi yang sebenarnya. Koneksi ke database
-              dikerjakan setelah tampilan disetujui.
-            </>
-          ) : (
-            <>
-              Tabel {modul}
-              {jumlahKolom ? ` (${jumlahKolom} kolom)` : ''} menampilkan data contoh supaya
-              urutan kolom dan lebar tabel bisa dinilai dulu. Isinya bukan data transaksi
-              yang sebenarnya. Koneksi ke database dikerjakan setelah tampilan disetujui.
-            </>
-          )}
+          {pembuka}
+          {penutup}
         </p>
       </div>
     </div>

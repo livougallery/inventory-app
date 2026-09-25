@@ -117,13 +117,14 @@ import PapanFulfillment from './src/pages/production-fulfillment/PapanFulfillmen
 import { IsiPopup, labelSumber } from './src/pages/production-fulfillment/PopupKartu';
 import { TabelWarna, TabelBahan, pisahBahan, kodeUnik, isiDariProduk, vendorCocok } from './src/pages/production-fulfillment/FormProduksiBaru';
 import { IsiDetailProduk } from './src/pages/register-produk/DetailProduk';
-import { PRODUK_REGISTER, barisRegister, cariProduk, namaProduk } from './src/lib/produk';
+import { PRODUK_REGISTER, kartuRegister, cariProduk, namaProduk } from './src/lib/produk';
 import { KATEGORI_VENDOR } from './src/lib/opsi';
 import {
   KARTU_PRODUCTION, KARTU_WHITELABEL,
   PAPAN_PRODUCTION, PAPAN_WHITELABEL,
   KARTU_BARU, kartuBaru, stageKartu, stageSetelah,
   totalPcs, jumlahVarian, kekurangan, bahanKartu, kunciBahan, ringkasBahan,
+  barisVarian, ringkasCutting, JENIS_BUKTI_CUTTING,
 } from './src/pages/production-fulfillment/data-kanban';
 
 const stage = (id) => PAPAN_PRODUCTION.find((s) => s.id === id);
@@ -178,6 +179,88 @@ export const labelPopup = {
   whitelabel: labelSumber('whitelabel'),
 };
 
+// ===== Stage Cutting: pcs hasil potong + dua bukti wajib =====
+//
+// Angka dan status gerbang dihitung DI DALAM bundel, lewat fungsi yang sama
+// dengan yang dipakai popup. Kalau logikanya disalin ke skrip pemeriksa, yang
+// teruji adalah salinannya — bukan gerbang yang benar-benar menahan kartu.
+
+const kartuCutting = KARTU_PRODUCTION.find((k) => k.stage === 'cutting');
+const varianCutting = barisVarian(kartuCutting);
+const kunciCutting = varianCutting.map((v) => v.kunci);
+const isiSemuanya = Object.fromEntries(varianCutting.map((v) => [v.kunci, 10]));
+
+// Dua jenis bukti, masing-masing dengan berkasnya sendiri. Keduanya harus ada
+// dan tidak saling menggantikan.
+const duaJenisBukti = {
+  [kartuCutting.id]: {
+    'laporan-potong': [{ nama: 'laporan.pdf', ukuran: 100, tipe: 'application/pdf' }],
+    'register-cutting': [{ nama: 'register.png', ukuran: 100, tipe: 'image/png' }],
+  },
+};
+
+const kosongkanSatuVarian = { ...isiSemuanya };
+delete kosongkanSatuVarian[kunciCutting[0]];
+
+export const gerbangCutting = {
+  jumlahVarian: varianCutting.length,
+  totalPlan: totalPcs(kartuCutting),
+  jenisBukti: JENIS_BUKTI_CUTTING.map((b) => b.id),
+  // Kutak kosong -> tertutup.
+  kosong: ringkasCutting(kartuCutting, {}, {}),
+  // Pcs penuh, bukti belum ada -> masih tertutup.
+  tanpaBukti: ringkasCutting(kartuCutting, { [kartuCutting.id]: isiSemuanya }, {}),
+  // Pcs penuh + kedua bukti -> terbuka.
+  lengkap: ringkasCutting(kartuCutting, { [kartuCutting.id]: isiSemuanya }, duaJenisBukti),
+  // Angka 0 itu keputusan sah (varian memang tidak dipotong), bukan "belum diisi".
+  nolDiisi: ringkasCutting(
+    kartuCutting,
+    { [kartuCutting.id]: Object.fromEntries(varianCutting.map((v) => [v.kunci, 0])) },
+    duaJenisBukti
+  ),
+  // Satu varian belum diisi -> tertutup, walau yang lain penuh.
+  satuKosong: ringkasCutting(kartuCutting, { [kartuCutting.id]: kosongkanSatuVarian }, duaJenisBukti),
+  // Hanya SATU jenis bukti -> tertutup. Ini yang akan lolos kalau bukti
+  // disimpan dalam satu daftar dan tidak dipisah per jenis.
+  satuJenis: ringkasCutting(kartuCutting, { [kartuCutting.id]: isiSemuanya }, {
+    [kartuCutting.id]: { 'laporan-potong': [{ nama: 'a.pdf', ukuran: 1, tipe: '' }] },
+  }),
+  // Berkas di jenis yang salah tidak boleh dihitung.
+  jenisSalah: ringkasCutting(kartuCutting, { [kartuCutting.id]: isiSemuanya }, {
+    [kartuCutting.id]: { 'register-cutting': [{ nama: 'a.pdf', ukuran: 1, tipe: '' }] },
+  }),
+};
+
+export const totalCuttingContoh = ringkasCutting(
+  kartuCutting,
+  { [kartuCutting.id]: isiSemuanya },
+  duaJenisBukti
+).totalPcs;
+
+// Popup Cutting dengan isi terisi, supaya angka di markup bisa dibandingkan
+// dengan angka yang dihitung fungsi. Popup KOSONG hanya bisa membuktikan
+// bentuknya (ada/tidaknya kolom dan tombol), bukan angkanya.
+const aksiLengkap = {
+  approve: () => {},
+  tandaiBahan: () => {},
+  lanjutStage: () => {},
+  siapKartu: () => [],
+  isiCutting: () => {},
+  tambahBukti: () => {},
+  hapusBukti: () => {},
+};
+export const popupCuttingTerisi = renderToStaticMarkup(
+  <IsiPopup
+    kartu={kartuCutting}
+    stage={PAPAN_PRODUCTION.find((s) => s.id === 'cutting')}
+    stageBerikutnya={setelah(PAPAN_PRODUCTION, 'cutting')}
+    siapBahan={{}}
+    cuttingPcs={{ [kartuCutting.id]: isiSemuanya }}
+    buktiCutting={duaJenisBukti}
+    aksi={aksiLengkap}
+  />
+);
+
 // ===== Halaman utuh, lewat rutenya =====
 //
 // Dua halaman ini diperiksa lewat App + MemoryRouter, bukan dengan merender
@@ -229,7 +312,7 @@ export const katalogProduk = PRODUK_REGISTER.map((p) => ({
   ),
 }));
 
-export const barisPos = barisRegister();
+export const kartuDaftar = kartuRegister();
 
 // Isi form untuk SETIAP produk, dihitung di dalam bundel supaya yang diperiksa
 // benar-benar fungsi yang dipakai formnya.
@@ -559,7 +642,7 @@ const url = pathToFileURL(bundel).href;
 
 const m = await import(url);
 
-const { produksi, whitelabel, popupPerStage, popupProposeWL, popupTanpaStage, labelPopup, fakta, faktaWL, alur, bahanKartu, tabelWarna, tabelBahan, tabelBahanKosong, bahanTerpisah, barisWarnaContoh, pisahBahan, halPapan, halTabel, halRegister, katalogProduk, barisPos, isiForm, vendorPerPapan, saranNama, cariAda, cariTidakAda, cariSebagian, detailPerProduk, PRODUK_REGISTER, KATEGORI_VENDOR } =
+const { produksi, whitelabel, popupPerStage, popupProposeWL, popupTanpaStage, labelPopup, fakta, faktaWL, alur, bahanKartu, tabelWarna, tabelBahan, tabelBahanKosong, bahanTerpisah, barisWarnaContoh, pisahBahan, halPapan, halTabel, halRegister, katalogProduk, kartuDaftar, isiForm, vendorPerPapan, saranNama, cariAda, cariTidakAda, cariSebagian, detailPerProduk, PRODUK_REGISTER, KATEGORI_VENDOR, gerbangCutting, totalCuttingContoh, popupCuttingTerisi } =
   m;
 
 // ===== 1. Papan Production =====
@@ -691,9 +774,114 @@ popupProposeWL.includes('memindahkan kartu ke stage Invoice Logistic')
   ? ok('Propose White Label tidak menyebut pemeriksaan bahan di Prepare')
   : salah('teks Prepare di Propose White Label', 'stage itu tidak ada di papan ini');
 
+// -- Cutting: pcs hasil potong + dua bukti wajib
+//
+// Yang diperiksa di sini BUKAN sekadar "ada kotak upload". Yang menentukan
+// kartu boleh lanjut ke Receive adalah gerbangnya, dan gerbang bisa salah
+// dengan tiga cara yang berbeda — masing-masing punya pemeriksaan sendiri:
+//   1. varian diabaikan, bukti yang dianggap cukup
+//   2. hanya satu jenis bukti yang dihitung
+//   3. angka 0 disamakan dengan kotak kosong, sehingga varian yang memang
+//      tidak dipotong membuat gerbang tidak akan PERNAH terbuka
+console.log('\n== Stage Cutting ==');
+
+const popupCutting = popupPerStage.cutting;
+
+popupCutting.includes('Cutting Pcs')
+  ? ok('kolom "Cutting Pcs" ada di stage Cutting')
+  : salah('kolom Cutting Pcs', 'tidak ditemukan');
+!popupCutting.includes('Plan Qty')
+  ? ok('kolom "Plan Qty" tidak tampil di stage Cutting')
+  : salah('Plan Qty di Cutting', 'rencana masih tampil; yang dipakai adalah hasil potong');
+for (const t of ['Laporan Potong Kain', 'Register Cutting PDFF', 'Bukti Cutting']) {
+  popupCutting.includes(t) ? ok(`bukti "${t}"`) : salah(`bukti "${t}"`, 'tidak ditemukan');
+}
+popupCutting.includes('Lanjut ke Receive')
+  ? ok('tombol lanjut menuju Receive, kolom berikutnya di papan Production')
+  : salah('tombol lanjut Cutting', 'tidak menunjuk kolom berikutnya di papan ini');
+// Gerbang harus benar-benar MENUTUP: sebelum syarat terpenuhi, atribut
+// disabled harus ada. Popup yang sudah terisi di bawah diperiksa terpisah.
+//
+// PENCARIANNYA `disabled=""`, BUKAN kata "disabled" polos. Alasannya halus:
+// `buttonVariants` selalu memuat kelas
+// `disabled:pointer-events-none disabled:opacity-50`, jadi kata "disabled"
+// muncul di markup SETIAP button apakah ia disabled atau tidak. Versi pertama
+// pemeriksaan ini mencari kata polos, dan karena itu HANYA akan pernah gagal -
+// ia tidak membedakan tombol yang hidup dari yang mati sama sekali.
+// Atribut yang benar di markup base-ui adalah `disabled=""` (dan `data-disabled=""`).
+const tombolMati = (html) => html.includes('disabled=""');
+tombolMati(popupCutting)
+  ? ok('tombol lanjut mati sebelum syarat terpenuhi')
+  : salah('gerbang Cutting', 'tombol tidak disabled padahal syarat belum terpenuhi');
+!tombolMati(popupCuttingTerisi)
+  ? ok('tombol lanjut hidup setelah pcs + kedua bukti lengkap')
+  : salah('gerbang Cutting', 'masih disabled padahal syarat sudah terpenuhi');
+
+// Kolom Share dihapus dari SEMUA stage, jadi yang diperiksa bukan hanya popup
+// Cutting. Loop di sini sengaja melaporkan stage mana yang masih memilikinya.
+const adaShare = Object.entries(popupPerStage).filter(([, h]) => h.includes('>Share<'));
+adaShare.length === 0
+  ? ok('kolom Share hilang di semua stage')
+  : salah('kolom Share', `masih ada di stage: ${adaShare.map(([id]) => id).join(', ')}`);
+!popupPerStage.receive.includes('Cutting Pcs')
+  ? ok('kolom Cutting tidak bocor ke stage lain')
+  : salah('kolom Cutting bocor', 'stage Receive menampilkan kolom Cutting Pcs');
+popupPerStage.receive.includes('Plan Qty')
+  ? ok('stage lain tetap menampilkan Plan Qty')
+  : salah('Plan Qty di stage lain', 'hilang dari stage yang bukan Cutting');
+
+// Angka di markup harus berasal dari fungsi yang sama, bukan hitung ulang di
+// sini. Kalau popup salah menghitung, angka ini tidak akan cocok.
+popupCuttingTerisi.includes(`Total cutting ${totalCuttingContoh} PCS`)
+  ? ok(`Total cutting = ${totalCuttingContoh} PCS di markup`)
+  : salah('angka Total cutting', `tidak menemukan "Total cutting ${totalCuttingContoh} PCS"`);
+!popupCuttingTerisi.includes('Total plan')
+  ? ok('popup Cutting tidak menulis "Total plan"')
+  : salah('Total plan di Cutting', 'rencana total masih tertulis di stage Cutting');
+
+const g = gerbangCutting;
+g.jumlahVarian > 0
+  ? ok(`gerbang menghitung ${g.jumlahVarian} varian`)
+  : salah('jumlah varian', 'nol varian; gerbang tidak bisa menguji apa pun');
+!g.kosong.lengkap
+  ? ok('gerbang tertutup saat kosong')
+  : salah('gerbang kosong', 'terbuka padahal tidak ada isian');
+!g.tanpaBukti.lengkap
+  ? ok('gerbang tertutup walau pcs penuh, bukti belum ada')
+  : salah('gerbang tanpa bukti', 'terbuka tanpa bukti');
+g.lengkap.lengkap
+  ? ok('gerbang terbuka: pcs penuh + kedua bukti')
+  : salah('gerbang lengkap', 'tertutup padahal syarat terpenuhi');
+g.nolDiisi.lengkap
+  ? ok('angka 0 dianggap sah (varian memang tidak dipotong)')
+  : salah('angka 0', 'disamakan dengan kotak kosong; gerbang tidak akan pernah terbuka');
+g.nolDiisi.totalPcs === 0
+  ? ok('total pcs 0, bukan tertukar dengan kosong')
+  : salah('total pcs 0', `dapat ${g.nolDiisi.totalPcs}`);
+!g.satuKosong.lengkap
+  ? ok('satu varian belum diisi -> gerbang tertutup')
+  : salah('satu varian kosong', 'terbuka padahal satu varian belum diisi');
+!g.satuJenis.lengkap
+  ? ok('satu jenis bukti saja tidak cukup')
+  : salah('satu jenis bukti', 'terbuka dengan satu jenis');
+!g.jenisSalah.lengkap
+  ? ok('berkas di jenis yang salah tidak dihitung sebagai bukti')
+  : salah('bukti jenis salah', 'terhitung sebagai bukti sah');
+g.jenisBukti.length === 2
+  ? ok('dua jenis bukti wajib')
+  : salah('jumlah jenis bukti', `dapat ${g.jenisBukti.length}, harus 2`);
+g.totalPlan !== totalCuttingContoh
+  ? ok(`angka cutting (${totalCuttingContoh}) berbeda dari plan (${g.totalPlan}), jadi tidak tertukar`)
+  : salah('angka tertukar', 'angka cutting sama dengan plan — plan mungkin masih bocor ke Cutting');
+
 // -- Stage lain: kosong dengan keterangan, BUKAN salinan Propose
+//
+// Cutting TIDAK termasuk di sini lagi. Stage itu sekarang punya isi sendiri
+// (daftar pekerjaan cutting: pcs per varian + dua bukti unggah), jadi
+// menyertakannya di daftar "stage yang harus kosong" hanya menanyakan sesuatu
+// yang sudah tidak berlaku.
 const stageKosong = Object.entries(popupPerStage).filter(
-  ([id]) => id !== 'propose' && id !== 'prepare'
+  ([id]) => id !== 'propose' && id !== 'prepare' && id !== 'cutting'
 );
 let stageMasihBerisi = 0;
 for (const [id, html] of stageKosong) {
@@ -707,14 +895,23 @@ for (const [id, html] of stageKosong) {
   }
 }
 stageMasihBerisi === 0
-  ? ok(`6 stage lain kosong dengan keterangan, bukan salinan Propose`)
+  ? ok(`${stageKosong.length} stage lain kosong dengan keterangan, bukan salinan Propose`)
   : salah('stage kosong', `${stageMasihBerisi} masalah`);
 
+// Cutting sekarang punya isi, jadi TIDAK boleh menampilkan keterangan kosong.
+// Dicek terpisah karena ia satu-satunya stage yang boleh begitu, dan
+// pemeriksaan umum di atas sudah tidak menyentuhnya.
+popupPerStage.cutting.includes('Belum ada isi khusus')
+  ? salah('stage cutting', 'sudah punya daftar pekerjaan, tapi masih menampilkan keterangan kosong')
+  : ok('stage Cutting punya isi sendiri, bukan lagi kosong');
+
 // Identitas tetap ada di semua stage — tanpa itu popup tidak bisa diketahui
-// milik pekerjaan yang mana.
+// milik pekerjaan yang mana. Judul tabel warna/ukuran di Cutting sengaja TIDAK
+// memakai kata "Plan": yang ditampilkan di sana hasil potong, bukan rencana.
 let identitasHilang = 0;
 for (const [id, html] of Object.entries(popupPerStage)) {
-  if (!html.includes('Product &amp; Proposal Information') || !html.includes('Color &amp; Size Plan')) {
+  const adaJudul = html.includes('Color &amp; Size Plan') || html.includes('Color &amp; Size<');
+  if (!html.includes('Product &amp; Proposal Information') || !adaJudul) {
     identitasHilang++;
     salah(`identitas stage "${id}"`, 'blok identitas/rencana tidak ditemukan');
   }
@@ -1346,7 +1543,7 @@ crumbProgress >= 0 && crumbHalaman > crumbProgress
 
 // ===== Register Produk =====
 
-console.log('\n== Register Produk: section, daftar POS, dan pengisian otomatis ==');
+console.log('\n== Register Produk: section, daftar kartu, dan pengisian otomatis ==');
 
 // -- Section REGISTER di sidebar, di antara Master Data dan Progress
 //
@@ -1387,9 +1584,9 @@ const isiRegister = (() => {
   return mulai >= 0 && akhir > mulai ? halRegister.slice(mulai, akhir) : '';
 })();
 
-isiRegister.includes('Register Produk') && isiRegister.includes('Total stock')
+isiRegister.includes('Register Produk') && isiRegister.includes('Total Stock')
   ? ok('halaman Register memuat daftar produknya')
-  : salah('halaman Register', 'tabelnya tidak ter-render di rutenya');
+  : salah('halaman Register', 'kartu produknya tidak ter-render di rutenya');
 
 !isiRegister.includes('Production Fulfillment') && isiRegister.length > 0
   ? ok('halaman Register bukan halaman lain')
@@ -1404,52 +1601,104 @@ isiRegister.includes('>Products<')
   ? ok('halaman Register TIDAK punya tab Variant')
   : salah('tab Variant', 'ikut dipasang padahal owner memilih Products saja');
 
-// -- Daftar POS: satu baris per varian, dan angkanya konsisten
+// -- Daftar Register: satu KARTU per produk, dan angkanya konsisten
 //
-// Jumlah baris dihitung dari katalognya, bukan ditulis tetap di sini: angka
+// Jumlah kartu dihitung dari katalognya, bukan ditulis tetap di sini: angka
 // tetap akan terus "benar" walaupun produknya ditambah, dan justru saat
 // menambah produk itulah pemeriksaan ini paling berguna.
-const jumlahVarianKatalog = katalogProduk.reduce(
-  (s, p) =>
-    s +
-    PRODUK_REGISTER.find((x) => x.id === p.id).spesifikasi.warna.reduce(
-      (a, w) => a + w.pcs.length,
-      0
-    ),
-  0
+//
+// Yang diperiksa justru kebalikannya dari dulu: dulu satu produk memakan
+// beberapa baris, pemilik menolak ("masa 1 row buat 1 variasi"). Satu kartu per
+// produk + semua varian MENYATU di dalamnya — bukan dipecah jadi kartu
+// terpisah — adalah bentuk yang diminta.
+const jumlahProdukKatalog = katalogProduk.length;
+
+kartuDaftar.length === jumlahProdukKatalog
+  ? ok(`daftar Register punya satu kartu per produk (${kartuDaftar.length} kartu)`)
+  : salah('jumlah kartu', `dapat ${kartuDaftar.length}, harus ${jumlahProdukKatalog}`);
+
+// Varian ikut di dalam kartu, bukan jadi kartu sendiri: dijumlahkan seluruhnya
+// untuk tiap produk dan dibandingkan dengan jumlah varian di katalognya.
+const varianSalah = kartuDaftar.filter((k) => {
+  const katalog = PRODUK_REGISTER.find((x) => x.id === k.id);
+  return k.varian.length !== katalog.spesifikasi.warna.reduce((a, w) => a + w.pcs.length, 0);
+});
+
+varianSalah.length === 0
+  ? ok('setiap kartu memuat seluruh variannya (warna × ukuran)')
+  : salah('varian per kartu', `${varianSalah.length} kartu tidak cocok: ${varianSalah[0]?.id}`);
+
+// Kolom "Waiting for" DIHAPUS dari tampilan (permintaan pemilik), tapi barang
+// yang menunggu tidak boleh hilang dari hitungan — kalau dibuang dari rumus,
+// "Total Stock" jadi lebih kecil daripada isi gudang yang sebenarnya.
+const totalSalah = kartuDaftar.filter((k) => {
+  const jumlahMenunggu = k.varian.reduce((s, v) => s + v.stokMenunggu, 0);
+  return k.totalStok !== k.totalMasuk + jumlahMenunggu;
+});
+
+totalSalah.length === 0
+  ? ok('total stok tiap kartu tetap menghitung barang yang menunggu')
+  : salah('total stok', `${totalSalah.length} kartu tidak cocok: ${totalSalah[0]?.id}`);
+
+// Nilai sisa = total × harga. Diperiksa di SEMUA kartu, bukan satu contoh:
+// rumus yang benar di satu kartu bisa salah di kartu lain.
+const nilaiSalah = kartuDaftar.filter((k) => k.nilaiSisa !== k.totalStok * k.harga);
+
+// "Bisa jual" per varian harus menjumlah menjadi total yang sama. Kalau tidak,
+// kartu menampilkan dua angka yang sama-sama disebut "total" tapi berbeda isi.
+const jualSalah = kartuDaftar.filter(
+  (k) => k.totalJual !== k.varian.reduce((s, v) => s + v.stokJual, 0)
 );
-
-barisPos.length === jumlahVarianKatalog
-  ? ok(`daftar POS punya satu baris per varian (${barisPos.length} baris)`)
-  : salah('jumlah baris POS', `dapat ${barisPos.length}, harus ${jumlahVarianKatalog}`);
-
-// Total stok = masuk + menunggu, dan nilai sisa = total × harga. Diperiksa di
-// SEMUA baris, bukan satu contoh: rumus yang benar di satu baris bisa salah di
-// baris lain kalau ada cabang yang berbeda.
-const stokSalah = barisPos.filter((b) => b.totalStok !== b.stokMasuk + b.menunggu);
-const nilaiSalah = barisPos.filter((b) => b.nilaiSisa !== b.totalStok * b.harga);
-
-stokSalah.length === 0
-  ? ok('total stok tiap baris = stock in + waiting for')
-  : salah('total stok', `${stokSalah.length} baris tidak cocok: ${stokSalah[0]?.id}`);
+jualSalah.length === 0
+  ? ok('total "bisa jual" tiap kartu = jumlah stok jual seluruh varian')
+  : salah('total bisa jual', `${jualSalah.length} kartu tidak cocok: ${jualSalah[0]?.id}`);
 
 nilaiSalah.length === 0
-  ? ok('nilai sisa tiap baris = total stok x harga')
-  : salah('nilai sisa', `${nilaiSalah.length} baris tidak cocok: ${nilaiSalah[0]?.id}`);
+  ? ok('nilai sisa tiap kartu = total stok x harga')
+  : salah('nilai sisa', `${nilaiSalah.length} kartu tidak cocok: ${nilaiSalah[0]?.id}`);
 
 // Stok jual tidak pernah melebihi total — kalau melebihi, ada stok yang
 // terhitung dua kali.
-const jualLebih = barisPos.filter((b) => b.stokJual > b.totalStok);
+const jualLebih = kartuDaftar.filter(
+  (k) => k.varian.some((v) => v.stokJual > v.stokMasuk + v.stokMenunggu)
+);
 jualLebih.length === 0
-  ? ok('stok jual tidak melebihi total stok')
-  : salah('stok jual', `${jualLebih.length} baris melebihi total: ${jualLebih[0]?.id}`);
+  ? ok('stok jual tiap varian tidak melebihi stoknya')
+  : salah('stok jual', `${jualLebih.length} kartu melebihi total: ${jualLebih[0]?.id}`);
 
-// Kode varian harus unik: dua baris berkode sama membuat satu baris menimpa
-// yang lain begitu daftarnya di-key oleh kode.
-const kodeUnikVarian = new Set(barisPos.map((b) => b.kodeVarian));
-kodeUnikVarian.size === barisPos.length
-  ? ok('kode varian unik di seluruh daftar')
-  : salah('kode varian', `${barisPos.length} baris tapi cuma ${kodeUnikVarian.size} kode unik`);
+// Kode varian harus unik DI DALAM satu kartu: dua varian berkode sama membuat
+// React menimpa satu dengan yang lain saat me-render daftarnya.
+const kodeGanda = kartuDaftar.filter(
+  (k) => new Set(k.varian.map((v) => v.kodeVarian)).size !== k.varian.length
+);
+kodeGanda.length === 0
+  ? ok('kode varian unik di dalam tiap kartu')
+  : salah('kode varian', `${kodeGanda.length} kartu punya kode ganda: ${kodeGanda[0]?.id}`);
+
+// Unik di dalam kartu saja belum cukup: kode varian tersusun dari designCode
+// produk, jadi dua produk yang memakai designCode sama akan menerbitkan kode
+// varian yang sama persis. Dua kartu berbeda yang memuat kode sama bertabrakan
+// diam-diam saat isinya diekspor atau dicari sebagai satu daftar.
+const semuaKode = kartuDaftar.flatMap((k) => k.varian.map((v) => v.kodeVarian));
+const kodeGandaLintas = [...new Set(semuaKode.filter((c, i) => semuaKode.indexOf(c) !== i))];
+kodeGandaLintas.length === 0
+  ? ok('kode varian unik di SELURUH daftar, bukan cuma di dalam tiap kartu')
+  : salah(
+      'kode varian lintas kartu',
+      `${kodeGandaLintas.length} kode dipakai lebih dari sekali: ${kodeGandaLintas[0]}`
+    );
+
+
+// Kolom "Waiting for" benar-benar tidak tampil di halaman.
+!isiRegister.includes('Waiting for')
+  ? ok('kolom Waiting for tidak ada di halaman Register')
+  : salah('kolom Waiting for', 'masih tampil di halaman Register');
+
+// Halaman Register bukan tabel — itu yang diminta: bentuknya kartu produk ala
+// etalase, bukan tabel yang mirip Master Data.
+!isiRegister.includes('<table') && (isiRegister.match(/data-slot="card"/g) || []).length > 0
+  ? ok('halaman Register memakai kartu, bukan tabel')
+  : salah('bentuk halaman Register', 'bukan kartu / masih ada <table>');
 
 // -- Pengisian otomatis form produksi
 //
