@@ -2,8 +2,7 @@
 
 <%# Pesan dari redirect. Ditambahkan tiket 08: approve/reject kini bisa
     gagal (PO sudah diputuskan orang lain), dan tanpa blok ini kegagalannya
-    tidak pernah terlihat — pengguna cuma melihat daftar yang tidak berubah.
-    Pola mengikuti views/raw-materials/show.ejs. %>
+    tidak pernah terlihat — pengguna cuma melihat daftar yang tidak berubah. %>
 <% if (success) { %>
   <div class="alert alert-success mb-4"><i data-lucide="circle-check"></i> <%= success %></div>
 <% } %>

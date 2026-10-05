@@ -67,9 +67,9 @@ const buatNamaBerkas = (jenis, namaAsli) => {
 //
 // filter dipanggil dengan Error, BUKAN cb(null, false).
 //
-// Ini beda dari routes/products.js, yang memakai cb(null, ...). Dengan
-// cb(null, false), multer menolak berkasnya secara diam-diam: req.file menjadi
-// undefined dan endpoint melihatnya sebagai "tidak ada berkas dikirim".
+// Ini beda dari filter yang memakai cb(null, ...) di controller EJS lama.
+// Dengan cb(null, false), multer menolak berkasnya secara diam-diam: req.file
+// menjadi undefined dan endpoint melihatnya sebagai "tidak ada berkas dikirim".
 // Pengguna hanya melihat formulir yang tidak pernah terkirim tanpa pesan apa
 // pun. Mengirim error membuat alasannya bisa ditampilkan ke pengguna.
 const filterBerkas = (req, file, cb) => {

@@ -45,8 +45,7 @@ module.exports = {
       // res.locals.user WAJIB diisi, bukan cuma req.user.
       //
       // View-view EJS memakai `user` langsung sebagai variabel render
-      // (purchase-imports/index.ejs:3, products/index.ejs:3,
-      // dashboard/index.ejs:69) — bukan `locals.user`. Sebelum ini
+      // (purchase-imports/index.ejs:3) — bukan `locals.user`. Sebelum ini
       // ditambahkan, halaman yang hanya memakai isAuthenticated (tanpa
       // middleware `role`, yang kebetulan mengisi res.locals sendiri)
       // melempar "user is not defined" dan menjawab 500 untuk setiap

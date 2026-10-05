@@ -19,8 +19,8 @@ const photoUpload = require('../../../services/photoUpload');
 const router = express.Router();
 
 // Nilai kode `status` disimpan apa adanya di DB; label hanya untuk tampilan.
-// Labelnya mengikuti views/purchase-orders/index.ejs supaya halaman EJS dan
-// React tidak pernah memakai dua istilah berbeda untuk status yang sama.
+// React dan halaman EJS tidak boleh memakai dua istilah berbeda untuk status
+// yang sama, jadi label hidup di satu tempat ini (tidak di view).
 const STATUS_LABEL = {
   pending: 'Pending',
   validated: 'Tervalidasi',

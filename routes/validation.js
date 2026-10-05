@@ -6,10 +6,9 @@ const role = require('../middleware/role');
 const ValidationService = require('../services/validationService');
 
 // Pesan dari redirect dibaca dari query, bukan dari konstanta: `error` dan
-// `success` dikirim sebagai query param oleh POST di bawah. Pola ini mengikuti
-// routes/raw-materials.js:49. Tanpa baris ini, pesan kegagalan validasi ganda
-// akan hilang diam-diam — view validation/index.ejs tidak membaca query
-// sendiri.
+// `success` dikirim sebagai query param oleh POST di bawah. Tanpa baris ini,
+// pesan kegagalan validasi ganda akan hilang diam-diam — view
+// validation/index.ejs tidak membaca query sendiri.
 router.get('/', isAuthenticated, role('finance'), async (req, res) => {
   const pendingPOs = (await db.query(`
     SELECT po.*, v.nama as vendor_nama, u.username as creator_name

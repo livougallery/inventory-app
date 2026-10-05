@@ -308,8 +308,8 @@ const FORMAT = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/;
   // ----- Tiket 11d: foto material -----
   //
   // Hanya endpointnya yang diuji, karena belum ada UI untuk mengubah material
-  // (routes/raw-materials.js tidak ter-mount, dan /master-data cuma redirect
-  // ke /stok-material yang baca-saja). Materialnya TIDAK dihapus pada akhir
+  // (/master-data cuma redirect ke /stok-material yang baca-saja).
+  // Materialnya TIDAK dihapus pada akhir
   // pemeriksaan — material yang punya riwayat pembelian ditolak server (409),
   // dan menghapus material yang tidak punya riwayat pun akan mengubah data
   // live tanpa perlu.

@@ -82,7 +82,11 @@ function createApp(options = {}) {
     '/modul/production-fulfillment-table',
     '/modul/hpp-baru',
     '/modul/barang-datang',
-    '/modul/bom-hpp'
+    '/modul/bom-hpp',
+    // Material Fulfillment — halaman yang diisi dari ticket 11e. Tanpa baris ini
+    // rute ada di App.tsx tapi dijawab 404, persis seperti yang dicegat
+    // tests/spaRoutes.test.js.
+    '/modul/material-fulfillment'
   ]);
   console.log('[createApp] SPA_ROUTES created (no /login):', SPA_ROUTES.size);
   console.log('[createApp] SPA_ROUTES created (no /login):', SPA_ROUTES.size);
@@ -220,7 +224,11 @@ function createApp(options = {}) {
 
   // DASHBOARD ROUTE REMOVED - All routes now handled by React SPA
   console.log('[createApp] Dashboard EJS route REMOVED - served by React SPA only');
-  // app.use('/dashboard', require('./routes/dashboard')); // DISABLED
+  // Controller EJS-nya sudah dihapus (tiket 02). Baris commented-out ini
+  // sengaja dibiarkan sebagai penjelasan bahwa keputusan "React saja" itu
+  // disengaja -- jangan dipulihkan hanya karena `/dashboard` terlihat
+  // seperti mau memakai route EJS.
+  // (Lihat juga app.get('/dashboard', serveSPA) di atas.)
 
   // Backend EJS routes (fallback for non-migrated or API endpoints)
   app.use('/purchase-imports', require('./routes/purchase-imports'));

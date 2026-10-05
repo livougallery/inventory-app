@@ -19,7 +19,7 @@ const router = express.Router();
 // Diekspor supaya halaman EJS yang masih hidup bisa memakainya, bukan
 // menuliskan labelnya sendiri — dulu views/reports/stock-card.ejs
 // menuliskan "Ecer" sendiri sementara API mengirim "Kain (Ecer)", dan
-// views/raw-materials/* memakai dua ejaan lain lagi.
+// view EJS material yang lain memakai dua ejaan lagi.
 //
 // Dua peta label pasti drift. Kalau butuh label di tempat lain, ambil dari
 // `tipe_label` yang dikirim endpoint ini, atau impor peta ini.
@@ -53,7 +53,8 @@ const JENIS_LABEL = {
 const EDITABLE_FIELDS = ['kode_bahan', 'nama', 'tipe', 'jenis', 'lokasi_id', 'satuan', 'stok_minimum'];
 
 // GET /api/materials — list + join varian/harga terakhir/foto.
-// SQL identik dengan halaman cek-data lama (routes/cek-data.js sebelum dihapus).
+// SQL identik dengan halaman cek-data lama yang sudah dihapus bersama
+// controller-nya (tiket 02).
 router.get('/', requireAuth, async (req, res) => {
   try {
     // Varian diambil sebagai baris terstruktur, terpisah dari query utama.

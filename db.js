@@ -494,8 +494,8 @@ async function bootstrapSchema(schemaName) {
     -- tipe TETAP jadi kolom Kategori (tiga nilai baru), bukan diganti kolom
     -- lain. Menambah kolom kategori terpisah akan membuat dua sumber
     -- kebenaran untuk satu hal — drift yang justru dihapus tiket 10 — karena
-    -- TIPE_LABEL, EDITABLE_FIELDS, dan views/raw-materials/* semua membaca
-    -- kolom tipe.
+    -- TIPE_LABEL dan EDITABLE_FIELDS (dan view EJS yang masih hidup) semua
+    -- membaca kolom tipe.
     --
     -- Nilai lama diselamatkan dulu ke tipe_asli SEBELUM ditulis ulang, supaya
     -- jalan pulangnya ada: tanpa ini, migrasi yang meleset tidak bisa

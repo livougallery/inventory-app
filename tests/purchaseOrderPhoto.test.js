@@ -326,9 +326,10 @@ describe('Foto nota PO (tiket 11c)', () => {
     // Yang diuji di sini adalah BERKASNYA, bukan cuma barisnya.
     //
     // Versi test ini sebelumnya cuma memeriksa baris database dan dengan itu
-    // lolos walau berkasnya tertinggal — cacat yang sama dengan komentar di
-    // routes/products.js yang mengklaim ON DELETE CASCADE mengurus foto.
-    // Cascade hanya mengurus baris; berkas di disk tidak pernah.
+    // lolos walau berkasnya tertinggal — cacat yang sama dengan yang pernah
+    // dikomentari di controller EJS lama: cascade hanya mengurus baris;
+    // berkas di disk tidak pernah. Controller itu sudah dihapus (tiket 02),
+    // jadi yang tersisa di sini adalah cacatnya, bukan rujukan ke file mati.
     await seedBase();
     const id = await seedPo();
     await unggah(`/purchase-orders/${id}/foto`);

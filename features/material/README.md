@@ -142,12 +142,11 @@ sementara API mengirim "Kain (Ecer)". Sekarang `routes/reports.js`
 mengimpor `TIPE_LABEL` dan mengirim `tipe_label` ke view — view tidak
 lagi merangkai labelnya sendiri.
 
-**Yang tersisa adalah kode mati.** `views/raw-materials/*` masih menuliskan
-tiga ejaan lain ("Kain Ecer", "Kain Ecer (Meteran)"), tapi
-`routes/raw-materials.js` **tidak ter-mount** — keempat view itu tidak bisa
-dijangkau sama sekali, jadi mereka tidak bisa drift. Dibiarkan karena
-menghapusnya di luar ruang lingkup tiket 10; calon tiket tersendiri,
-bersama lima rute EJS lain yang bernasib sama.
+**Yang tersisa sudah dihapus (tiket 02, 5 Oktober 2026).** Dulu
+`views/raw-materials/*` menuliskan tiga ejaan lain ("Kain Ecer", "Kain Ecer
+(Meteran)"). Semuanya tidak ter-mount, jadi tidak pernah dirender dan tidak
+pernah bisa drift — dan sekarang sudah dihapus bersama controller-nya.
+Pola yang dijaga di sini adalah bentuk labelnya, bukan file-nya.
 
 ## Development Notes
 

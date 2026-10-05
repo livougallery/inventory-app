@@ -31,19 +31,40 @@ async function req(method, path, { form, redirect = 'manual' } = {}) {
   return { status: r.status, location: r.headers.get('location'), text: await r.text() };
 }
 
-// Halaman yang harus memuat tanpa 500. 302 (redirect) dianggap wajar untuk
+// Halaman EJS yang harus memuat tanpa 500. 302 (redirect) dianggap wajar untuk
 // halaman yang butuh parameter.
+//
+// Hanya halaman EJS. Daftar ini sengaja tidak memuat path yang ada di
+// SPA_ROUTES (`/products`, `/vendors`, `/purchase-orders`,
+// `/production-batches`, `/hpp`) maupun `/dashboard`: semuanya dilayani
+// React — catch-all SPA, atau `app.get('/dashboard', serveSPA)` di
+// index.js — SEBELUM router EJS sempat jalan. Mengujinya di sini tidak pernah
+// menyentuh view EJS sama sekali, jadi check yang hijau itu hijau karena
+// React sehat, bukan karena view EJS sehat. Itu persis green check yang
+// tidak menguji apa-apa.
+//
+// `/raw-materials` dan `/cek-data/material` juga tidak ada: keduanya tidak
+// pernah punya route yang ter-mount, dan sekarang view-nya sudah dihapus
+// (tiket 02) — mengujinya hanya menghasilkan 404 yang memang tak salah.
+//
+// CATATAN PENTING soal `/validation`: route-nya `role('finance')`, sedangkan
+// user smoke ini `admin`. `middleware/role.js` menjawab 403 dan me-render
+// `error`, jadi entri ini **tidak** menguji `views/validation/index.ejs` —
+// ia menguji `views/error.ejs`. Yang ia buktikan adalah bahwa middleware
+// role tidak melempar saat menolak, bukan bahwa halaman validasi sehat.
+// Smoke test hijau di sini tidak berarti halaman validasi sehat.
+// Untuk menguji view-nya sendiri, jalankan dengan SMOKE_USER=<user finance>.
+//
+// `/admin/currencies` ditambahkan (tiket 02): ter-mount di `index.js:237`,
+// ditautkan dari sidebar (`views/layout.ejs:224`), dan punya form yang membaca
+// `csrfToken` — jadi ia live EJS yang belum pernah masuk daftar ini.
 const HALAMAN = [
-  '/dashboard',
-  '/vendors',
-  '/products',
-  '/raw-materials',
-  '/cek-data/material',
   '/purchase-imports',
   '/purchase-imports/create',
-  '/production-batches',
-  '/hpp',
   '/validation',
+  '/reports/stock-card',
+  '/reports/monthly-expenses',
+  '/admin/currencies',
 ];
 
 (async () => {
