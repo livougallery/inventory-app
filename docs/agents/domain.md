@@ -36,10 +36,17 @@ If your output contradicts an existing ADR, surface it explicitly rather than si
 
 ## Catatan untuk repo ini
 
-`CONTEXT.md` dan `docs/adr/` belum ada per 2026-08-31. Sampai keduanya dibuat, bagian "read
-these" di atas tidak berlaku: langsung eksplorasi kode tanpa perlu mencari atau menyarankan
-file domain docs.
+`CONTEXT.md` **sudah ada** per 2026-09-24, dibuat dari sesi `grilling` stage Cutting & Receive.
+Bagian "read these" di atas berlaku sejak sekarang: baca `CONTEXT.md` sebelum mengeksplorasi,
+dan pakai istilahnya saat menamai hal di tiket, test, atau kode.
+
+Cakupan glosariumnya masih terbatas pada **Production Fulfillment** (fulfillment, cutting,
+receive, kesesuaian) plus istilah produksi/biaya yang sudah lama dipakai. Istilah lama lain
+(material, varian, batch produksi, HPP, PO) belum dimasukkan — tambahkan saat ada yang benar
+benar perlu diputuskan, jangan borongan.
+
+`docs/adr/` masih kosong. Keputusan yang sulit dibalik dan butuh konteks untuk pembaca nanti
+dicatat di situ; sejauh ini belum ada yang memenuhi syarat itu.
 
 Konteks teknis yang sudah terdokumentasi ada di `CLAUDE.md` (database Supabase, cara menjalankan
-app, konvensi UI). Untuk vocabulary domain gudang (material, varian, batch produksi, HPP, PO),
-lihat kode dan skema database di `db.js` dan `features/`.
+app, konvensi UI) dan skema database di `db.js` serta `features/`.
