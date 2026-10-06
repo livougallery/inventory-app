@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/table';
 import { rupiah } from '@/lib/format';
 import { KATEGORI_VENDOR, SIZE, labelDari } from '@/lib/opsi';
-import type { ProdukRegister } from '@/lib/produk';
+import type { KartuRegister, ProdukRegister } from '@/lib/produk';
 import type { SpesifikasiKain } from '@/pages/production-fulfillment/data-kanban';
 
 // ===== Detail produk =====
@@ -46,8 +46,26 @@ import type { SpesifikasiKain } from '@/pages/production-fulfillment/data-kanban
 // lolos ke CSS, lalu yang menang ditentukan urutan di berkas keluaran, bukan
 // niat penulisnya. Sudah diuji langsung terhadap twMerge di proyek ini.
 // Inline style tidak punya ketidakpastian itu.
+//
+// RINCIAN WARNA ADA DI SINI, dan itu sebabnya. Di kartu daftar, baris per
+// warna dipindahkan ke dialog ini (permintaan pemilik): pada lima kolom kartu
+// selebar ~205px, dua baris warna memakan ruang yang membuat kartu setinggi
+// foto + teks, dan produk 8 varian tetap menzalim 8 baris. Jadi yang hilang
+// dari kartu tidak hilang dari produk — cuma pindah tempat, dan tempatnya di
+// sini memang sudah jadi tempat membaca rincian.
 
-export function IsiDetailProduk({ produk }: { produk: ProdukRegister }) {
+export function IsiDetailProduk({
+  produk,
+  kartu,
+}: {
+  produk: ProdukRegister;
+  /**
+   * Ringkasan stok per warna. Opsional supaya produk bisa tetap dirender
+   * tanpa kartu —dialog ini dibaca dari dua tempat, dan pemeriksa smoke test
+   * memang merendernya langsung dari katalog saja.
+   */
+  kartu?: KartuRegister | null;
+}) {
   const sp = produk.spesifikasi;
 
   const totalPcs = sp.warna.reduce(
@@ -81,9 +99,76 @@ export function IsiDetailProduk({ produk }: { produk: ProdukRegister }) {
             <Field label="Register Date" nilai={produk.registerDate} />
             <Field label="Harga Jual" nilai={rupiah(produk.harga)} />
             <Field label="Total Rencana" nilai={`${totalPcs} PCS`} />
+            {/* Dua angka ini SUMBER-nya berbeda dari "Total Rencana" di
+                atasnya, dan itu bukan kebetulan. `totalPcs` menjumlah rencana
+                produksi dari katalog; `totalStok`/`totalJual` menjumlah gudang.
+                Keduanya boleh berbeda jauh untuk produk yang sama, jadi
+                meletakkan keduanya di satu daftar tanpa nama yang membedakan
+                akan menyesatkan. */}
+            {kartu && (
+              <>
+                <Field label="Total Stock" nilai={`${kartu.totalStok} pcs`} />
+                <Field label="Bisa Jual" nilai={`${kartu.totalJual} pcs`} />
+              </>
+            )}
           </dl>
         </div>
       </div>
+
+      {/* ── Stok per warna ─────────────────────────────────────────
+          Pindah dari kartu daftar ke sini. Satu baris per warna, dengan
+          ukuran di dalamnya — bukan satu baris per varian, karena itu
+          kembali ke masalah yang membuat kartu lama tidak bisa dipakai. */}
+      {kartu && (
+        <section className="space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold">Stok per Warna</h3>
+            <p className="text-xs text-muted-foreground">
+              {kartu.jumlahWarna} warna · {kartu.jumlahVarian} varian (warna × ukuran)
+            </p>
+          </div>
+
+          <div className="overflow-hidden rounded-lg border">
+            <Table>
+              <TableHeader className="bg-muted/50">
+                <TableRow className="hover:bg-transparent">
+                  <TableHead className="px-3 py-2 text-xs">Warna</TableHead>
+                  <TableHead className="px-3 py-2 text-xs">Ukuran</TableHead>
+                  <TableHead className="px-3 py-2 text-right text-xs">Bisa Jual</TableHead>
+                  <TableHead className="px-3 py-2 text-right text-xs">Total Stock</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {kartu.warnaRingkas.map((w) => (
+                  <TableRow key={w.id}>
+                    <TableCell className="px-3 py-2">{w.warna}</TableCell>
+                    <TableCell className="px-3 py-2 text-muted-foreground">
+                      {w.size}
+                    </TableCell>
+                    <TableCell className="px-3 py-2 text-right tabular-nums">
+                      {w.stokJual}
+                    </TableCell>
+                    <TableCell className="px-3 py-2 text-right tabular-nums">
+                      {w.stokTotal}
+                    </TableCell>
+                  </TableRow>
+                ))}
+                <TableRow className="bg-muted/50 font-medium hover:bg-transparent">
+                  <TableCell className="px-3 py-2" colSpan={2}>
+                    Total
+                  </TableCell>
+                  <TableCell className="px-3 py-2 text-right tabular-nums">
+                    {kartu.totalJual}
+                  </TableCell>
+                  <TableCell className="px-3 py-2 text-right tabular-nums">
+                    {kartu.totalStok}
+                  </TableCell>
+                </TableRow>
+              </TableBody>
+            </Table>
+          </div>
+        </section>
+      )}
 
       {/* ── Rencana warna & ukuran ────────────────────────────────── */}
       <section className="space-y-3">
@@ -210,10 +295,13 @@ export function IsiDetailProduk({ produk }: { produk: ProdukRegister }) {
 
 export default function DetailProduk({
   produk,
+  kartu,
   onTutup,
 }: {
   /** Produk yang dibuka. `null` = dialog tertutup. */
   produk: ProdukRegister | null;
+  /** Ringkasan stok per warna. Tanpa ini, rinciannya tidak tampil. */
+  kartu?: KartuRegister | null;
   onTutup: () => void;
 }) {
   return (
@@ -242,7 +330,7 @@ export default function DetailProduk({
             </DialogHeader>
 
             <div className="overflow-y-auto px-6 py-5">
-              <IsiDetailProduk produk={produk} />
+              <IsiDetailProduk produk={produk} kartu={kartu} />
             </div>
           </>
         )}

@@ -1,6 +1,6 @@
 // ===== Katalog produk (data contoh) =====
 //
-// Satu sumber untuk dua tempat yang memang harus Sizes:
+// Satu sumber untuk dua tempat yang memang harus sama:
 //
 //   - halaman REGISTER > Register Produk (daftar kartu produk)
 //   - pengisian otomatis form "Tambah Produksi" di PROGRESS
@@ -90,6 +90,29 @@ export interface VarianRegister {
   stokMenunggu: number;
 }
 
+/**
+ * Stok satu warna di dalam kartu produk: seluruh ukuran warna itu dijumlahkan.
+ *
+ * Kartu tidak menampilkan tiap ukuran sendirian — untuk produk dengan 8 varian
+ * itu jadi 8 baris angka yang mustahil dibandingkan sekilas. Yang ditampilkan
+ * adalah satu baris per WARNA, jadi produk dua warna tetap dua baris. Tidak ada
+ * ukuran yang hilang: jumlahnya ada di `stokJual` baris itu, dan rinciannya
+ * tetap ada di `varian` untuk dialog detail.
+ */
+export interface WarnaRegister {
+  id: string;
+  kodeWarna: string;
+  warna: string;
+  /** Jumlah ukuran milik warna ini, mis. 4 untuk S/M/L/XL. */
+  jumlahSize: number;
+  /** Stok yang bisa dijual, dijumlahkan dari seluruh ukuran warna ini. */
+  stokJual: number;
+  /** Stok total warna ini, termasuk yang masih menunggu diproses. */
+  stokTotal: number;
+  /** Ukuran yang ada pada warna ini, mis. "S, M, L, XL". */
+  size: string;
+}
+
 /** Satu kartu produk di daftar Register — satu produk, bukan satu varian. */
 export interface KartuRegister {
   id: string;
@@ -111,7 +134,16 @@ export interface KartuRegister {
   registerDate: string;
   /** Harga jual per pcs. */
   harga: number;
+  /**
+   * Setiap varian (warna × ukuran). Dipakai dialog detail dan pencarian.
+   *
+   * Kartu daftar TIDAK merender daftar ini — ia merender `warnaRingkas` di
+   * bawah, yang sudah dijumlahkan per warna. Kalau kartu ini langsung memetakan
+   * `varian`, produk dengan 8 varian kembali jadi 8 baris angka.
+   */
   varian: VarianRegister[];
+  /** Satu baris per warna — inilah yang tampil di kartu daftar. */
+  warnaRingkas: WarnaRegister[];
   /** Jumlah warna berbeda di produk ini. */
   jumlahWarna: number;
   /** Jumlah varian (warna × ukuran) di produk ini. */
@@ -119,18 +151,24 @@ export interface KartuRegister {
   /**
    * Stok masuk, dijumlahkan dari seluruh varian produk ini.
    *
-   * Tidak tampil sendiri di kartu — kartu ini sudah menampilkan stok tiap
-   * varian satu per satu, dan jumlahannya bisa dibaca dari situ. Yang tetap
-   * dipakai adalah hitungan `totalStok` di bawah.
+   * Tidak tampil sendiri di kartu. Yang tetap dipakai adalah hitungan
+   * `totalStok` di bawah, jadi tidak ada pekerjaan yang sia-sia.
    */
   totalMasuk: number;
   /**
    * Stok yang bisa dijual, dijumlahkan dari seluruh varian produk ini.
    *
-   * Sengaja ditampilkan BERBEDA dari `totalStok`: sebagian stok sudah terikat
-   * pesanan atau belum lolos, jadi tidak bisa langsung dijual. Dua angka ini
-   * diletakkan berdampingan di kartu, dan tanpa itu orang akan menghitung
-   * sendiri, menemukan selisih, lalu mengira kartu tersebut rusak.
+   * Berbeda dari `totalStok` karena sebagian stok sudah terikat pesanan atau
+   * belum selesai diproses, jadi tidak bisa langsung dijual. Kartu menampilkan
+   * perbedaannya lewat dua nama yang berbeda: tiap baris warna ditulis
+   * "N bisa jual", sedangkan totalnya ditulis "Total Stock". Tanpa pemisahan
+   * nama itu orang akan menghitung sendiri, menemukan selisih, lalu mengira
+   * kartu tersebut rusak.
+   *
+   * Tidak tampil sebagai angka tersendiri di kaki kartu — yang diminta
+   * pemilik hanya jumlah varian dan Total Stock. Nilai ini tetap dipakai
+   * untuk menjumlahkan baris warna, supaya tidak ada angka yang dihitung dua
+   * kali.
    */
   totalJual: number;
   /**
@@ -409,17 +447,38 @@ const STOK: Record<string, { masuk: number; menunggu: number; jual?: number }> =
  * Rombak katalog jadi satu kartu per produk — bentuk yang dibaca daftar
  * Register.
  *
- * Satu kartu = satu produk. Varan (warna + ukuran) dikumpulkan DI DALAMNYA
- * dan tidak lagi jadi baris sendiri, karena dari cara Daftar master dibaca orang
- * sudah bisa eventuais: yang dicari lebih dulu "produk ini ada berapa", bukan
+ * Satu kartu = satu produk. Varian (warna + ukuran) dikumpulkan DI DALAMNYA
+ * dan tidak lagi jadi baris sendiri, karena dari cara daftar master dibaca orang
+ * sudah jelas: yang dicari lebih dulu "produk ini ada berapa", bukan
  * "varian ketiga produk ini ada berapa".
  *
  * Urutannya mengikuti urutan katalog lalu urutan warna di spesifikasinya —
  * bukan diurut ulang di sini, supaya dua varian satu produk selalu berdampingan
  * dan mata bisa membandingkannya.
+ *
+ * Kartu ini menyiapkan DUA tingkat ringkasan, untuk dua pembaca berbeda:
+ *   - `warnaRingkas` — satu baris per warna. Inilah yang dirender di kartu.
+ *     Untuk produk 8 varian, 8 baris angka tidak bisa dibandingkan sekilas;
+ *     "Hitam 210" jauh lebih cepat dibaca daripada empat baris S/M/L/XL.
+ *   - `varian` — satu baris per (warna × ukuran). Tidak dirender di kartu,
+ *     tapi dipakai dialog detail dan pencarian, jadi tidak ada angka yang hilang.
+ *
+ * Katalognya bisa diganti pemanggil (`daftar`), karena kartu Register
+ * setelah ini tidak hanya berisi empat produk contoh: produk yang baru
+ * didaftarkan lewat form "Tambah Produk" ikut lewat sini, lewat pemanggilan
+ * kedua di `RegisterProduk`. Menyalin logika peringkasan ke pemanggil berarti
+ * dua implementasi yang bisa berbeda — dan karena keduanya menghitung angka
+ * yang sama (total stok, nilai sisa), layar bisa menampilkan dua angka
+ * berbeda untuk satu produk tanpa ada yang mengetahuinya. Satu definisi, satu
+ * sumber.
+ *
+ * Default-nya `PRODUK_REGISTER` supaya pemanggil lama yang tidak-care tidak
+ * ikut berubah.
  */
-export function kartuRegister(): KartuRegister[] {
-  return PRODUK_REGISTER.map((p) => {
+export function kartuRegister(
+  daftar: ProdukRegister[] = PRODUK_REGISTER
+): KartuRegister[] {
+  return daftar.map((p) => {
     const varian: VarianRegister[] = [];
 
     for (const w of p.spesifikasi.warna) {
@@ -431,7 +490,11 @@ export function kartuRegister(): KartuRegister[] {
         varian.push({
           id: `${p.id}-${w.kode}-${ukuran.ukuran}`,
           kodeWarna: w.kode,
-          kodeVarian: `${p.spesifikasi.designCode}-${w.kode}-${ukuran.ukuran}`,
+          // Kode yang diketik pengguna menang kalau ada. Kalau tidak, kode
+          // variasi tetap diturunkan seperti biasa -- jadi produk yang
+          // kodenya belum pernah diisi tidak ikut berubah bentuk.
+          kodeVarian:
+            ukuran.kode || `${p.spesifikasi.designCode}-${w.kode}-${ukuran.ukuran}`,
           warna: w.nama,
           size: ukuran.ukuran,
           stokMasuk: stok?.masuk ?? 0,
@@ -440,6 +503,26 @@ export function kartuRegister(): KartuRegister[] {
         });
       }
     }
+
+    // Ringkasan per warna. Dikelompokkan dari `varian` yang baru dibangun,
+    // bukan dengan menulis ulang perulangan di atas — jadi tidak mungkin dua
+    // tingkat ringkasan berhitung beda karena satu diperbarui dan yang lain tidak.
+    const perWarna = new Map<string, VarianRegister[]>();
+    for (const v of varian) {
+      const isi = perWarna.get(v.kodeWarna);
+      if (isi) isi.push(v);
+      else perWarna.set(v.kodeWarna, [v]);
+    }
+
+    const warnaRingkas: WarnaRegister[] = [...perWarna.entries()].map(([kode, isi]) => ({
+      id: `${p.id}-${kode}`,
+      kodeWarna: kode,
+      warna: isi[0].warna,
+      jumlahSize: isi.length,
+      stokJual: isi.reduce((s, v) => s + v.stokJual, 0),
+      stokTotal: isi.reduce((s, v) => s + v.stokMasuk + v.stokMenunggu, 0),
+      size: isi.map((v) => v.size).join(', '),
+    }));
 
     const totalMasuk = varian.reduce((s, v) => s + v.stokMasuk, 0);
     const totalJual = varian.reduce((s, v) => s + v.stokJual, 0);
@@ -458,6 +541,7 @@ export function kartuRegister(): KartuRegister[] {
       registerDate: p.registerDate,
       harga: p.harga,
       varian,
+      warnaRingkas,
       jumlahWarna: p.spesifikasi.warna.length,
       jumlahVarian: varian.length,
       totalMasuk,
