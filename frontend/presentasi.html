@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Inventory System — Presentasi</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- Entry presentasi (HashRouter), bukan `src/main.tsx` (BrowserRouter).
+         Alasannya ada di komentar `src/main-presentasi.tsx`: berkas ini dibuka
+         sebagai file:// di komputer lain, dan BrowserRouter membaca
+         pathname — bukan hash — sehingga semua route-nya jatuh ke "*". -->
+    <script type="module" src="/src/main-presentasi.tsx"></script>
+  </body>
+</html>

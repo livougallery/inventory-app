@@ -10,6 +10,14 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+# Bundle presentasi (frontend/presentasi.html) — hasil `npx vite build
+# --config vite.presentasi.config.ts`. 1,1 MB hasil build, bukan sumber.
+# Sumbernya presentasi.html + src/main-presentasi.tsx + vite.presentasi.config.ts.
+dist-presentasi
+# Bundle artifact (frontend/dist-artifact/index.html) — hasil `node
+# build-artifact.mjs`, yang mengambil build di atas lalu memasang stub fetch.
+# Hasilnya untuk dipublish ke claude.ai, bukan untuk di-commit.
+dist-artifact
 *.local
 
 # Editor directories and files

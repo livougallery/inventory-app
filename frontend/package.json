@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:presentasi": "vite build --config vite.presentasi.config.ts",
+    "build:artifact": "vite build --config vite.presentasi.config.ts && node build-artifact.mjs",
+    "build:presentasi-file": "vite build --config vite.presentasi.config.ts && node build-presentasi.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
@@ -40,6 +43,7 @@
     "@vitejs/plugin-react": "^6.0.4",
     "oxlint": "^1.75.0",
     "typescript": "~6.0.2",
-    "vite": "^8.2.0"
+    "vite": "^8.2.0",
+    "vite-plugin-singlefile": "^2.3.3"
   }
 }
