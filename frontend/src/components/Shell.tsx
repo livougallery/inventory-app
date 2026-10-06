@@ -159,6 +159,15 @@ const papanProgress: NavItem[] = [
     icon: SquareKanban,
     section: 'Progress',
   },
+  {
+    path: '/modul/material-fulfillment',
+    label: 'Material Fulfillment',
+    // Ikon keranjang, bukan papan: bentuknya sama dengan menu di atasnya,
+    // dan yang membedakannya di sidebar adalah MENU-nya — isi keduanya
+    // Purchase, satu untuk bahan jadi dan satu untuk bahan mentah.
+    icon: ShoppingCart,
+    section: 'Progress',
+  },
 ];
 
 // Mode video: modul pratinjau dalam tiga section — Master Data (tabel),

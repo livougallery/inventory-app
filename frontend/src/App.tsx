@@ -16,6 +16,7 @@ import RegisterProduk from './pages/RegisterProduk';
 import Whitelabel from './pages/Whitelabel';
 import ProductionFulfillment from './pages/ProductionFulfillment';
 import PapanProduksi from './pages/production-fulfillment/PapanProduksi';
+import MaterialFulfillment from './pages/MaterialFulfillment';
 import HppPratinjau from './pages/HppPratinjau';
 import BarangDatang from './pages/BarangDatang';
 import BomHpp from './pages/BomHpp';
@@ -126,6 +127,16 @@ function App() {
       <Route path="/modul/production-fulfillment" element={
         <Shell>
           <PapanProduksi />
+        </Shell>
+      } />
+      {/* Material Fulfillment, section PROGRESS juga. Prefix-nya tetap
+          `/modul/` seperti route lain — belum ada segmen `/progress/` di app
+          ini, dan production-fulfillment yang juga di PROGRESS tetap di
+          `/modul/production-fulfillment`. Memindahkan seluruh halaman PROGRESS
+          ke `/progress/*` adalah migrasi tersendiri, bukan ikut di tiket ini. */}
+      <Route path="/modul/material-fulfillment" element={
+        <Shell>
+          <MaterialFulfillment />
         </Shell>
       } />
       {/* Tabel 40 kolomnya, tetap di Master Data. URL-nya baru dan terpisah,
