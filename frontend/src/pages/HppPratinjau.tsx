@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import TabelPratinjau, { type KolomPratinjau } from '@/components/TabelPratinjau';
 import BannerPratinjau from '@/components/BannerPratinjau';
 import { MATA_UANG } from '@/lib/opsi';
+import { hppWhiteLabel } from './production-fulfillment/hpp';
 
 // ===== Tabel HPP White Label (pratinjau) =====
 //
@@ -26,6 +27,19 @@ import { MATA_UANG } from '@/lib/opsi';
 // Catatan untuk step koneksi nanti: HPP Final/pcs adalah HASIL hitung dari
 // logistik + produk + kurs, jadi sebaiknya dihitung server. Menghitungnya di
 // klien berarti dua tempat bisa menghasilkan angka berbeda.
+//
+//
+// ANGKA HPP DI HALAMAN INI SUDAH DIHITUNG, BUKAN DITULIS.
+//
+// `hppFinalPerPcs` tidak lagi jadi field di `BarisHpp`. Sebelumnya field itu
+// berisi angka yang tidak punya asal-usul: baris 3 (THB) tertulis 78.000
+// padahal barang itu Whole Label dan HPP-nya 152.133,33 — setengah harga belinya
+// sendiri, secara fisik tidak mungkin terjadi. Field literal seperti itu
+// berbahaya justru karena terlihat benar.
+//
+// Sekarang kolom itu memanggil `hppWhiteLabel()` di
+// `production-fulfillment/hpp.ts`, jadi angkanya satu sumber dengan HPP yang
+// dipakai kartu di papan. Baris 3 menghasilkan 152.133,33.
 
 export interface BarisHpp {
   id: number;
@@ -54,10 +68,9 @@ export interface BarisHpp {
   pricePerPcs: number;
   kurs: number;
   gramPerPcs: number;
-  hppFinalPerPcs: number;
 }
 
-const barisContoh: BarisHpp[] = [
+export const barisContoh: BarisHpp[] = [
   {
     id: 1,
     // Baris 1 dan 2 berbagi shipment yang sama → nilai logistiknya identik.
@@ -82,7 +95,6 @@ const barisContoh: BarisHpp[] = [
     pricePerPcs: 52,
     kurs: 2250,
     gramPerPcs: 250,
-    hppFinalPerPcs: 132000,
   },
   {
     id: 2,
@@ -107,7 +119,6 @@ const barisContoh: BarisHpp[] = [
     pricePerPcs: 42,
     kurs: 2250,
     gramPerPcs: 200,
-    hppFinalPerPcs: 118000,
   },
   {
     id: 3,
@@ -132,7 +143,6 @@ const barisContoh: BarisHpp[] = [
     pricePerPcs: 95,
     kurs: 480,
     gramPerPcs: 200,
-    hppFinalPerPcs: 78000,
   },
   {
     id: 4,
@@ -158,7 +168,35 @@ const barisContoh: BarisHpp[] = [
     pricePerPcs: 60000,
     kurs: 1,
     gramPerPcs: 320,
-    hppFinalPerPcs: 79950,
+  },
+  // Baris ini milik Luna Pants, kartu White Label yang ada di stage hpp-price.
+  // Tanpa baris ini, mode White Label di kartu popup tidak punya apa pun untuk
+  // ditampilkan: kartu WL tidak punya field kodeShipmentLivou, jadi satu-satunya
+  // cara memasangkannya ke data shipment adalah lewat nama produk.
+  // HPP = 5.200.000/40 + 78.000/40 = 130.000 + 1.950 = 131.950.
+  {
+    id: 5,
+    codeShipment: 'SH-ID-2609-004',
+    currency: 'IDR',
+    pricePerKg: 15000,
+    totalKg: 5.2,
+    totalPaymentLogistic: 78000,
+    actualIdrPaidLogistic: 78000,
+    proofNotaLogistic: 'contoh',
+    proofPaymentLogistic: 'contoh',
+    namaSupplier: 'Supplier Lokal Bandung',
+    totalPcs: 40,
+    totalPrice: 5200000,
+    actualIdrPaidProduct: 5200000,
+    skuSupplier: 'SL-PT-0032',
+    proofNotaProduct: 'contoh',
+    proofPaymentProduct: 'contoh',
+    workcodePdff: 'PDFF_CSC-PNT-31_B-01_WHLB',
+    namaProduct: 'Luna Pants',
+    pcs: 40,
+    pricePerPcs: 130000,
+    kurs: 1,
+    gramPerPcs: 280,
   },
 ];
 
@@ -210,7 +248,12 @@ export default function HppPratinjau() {
       { key: 'gramPerPcs', label: 'Gram/pcs', value: (r) => r.gramPerPcs, jenis: 'angka' },
 
       // ---- 5. Hasil ----
-      { key: 'hppFinalPerPcs', label: 'HPP Final/pcs', value: (r) => r.hppFinalPerPcs, jenis: 'uang' },
+      //
+      // `key` masih `hppFinalPerPcs` karena itu nama filter yang sudah dipakai
+      // di halaman ini — mengganti key-nya akan memutus filter yang tersimpan.
+      // Yang berubah adalah sumber angkanya: bukan literal di `barisContoh`,
+      // tapi hasil `hppWhiteLabel()`.
+      { key: 'hppFinalPerPcs', label: 'HPP Final/pcs', value: (r) => hppWhiteLabel(r).hpp, jenis: 'uang' },
     ],
     []
   );

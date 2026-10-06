@@ -3,6 +3,13 @@ import TabelPratinjau, { type KolomPratinjau } from '@/components/TabelPratinjau
 import BannerPratinjau from '@/components/BannerPratinjau';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { FLOW_TRANSAKSI, KATEGORI_VENDOR, SOLUSI, SUMBER_PRODUKSI, labelDari } from '@/lib/opsi';
+import {
+  KARTU_PRODUCTION,
+  KARTU_WHITELABEL,
+  type KartuPdff,
+} from './production-fulfillment/data-kanban';
+import { hargaJual, hppProduksi, hppWhiteLabel } from './production-fulfillment/hpp';
+import { barisContoh as barisContohHpp, type BarisHpp } from './HppPratinjau';
 
 // ===== Tabel Production Fulfillment (pratinjau) =====
 //
@@ -55,9 +62,7 @@ export interface BarisPdff {
   proofPaymentProduct: string | null;
   proofReimburse: string | null;
   proofKalkulasiHpp: string | null;
-  hpp: number;
   proofKalkulasiSellingPrice: string | null;
-  sellingPrice: number;
   proofUploadEcommerce: string | null;
   jumlahUploadPos: number;
   uploadPos: string | null;
@@ -69,7 +74,7 @@ export interface BarisPdff {
 
 // Workcode PDFF = gabungan SKU + batch + kode sumber produksi, sesuai
 // spesifikasi owner. Ditulis lengkap di contoh supaya wujudnya bisa dinilai.
-const barisContoh: BarisPdff[] = [
+export const barisContoh: BarisPdff[] = [
   {
     id: 1,
     workcodePdff: 'LVU-TOP-11-EBK-B01-PRD',
@@ -105,9 +110,7 @@ const barisContoh: BarisPdff[] = [
     proofPaymentProduct: 'contoh',
     proofReimburse: null,
     proofKalkulasiHpp: 'contoh',
-    hpp: 78000,
     proofKalkulasiSellingPrice: 'contoh',
-    sellingPrice: 189000,
     proofUploadEcommerce: 'contoh',
     jumlahUploadPos: 98,
     uploadPos: 'contoh',
@@ -149,9 +152,7 @@ const barisContoh: BarisPdff[] = [
     proofPaymentProduct: 'contoh',
     proofReimburse: 'contoh',
     proofKalkulasiHpp: 'contoh',
-    hpp: 132000,
     proofKalkulasiSellingPrice: 'contoh',
-    sellingPrice: 299000,
     proofUploadEcommerce: null,
     jumlahUploadPos: 0,
     uploadPos: null,
@@ -159,6 +160,73 @@ const barisContoh: BarisPdff[] = [
     financeValidateLogistics: '2026-09-06',
   },
 ];
+
+// ===== HPP: dihitung, bukan ditulis =====
+//
+// `BarisPdff` tidak punya field `hpp` dan `sellingPrice` lagi. Angkanya dihapus
+// dari data contoh pada Oktober 2026 karena tidak jelas asalnya, dan yang
+// tersisa hanyalah tebakan: HPP dan harga jual yang tadinya tertulis menyiratkan
+// DUA margin yang berbeda (189.000 ÷ 78.000 = 2,42 dan 299.000 ÷ 132.000 = 2,27).
+// Tidak ada satu pun dari keduanya yang bisa dipertahankan sebagai keputusan.
+//
+// Sekarang HPP berasal dari rumus di `production-fulfillment/hpp.ts`, sesuai
+// supply chain baris itu: Production dari bahan + ongkos jahit, White Label dari
+// beli + kirim. Harga jual = HPP × margin global.
+
+/** Mode HPP sebuah baris. Ditentukan `sourceProduction`, bukan tebakan nama. */
+function modeHpp(r: BarisPdff): 'production' | 'whitelabel' {
+  return r.sourceProduction === 'white_label' ? 'whitelabel' : 'production';
+}
+
+/**
+ * Kartu papan yang cocok dengan baris tabel ini, kalau ada.
+ *
+ * Dicocokkan lewat `productName`, BUKAN lewat workcode. Workcode di dua tempat
+ * itu memang berbeda — `ProductionFulfillment` menulis
+ * `LVU-TOP-11-EBK-B01-PRD`, sedangkan `data-kanban.ts` menulis
+ * `PDFF_CSC-TEE-11_B-00_PRDN` untuk Rowe Tee yang sama. Kode desainnya pun beda
+ * (`TOP` vs `TEE`) dan nomornya beda (11 vs 11 tapi batch 01 vs 00), jadi tidak
+ * ada potongan workcode yang bisa dipercaya.
+ *
+ * Yang dipakai justru nama produk: persis sama di kedua tempat, dan saat ini
+ * unik untuk 18 kartu di kedua papan. Kalau suatu saat nama itu tidak lagi
+ * unik, yang benar bukan menebak dengan potongan teks — itu akan cocok ke kartu
+ * yang salah tanpa error — tapi menambahkan workcode yang sama di kedua tempat.
+ *
+ * Sampai itu terjadi, lebih baik HPP-nya kosong tanpa alasan daripada
+ * terisi angka kartu lain.
+ */
+function kartuUntuk(r: BarisPdff): KartuPdff | undefined {
+  return [...KARTU_PRODUCTION, ...KARTU_WHITELABEL].find((k) => k.productName === r.productName);
+}
+
+/** Baris shipment White Label yang cocok dengan baris ini, kalau ada. */
+function shipmentUntuk(r: BarisPdff): BarisHpp | undefined {
+  return barisContohHpp.find((b) => b.codeShipment === r.kodeShipmentLivou);
+}
+
+/**
+ * HPP satu baris tabel, dihitung dari sumber yang sama dengan papan.
+ *
+ * Dikembalikan `null` kalau sumbernya tidak ditemukan — dan `null` ditampilkan
+ * sebagai tanda hubung, BUKAN 0. HPP yang belum bisa dihitung dan HPP yang
+ * bernilai nol adalah dua hal berbeda, dan hanya yang pertama yang benar.
+ */
+export function hppBaris(r: BarisPdff): number | null {
+  if (modeHpp(r) === 'whitelabel') {
+    const s = shipmentUntuk(r);
+    return s ? hppWhiteLabel(s).hpp : null;
+  }
+  const k = kartuUntuk(r);
+  if (!k) return null;
+  return hppProduksi(k, k.detail.ongkosJahit).hpp;
+}
+
+/** Harga jual = HPP × margin global. `null` mengikuti HPP-nya. */
+export function sellingBaris(r: BarisPdff): number | null {
+  const hpp = hppBaris(r);
+  return hpp === null ? null : hargaJual(hpp);
+}
 
 // ===== Definisi kolom: SATU sumber, dipakai semua stage =====
 //
@@ -243,9 +311,9 @@ const KOLOM: Record<string, KolomPratinjau<BarisPdff>> = {
 
   // ---- HPP & harga jual ----
   proofKalkulasiHpp: { key: 'proofKalkulasiHpp', label: 'Proof Kalkulasi HPP', value: (r) => r.proofKalkulasiHpp, jenis: 'foto' },
-  hpp: { key: 'hpp', label: 'HPP', value: (r) => r.hpp, jenis: 'uang' },
+  hpp: { key: 'hpp', label: 'HPP', value: (r) => hppBaris(r), jenis: 'uang' },
   proofKalkulasiSellingPrice: { key: 'proofKalkulasiSellingPrice', label: 'Proof Kalkulasi Selling Price', value: (r) => r.proofKalkulasiSellingPrice, jenis: 'foto' },
-  sellingPrice: { key: 'sellingPrice', label: 'Selling Price', value: (r) => r.sellingPrice, jenis: 'uang' },
+  sellingPrice: { key: 'sellingPrice', label: 'Selling Price', value: (r) => sellingBaris(r), jenis: 'uang' },
 
   // ---- Upload & validasi ----
   proofUploadEcommerce: { key: 'proofUploadEcommerce', label: 'Proof Upload E-commerce', value: (r) => r.proofUploadEcommerce, jenis: 'foto' },

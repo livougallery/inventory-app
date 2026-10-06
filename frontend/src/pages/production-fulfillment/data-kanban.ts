@@ -16,6 +16,19 @@
 export interface BarisUkuran {
   ukuran: string;
   qty: number;
+  /**
+   * Kode varian milik pengguna untuk pasangan warna+ukuran ini.
+   *
+   * Ada karena pemilik meminta kolomnya bisa disunting: rumus kode variasi
+   * belum dibuat, jadi yang dipakai adalah hasil ketikan orang, bukan tebakan
+   * sistem. Selama field ini opsional, `kartuRegister` tetap menurunkan
+   * `kodeVarian` dari `designCode` + kode warna + ukuran seperti biasa — jadi
+   * produk lama yang kodenya belum pernah diisi tidak ikut berubah.
+   *
+   * Tanpa field ini, kode yang diketik di form akan dibuang begitu kartu
+   * dirakit: bentuk simpanannya tidak punya tempat untuk menampungnya.
+   */
+  kode?: string;
 }
 
 /** Satu warna bisa punya jumlah ukuran berbeda dari warna lain — itu wajar. */
@@ -58,6 +71,19 @@ export interface DetailKartu {
   labelTersedia: Record<string, number>;
   aksesori: SpesifikasiAksesori[];
   kain: SpesifikasiKain[];
+  /**
+   * Ongkos jahit per pcs — kategori material `cmt_cost`.
+   *
+   * Opsional karena ketiadaannya harus bisa ditampilkan sebagai MASALAH, bukan
+   * sebagai nol. Keputusan pemilik: "tidak mungkin hpp produksi tidak punya ongkos
+   * jahit, pasti punya. Kalau masih kosong biarin stuck di hpp." Jadi kartu yang
+   * belum mengisinya belum boleh dihitung HPP-nya — lihat `gerbangHpp()` di
+   * `hpp.ts`.
+   *
+   * Papan White Label tidak pernah mengisinya: barangnya dibeli utuh, tidak ada
+   * jahit di sini.
+   */
+  ongkosJahit?: { perPcs: number };
 }
 
 export interface KartuPdff {
@@ -74,6 +100,68 @@ export interface KartuPdff {
   pic: string;
   inisial: string;
   detail: DetailKartu;
+  /**
+   * Isi tiga tahap akhir — Invoice Logistic, Invoice Product, Upload.
+   *
+   * Ada di kartu, bukan di store terpisah seperti `cuttingPcs`, karena isinya
+   * BUKAN hasil ketikan orang di popup: ini kolom yang memang dimiliki satu
+   * kartu, sama seperti `batch` atau `namaVendor`. Yang diketik orang di popup
+   * ditumpuk di atasnya lewat `ubahTahap` — lihat `PapanFulfillment.tsx`.
+   *
+   * Opsional seluruhnya: kartu yang belum sampai tahap itu belum punya isinya,
+   * dan `undefined` di sini berarti "belum ada", bukan "kosong".
+   */
+  tahapAkhir?: DataTahapAkhir;
+}
+
+/**
+ * Data yang diisi di tiga tahap akhir, dikelompokkan jadi satu.
+ *
+ * Digabung dalam satu objek, bukan ditulis satu per satu di `KartuPdff`,
+ * supaya "tahap ini belum diisi" bisa dibedakan dari "tahap ini kosong": satu
+ * objek yang tidak ada jauh lebih jelas daripada lima field `undefined` yang
+ * harus diperiksa satu per satu.
+ *
+ * Semuanya opsional. `flowTransaction` yang kosong BUKAN berarti
+ * `livou_transfer` — ia berarti "belum diputuskan", dan pemilih bukti mana yang
+ * muncul bergantung pada jawaban itu.
+ */
+export interface DataTahapAkhir {
+  /**
+   * Nomor shipment Livou.
+   *
+   * Disimpan di kartu karena di tabel 40 kolom ia memang kolom kartu
+   * (`kodeShipmentLivou`). Sengaja TIDAK dipakai untuk mencocokkan HPP: `hpp.ts`
+   * mencocokkan lewat `namaProduct`, dan menambah kunci kedua di sana berarti
+   * dua kunci yang bisa berbeda diam-diam.
+   */
+  kodeShipmentLivou?: string;
+  /** Tanggal invoice logistik — tahap Invoice Logistic, papan White Label. */
+  dateInvoiceLogistic?: string;
+  /** Tanggal invoice produk — tahap Invoice Product, kedua papan. */
+  dateInvoiceProduct?: string;
+  /**
+   * Solusi atas selisih jumlah datang. Nilainya dari `SOLUSI` di `lib/opsi.ts`,
+   * tapi tipenya sengaja `string`: daftar pilihan boleh bertambah tanpa
+   * membuat kartu lama gagal dibaca.
+   */
+  solution?: string;
+  /**
+   * Ke mana barang dibayar — `FLOW_TRANSAKSI` di `lib/opsi.ts`.
+   *
+   * `livou_transfer` dan `reimbursement` meminta BUKTI YANG BERBEDA, jadi
+   * kosongnya bukan sekadar kolom yang belum diisi: selama nilainya kosong,
+   * belum diketahui bukti mana yang harus diunggah.
+   */
+  flowTransaction?: string;
+  /**
+   * Berapa pcs yang sudah masuk POS. Angka, bukan hitungan berkas.
+   *
+   * `0` dan `undefined` sengaja dibedakan: `0` berarti "belum ada yang masuk
+   * POS" dan itu temuan di Finance Validate, sedangkan `undefined` berarti
+   * belum diisi sama sekali.
+   */
+  jumlahUploadPos?: number;
 }
 
 export interface BarisBahan {
@@ -342,6 +430,23 @@ export const AKHIRAN_WORKCODE: Record<'production' | 'whitelabel', string> = {
 };
 
 /**
+ * Margin global untuk harga jual — SATU konstanta untuk semua produk.
+ *
+ * Berpindah ke sini dari `hpp.ts` karena tiket 4 menaruhnya di satu tempat
+ * yang jadi pusat data papan, dan karena file ini tidak mengimpor apa pun —
+ * jadi memindahkan konstanta ke sini tetap tanpa lingkaran, sementara
+ * `hpp.ts` sudah mengimpor `AKHIRAN_WORKCODE` dan `totalPcs` dari file ini.
+ *
+ * CATATAN UNTUK PEMILIK: nilai 2,4 dipilih karena angka lama di tabel HPP
+ * menyiratkan dua margin yang saling bertentangan (189.000/78.000 = 2,42 dan
+ * 299.000/132.000 = 2,27), jadi tidak ada nilai lama yang bisa dipertahankan.
+ * Kalau margin yang benar berbeda, ubah hanya baris ini — harga jual di
+ * halaman HPP, di tabel Production Fulfillment, dan di kartu popup semuanya
+ * membaca konstanta yang sama.
+ */
+export const MARGIN_HARGA_JUAL = 2.4;
+
+/**
  * Kartu dari form "Tambah Produksi" di kolom Propose.
  *
  * Lahir di stage `propose` — persis seperti usulan baru: belum disetujui, dan
@@ -441,6 +546,74 @@ export type CuttingPcs = Record<string, Record<string, number>>;
 export type BuktiCutting = Record<string, Record<string, BerkasBukti[]>>;
 
 /**
+ * Satu catatan pengembalian kartu dari Receive ke Cutting (Q11).
+ *
+ * Q1 tidak mencatat siapa yang menyetujui cutting. Kalau angka pcs boleh
+ * diubah diam-diam setelah kartu lolos ke Receive, angka yang sudah dibaca
+ * di sana berubah tanpa jejak — itu yang Q11 mau cegah. Jadi setiap kali data
+ * dibuka kembali, catat kenapa.
+ *
+ * `totalPcs` bukan angka yang diketik orang: diambil dari
+ * `ringkasCutting(...).totalPcs` saat tombol ditekan. Gunanya supaya kalau
+ * angkanya lalu diedit lagi, selisihnya terlihat tanpa perlu dibandingkan
+ * manual dengan catatan.
+ *
+ * "Siapa" sengaja tidak dicatat. Owner memilih jejak berupa waktu, alasan, dan
+ * angka saat itu — dan tree React ini belum punya user yang bisa dialirkan
+ * (tidak ada endpoint `/api/me`), jadi menambahkannya berarti menarik pekerjaan
+ * yang belum diminta ke dalam tiket ini.
+ */
+export interface CatatanKembalikan {
+  /** Kapan tombol ditekan — ISO string. */
+  waktu: string;
+  /** Alasan bebas dari orang yang membuka kembali data terkunci. */
+  alasan: string;
+  /** Total pcs yang tercatat pada saat itu. */
+  totalPcs: number;
+}
+
+/**
+ * Riwayat pengembalian per kartu. Nilainya daftar, bukan satu objek: satu
+ * kartu bisa dikembalikan lebih dari sekali, dan jejak yang hilang di
+ * pengembalian kedua sama saja artinya dengan tidak pernah ada jejak.
+ */
+export type KembalikanCutting = Record<string, CatatanKembalikan[]>;
+
+/**
+ * Satu temuan di stage Finance Validate — apa yang tidak cocok antara hasil
+ * satu stage dan yang seharusnya, lengkap dengan dari mana asalnya.
+ *
+ * DIHITUNG, bukan disimpan: `temuanKartu()` di `temuan.ts` menurunkannya dari
+ * data yang ada, jadi temuan yang sudah tidak berlaku lagi karena datanya
+ * diperbaiki tidak terus menghantui kartu. Yang disimpan orang hanyalah id
+ * temuan yang sudah DITUTUP — dan itulah yang membedakan `terbuka` dari
+ * `tertutup` di bawah.
+ *
+ * `stage` adalah id stage ASAL temuan, bukan stage kartu sekarang. Kartu yang
+ * sedang dibuka ada di finance-validate, tapi temuannya bisa berasal dari
+ * cutting, receive, upload, atau hpp-price; tanpa kolom ini pembaca tidak tahu
+ * ke mana harus melihat untuk membetulkannya.
+ */
+export interface Temuan {
+  /** Id stabil. Dipakai untuk menutup temuan dan memeriksanya di test. */
+  id: string;
+  /** Judul singkat: apa yang tidak cocok. */
+  label: string;
+  /** Penjelasan + angkanya — "berapa" yang diminta pemilik. */
+  detail: string;
+  /** Id stage asal temuan: 'cutting' | 'receive' | 'upload' | 'hpp-price'. */
+  stage: string;
+  /**
+   * `terbuka` = masih menahan kartu; `tertutup` = sudah ditangani.
+   *
+   * Temuan tertutup TETAP ditampilkan dengan statusnya, bukan dihapus —
+   * keputusan pemilik: riwayatnya harus terlihat, supaya orang bisa
+   * membedakan "tidak pernah ada masalah" dari "masalahnya sudah selesai".
+   */
+  status: 'terbuka' | 'tertutup';
+}
+
+/**
  * Satu berkas yang dipilih pengguna.
  *
  * Sengaja bukan `File`: `File` tidak bisa di-*snapshot* ke markup server, dan
@@ -485,6 +658,179 @@ export type IdBuktiCutting = (typeof JENIS_BUKTI_CUTTING)[number]['id'];
 
 /** Kunci jenis bukti yang dipanggil dari form — dipakai sebagai penanda silang. */
 export const SEMUA_ID_BUKTI: IdBuktiCutting[] = JENIS_BUKTI_CUTTING.map((b) => b.id);
+
+// ===== Bukti tiga tahap akhir (tiket 5) =====
+//
+// Setiap tahap punya daftar buktinya sendiri, dan yang paling penting: id-nya
+// berbeda satu sama lain. Kalau tiga tahap berbagi id seperti 'bukti', maka
+// berkas yang diunggah di Invoice Logistic akan ikut terhitung di Upload —
+// dan tidak ada yang gagal, karena yang terlihat cuma "kok sudah ada isinya?".
+//
+// Id-nya ditulis sama persis dengan nama kolom di `ProductionFulfillment.tsx`
+// (`invoiceLogistic`, `proofPaymentLogistic`, `invoiceProduct`,
+// `proofPaymentProduct`, `proofReimburse`, `proofUploadEcommerce`, `uploadPos`)
+// supaya tidak ada dua kamus yang harus dijaga sinkron. Kecuali satu: kolom
+// 40-kolomnya bernama `invoiceLogistic`/`invoiceProduct`, dan di sini keduanya
+// diunggah sebagai bukti — jadi id-nya sama, artinya sama.
+
+/** Bukti tahap Invoice Logistic. Hanya ada di papan White Label. */
+export const JENIS_BUKTI_INVOICE_LOGISTIC = [
+  {
+    id: 'invoiceLogistic',
+    judul: 'Bukti Invoice Logistic',
+    keterangan: 'Nota/invoice dari pihak logistik untuk shipment ini.',
+    terima: '.pdf,.jpg,.jpeg,.png,.webp',
+  },
+  {
+    id: 'proofPaymentLogistic',
+    judul: 'Bukti Pembayaran Logistic',
+    keterangan: 'Bukti transfer/pembayaran ongkos kirim shipment ini.',
+    terima: '.pdf,.jpg,.jpeg,.png,.webp',
+  },
+] as const;
+
+/**
+ * Dua bukti tahap Invoice Product yang SELALU ada, apa pun jalur transaksinya.
+ *
+ * Yang berbeda antar jalur cuma bukti KETIGA-nya — lihat
+ * `JENIS_BUKTI_FLOW` di bawah. Dipisah begini supaya tidak ada dua daftar
+ * lengkap yang harus dijaga sama isinya.
+ */
+export const JENIS_BUKTI_INVOICE_PRODUCT = [
+  {
+    id: 'invoiceProduct',
+    judul: 'Bukti Invoice Product',
+    keterangan: 'Invoice produk untuk shipment ini.',
+    terima: '.pdf,.jpg,.jpeg,.png,.webp',
+  },
+] as const;
+
+/**
+ * Bukti yang muncul BERGANTUNG jalur transaksi — dua jalur, dua field berbeda.
+ *
+ * `livou_transfer` = barang pindah ke Livou, jadi yang dibuktikan adalah
+ * pembayarannya. `reimbursement` = barang dikembalikan ke vendor, jadi yang
+ * dibuktikan adalah penggantiannya. Keduanya TIDAK PERNAH tampil bersamaan:
+ * menampilkan dua kotak sekaligus membuat orang mengunggah berkas yang salah
+ * tempat tanpa ada yang menahannya.
+ */
+export const JENIS_BUKTI_FLOW = [
+  {
+    value: 'livou_transfer',
+    id: 'proofPaymentProduct',
+    judul: 'Bukti Pembayaran Product',
+    keterangan: 'Bukti pembayaran karena barang pindah ke Livou.',
+    terima: '.pdf,.jpg,.jpeg,.png,.webp',
+  },
+  {
+    value: 'reimbursement',
+    id: 'proofReimburse',
+    judul: 'Bukti Reimburse',
+    keterangan: 'Bukti penggantian karena barang dikembalikan ke vendor.',
+    terima: '.pdf,.jpg,.jpeg,.png,.webp',
+  },
+] as const;
+
+/**
+ * Bukti tahap Upload — dua kotak, keduanya screenshot.
+ *
+ * Dua-duanya bukti, bukan angka. Yang angka adalah `jumlahUploadPos`, dan ia
+ * hidup di `DataTahapAkhir`, bukan di sini — tiga hal ini tidak boleh saling
+ * menggantikan (lihat CONTEXT.md, "Jumlah Upload POS").
+ */
+export const JENIS_BUKTI_UPLOAD = [
+  {
+    id: 'proofUploadEcommerce',
+    judul: 'Proof Upload Ecommerce',
+    keterangan: 'Screenshot produk sudah tayang di marketplace.',
+    terima: '.jpg,.jpeg,.png,.webp',
+  },
+  {
+    id: 'uploadPos',
+    judul: 'Upload POS',
+    keterangan: 'Screenshot produk sudah masuk POS.',
+    terima: '.jpg,.jpeg,.png,.webp',
+  },
+] as const;
+
+/**
+ * Dua jenis bukti tahap HPP & Price.
+ *
+ * Pindah ke sini dari `SeksiHppPrice.tsx` supaya seluruh daftar jenis bukti
+ * tinggal di satu berkas. Yang memindahkannya tiket 3: `temuan.ts` juga membaca
+ * daftar ini untuk mencari "bukti belum diunggah", dan mengimpor dari berkas
+ * component akan membentuk lingkaran modul — `SeksiHppPrice.tsx` mengimpor
+ * `KotakBukti` dari `PopupKartu.tsx`, sedangkan `PopupKartu` yang memanggil
+ * `temuanKartu()`. Satu lingkaran yang sudah pernah membuat urutan modul tidak
+ * bisa ditentukan.
+ *
+ * Bukti ini TIDAK menahan kartu keluar dari HPP & Price (lihat `SeksiHppPrice`),
+ * tapi kekurangannya menjadi temuan di Finance Validate — stage penutup yang
+ * memeriksa hasil semua stage sebelumnya.
+ */
+export const JENIS_BUKTI_HPP = [
+  {
+    id: 'kalkulasi-hpp',
+    judul: 'Bukti Kalkulasi HPP',
+    keterangan: 'Hitungan HPP: bahan + ongkos jahit, atau beli + kirim.',
+    terima: '.jpg,.jpeg,.png,.webp,.pdf',
+  },
+  {
+    id: 'kalkulasi-selling-price',
+    judul: 'Bukti Kalkulasi Selling Price',
+    keterangan: 'Harga jual = HPP × margin global yang sama untuk semua produk.',
+    terima: '.jpg,.jpeg,.png,.webp,.pdf',
+  },
+] as const;
+
+/**
+ * Daftar jenis bukti satu tahap, lengkap.
+ *
+ * Dipakai `ringkasTahapBukti()` supaya "berapa bukti yang wajib" tidak pernah
+ * ditulis dua kali: satu di layar, satu di pemeriksaan kelengkapan.
+ *
+ * `flowTransaction` ikut masuk karena dua jalur Invoice Product meminta field
+ * yang berbeda — kalau fungsi ini mengembalikan daftar yang sama untuk
+ * keduanya, kotak yang salah akan ikut dituntut terisi.
+ */
+export function jenisBuktiTahap(
+  tahap: 'invoice-logistic' | 'invoice-product' | 'upload',
+  flowTransaction?: string
+): readonly { id: string; judul: string; keterangan: string; terima: string }[] {
+  if (tahap === 'invoice-logistic') return JENIS_BUKTI_INVOICE_LOGISTIC;
+  if (tahap === 'upload') return JENIS_BUKTI_UPLOAD;
+  const jalur = JENIS_BUKTI_FLOW.find((f) => f.value === flowTransaction);
+  // Tanpa jalur yang dipilih, bukti ketiganya BELUM DIKETAHUI — bukan dianggap
+  // `livou_transfer`. Menebak di sini berarti menuntut bukti yang mungkin bukan
+  // milik kartu itu, dan pemiliknya akan mencari berkas yang tidak pernah ada.
+  return jalur ? [...JENIS_BUKTI_INVOICE_PRODUCT, jalur] : JENIS_BUKTI_INVOICE_PRODUCT;
+}
+
+/**
+ * Ringkasan bukti satu tahap: berapa jenis yang sudah terisi dari yang wajib.
+ *
+ * `total` mengikuti daftar dari `jenisBuktiTahap()`, jadi Invoice Product tanpa
+ * jalur yang dipilih menghitung satu bukti, dan sesudah jalurnya dipilih
+ * menghitung dua. Itu memang yang terjadi di layar.
+ */
+export interface RingkasanBuktiTahap {
+  terisi: number;
+  total: number;
+  lengkap: boolean;
+}
+
+export function ringkasTahapBukti(
+  bukti: Record<string, BerkasBukti[]>,
+  tahap: 'invoice-logistic' | 'invoice-product' | 'upload',
+  flowTransaction?: string
+): RingkasanBuktiTahap {
+  const wajib = jenisBuktiTahap(tahap, flowTransaction);
+  const terisi = wajib.filter((j) => (bukti[j.id]?.length ?? 0) > 0).length;
+  return { terisi, total: wajib.length, lengkap: terisi === wajib.length };
+}
+
+/** Bukti tiga tahap akhir, per kartu. Bentuknya sama dengan `BuktiCutting`. */
+export type BuktiTahapAkhir = Record<string, Record<string, BerkasBukti[]>>;
 
 /**
  * Ringkasan stage Cutting: sudahkah pekerjaan cutting satu kartu selesai.
@@ -702,6 +1048,8 @@ interface BahanKartu {
   labelTersedia: Record<string, number>;
   aksesori: SpesifikasiAksesori[];
   kain: SpesifikasiKain[];
+  /** Diisi papan Production saja — lihat `ongkosJahit` di `DetailKartu`. */
+  ongkosJahit?: { perPcs: number };
 }
 
 function kartu(b: BahanKartu): KartuPdff {
@@ -726,6 +1074,11 @@ function kartu(b: BahanKartu): KartuPdff {
       labelTersedia: b.labelTersedia,
       aksesori: b.aksesori,
       kain: b.kain,
+      // Disalin apa adanya, termasuk `undefined`. Yang tidak diteruskan adalah
+      // nilai bawaan — kalau `kartu()` memberi ongkos jahit sendiri, kartu
+      // White Label ikut dapat ongkos jahit dan HPP-nya dihitung dengan rumus
+      // yang salah, tanpa ada yang salah.
+      ...(b.ongkosJahit ? { ongkosJahit: b.ongkosJahit } : {}),
     },
   };
 }
@@ -803,6 +1156,7 @@ export const KARTU_PRODUCTION: KartuPdff[] = [
         },
       },
     ],
+    ongkosJahit: { perPcs: 15000 },
   }),
 
   kartu({
@@ -851,6 +1205,7 @@ export const KARTU_PRODUCTION: KartuPdff[] = [
         },
       },
     ],
+    ongkosJahit: { perPcs: 15000 },
   }),
 
   kartu({
@@ -899,13 +1254,14 @@ export const KARTU_PRODUCTION: KartuPdff[] = [
         },
       },
     ],
+    ongkosJahit: { perPcs: 15000 },
   }),
 
   kartu({
     id: 'p-04',
     stage: 'prepare',
     productName: 'Noir Pants',
-    workcode: 'PDFF_CSC-PNT-08_B-01_GRMT',
+    workcode: 'PDFF_CSC-PNT-08_B-01_PRDN',
     batch: 'B-01',
     kategoriVendor: 'Garment',
     namaVendor: 'Kouji',
@@ -949,6 +1305,7 @@ export const KARTU_PRODUCTION: KartuPdff[] = [
         },
       },
     ],
+    ongkosJahit: { perPcs: 15000 },
   }),
 
   kartu({
@@ -990,6 +1347,7 @@ export const KARTU_PRODUCTION: KartuPdff[] = [
         },
       },
     ],
+    ongkosJahit: { perPcs: 15000 },
   }),
 
   kartu({
@@ -1039,6 +1397,7 @@ export const KARTU_PRODUCTION: KartuPdff[] = [
         },
       },
     ],
+    ongkosJahit: { perPcs: 15000 },
   }),
 
   kartu({
@@ -1078,6 +1437,7 @@ export const KARTU_PRODUCTION: KartuPdff[] = [
         },
       },
     ],
+    ongkosJahit: { perPcs: 15000 },
   }),
 
   kartu({
@@ -1126,6 +1486,7 @@ export const KARTU_PRODUCTION: KartuPdff[] = [
         },
       },
     ],
+    ongkosJahit: { perPcs: 15000 },
   }),
 
   kartu({
@@ -1174,6 +1535,7 @@ export const KARTU_PRODUCTION: KartuPdff[] = [
         },
       },
     ],
+    ongkosJahit: { perPcs: 15000 },
   }),
 
   kartu({
@@ -1222,6 +1584,7 @@ export const KARTU_PRODUCTION: KartuPdff[] = [
         },
       },
     ],
+    ongkosJahit: { perPcs: 15000 },
   }),
 ];
 
