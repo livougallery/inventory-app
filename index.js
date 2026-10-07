@@ -81,6 +81,9 @@ function createApp(options = {}) {
     // Dua rute, bukan satu dengan saklar: keduanya menjawab pertanyaan berbeda.
     '/modul/production-fulfillment-table',
     '/modul/hpp-baru',
+    // Hasil HPP per KARTU (10 Production + 8 White Label) — beda butir dari
+    // /modul/hpp-baru yang per SHIPMENT.
+    '/modul/hpp-harga-jual',
     '/modul/barang-datang',
     '/modul/bom-hpp',
     // Material Fulfillment — halaman yang diisi dari ticket 11e. Tanpa baris ini

@@ -19,6 +19,7 @@ import {
   PackageCheck,
   ListTree,
   ClipboardList,
+  TrendingUp,
 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
@@ -120,6 +121,15 @@ const modulBaru: NavItem[] = [
     section: 'Master Data',
   },
   { path: '/modul/hpp-baru', label: 'HPP', icon: Calculator, section: 'Master Data' },
+  {
+    path: '/modul/hpp-harga-jual',
+    label: 'HPP & Harga Jual',
+    // Panah naik, bukan kalkulator: kalkulator sudah dipakai "HPP" tepat di
+    // atasnya, dan dua ikon yang sama berdempetan membuat barisnya sulit
+    // dibedakan saat sidebar dipindai cepat.
+    icon: TrendingUp,
+    section: 'Master Data',
+  },
   { path: '/modul/barang-datang', label: 'Barang Datang', icon: PackageCheck, section: 'Master Data' },
   { path: '/modul/bom-hpp', label: 'BOM + HPP Production', icon: ListTree, section: 'Master Data' },
 ];

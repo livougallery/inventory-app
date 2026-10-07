@@ -18,6 +18,7 @@ import ProductionFulfillment from './pages/ProductionFulfillment';
 import PapanProduksi from './pages/production-fulfillment/PapanProduksi';
 import MaterialFulfillment from './pages/MaterialFulfillment';
 import HppPratinjau from './pages/HppPratinjau';
+import HppHargaJual from './pages/HppHargaJual';
 import BarangDatang from './pages/BarangDatang';
 import BomHpp from './pages/BomHpp';
 import { Shell, MODE_VIDEO_AKTIF, PATH_DIBLOKIR_VIDEO, TUJUAN_VIDEO } from './components/Shell';
@@ -149,6 +150,14 @@ function App() {
       <Route path="/modul/hpp-baru" element={
         <Shell>
           <HppPratinjau />
+        </Shell>
+      } />
+      {/* Hasil HPP per KARTU — beda butir dari /modul/hpp-baru yang per
+          SHIPMENT dan cuma White Label. Dua halaman, bukan satu dengan saklar:
+          yang dicari di sini "semua produk, HPP-nya berapa". */}
+      <Route path="/modul/hpp-harga-jual" element={
+        <Shell>
+          <HppHargaJual />
         </Shell>
       } />
       <Route path="/modul/barang-datang" element={
