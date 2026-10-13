@@ -5,6 +5,18 @@
 export const rupiah = (v: number) =>
   new Intl.NumberFormat('id-ID', { style: 'currency', currency: 'IDR', maximumFractionDigits: 0 }).format(v);
 
+// Rupiah dengan 2 desimal — untuk baris "÷" yang butuh presisi: HPP per pcs
+// dibagi dari total biaya, dan pembulatannya menghapus selisih yang justru
+// ingin ditunjukkan. Tetap di sini supaya tidak ada formatter Rupiah kedua
+// di halaman (aturan di atas).
+export const rupiahPresisi = (v: number) =>
+  new Intl.NumberFormat('id-ID', {
+    style: 'currency',
+    currency: 'IDR',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(v);
+
 // Kolom NUMERIC/REAL dari Postgres bisa datang sebagai string, jadi angka
 // dinormalisasi dulu sebelum diformat atau dijumlahkan.
 export const toNum = (v: number | string | null) => (v === null ? null : Number(v));

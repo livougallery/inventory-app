@@ -121,15 +121,6 @@ const modulBaru: NavItem[] = [
     section: 'Master Data',
   },
   { path: '/modul/hpp-baru', label: 'HPP', icon: Calculator, section: 'Master Data' },
-  {
-    path: '/modul/hpp-harga-jual',
-    label: 'HPP & Harga Jual',
-    // Panah naik, bukan kalkulator: kalkulator sudah dipakai "HPP" tepat di
-    // atasnya, dan dua ikon yang sama berdempetan membuat barisnya sulit
-    // dibedakan saat sidebar dipindai cepat.
-    icon: TrendingUp,
-    section: 'Master Data',
-  },
   { path: '/modul/barang-datang', label: 'Barang Datang', icon: PackageCheck, section: 'Master Data' },
   { path: '/modul/bom-hpp', label: 'BOM + HPP Production', icon: ListTree, section: 'Master Data' },
 ];
@@ -180,9 +171,30 @@ const papanProgress: NavItem[] = [
   },
 ];
 
-// Mode video: modul pratinjau dalam tiga section — Master Data (tabel),
-// Register (pencatatan produk), dan Progress (papan). Urutannya mengikuti alur
-// kerja: data induk dulu, lalu pencatatan, lalu pekerjaan yang sedang berjalan.
+/**
+ * Halaman laporan, di section REPORT — paling bawah, setelah Progress.
+ *
+ * Section sendiri, bukan ikut "Master Data": isinya bukan data induk yang
+ * diubah, tapi hasil yang DIBACA (HPP & harga jual per SKU). Pemisahan ini
+ * juga keputusan pemilik (2026-10-08): saat presentasi, laporan tidak boleh
+ * tercampur dengan daftar yang dikelola tiap hari.
+ */
+const menuReport: NavItem[] = [
+  {
+    path: '/modul/hpp-harga-jual',
+    label: 'HPP & Harga Jual',
+    // Panah naik, bukan kalkulator: kalkulator sudah dipakai "HPP" di
+    // Master Data, dan dua ikon yang sama membuat barisnya sulit dibedakan
+    // saat sidebar dipindai cepat.
+    icon: TrendingUp,
+    section: 'Report',
+  },
+];
+
+// Mode video: modul pratinjau dalam empat section — Master Data (tabel),
+// Register (pencatatan produk), Progress (papan), dan Report (hasil yang
+// dibaca, paling bawah). Urutannya mengikuti alur kerja: data induk dulu,
+// lalu pencatatan, lalu pekerjaan yang sedang berjalan, terakhir laporannya.
 const navSectionsVideo: NavSection[] = [
   {
     title: 'Master Data',
@@ -195,6 +207,10 @@ const navSectionsVideo: NavSection[] = [
   {
     title: 'Progress',
     items: papanProgress,
+  },
+  {
+    title: 'Report',
+    items: menuReport,
   },
 ];
 
@@ -292,6 +308,10 @@ const navSections: NavSection[] = MODE_VIDEO
     // memberi tahu mana yang membuka tabel dan mana yang membuka papan.
     title: 'Progress',
     items: papanProgress,
+  },
+  {
+    title: 'Report',
+    items: menuReport,
   },
   ];
 
