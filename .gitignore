@@ -67,6 +67,8 @@ tmp/test-*.js
 
 # Frontend build output
 frontend/dist/
+frontend/dist-artifact/
+frontend/dist-presentasi/
 
 # Berkas bantuan smoke test, ditulis ke frontend/ karena vite membacanya
 # relatif ke sana. Namanya unik per proses (`_smoke-kanban-<acak>.*`) dan
