@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
+    "build": "npm --prefix frontend install && npm --prefix frontend run build",
     "test": "jest",
     "test:watch": "jest --watch",
     "build:vendor": "esbuild scripts/tanstack-entry.js --bundle --format=iife --target=es2019 --minify --outfile=public/vendor/tanstack-table.js"
