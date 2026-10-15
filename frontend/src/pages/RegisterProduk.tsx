@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { ListFilter, Plus, Search, SlidersHorizontal } from 'lucide-react';
+import { Image as ImageIcon, ListFilter, Plus, Search, SlidersHorizontal } from 'lucide-react';
 import BannerPratinjau from '@/components/BannerPratinjau';
+import { Badge as BadgeReui } from '@/components/reui/badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -18,10 +19,23 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
-import { rupiah } from '@/lib/format';
-import { PRODUK_REGISTER, kartuRegister, type KartuRegister, type ProdukRegister } from '@/lib/produk';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { cn } from '@/lib/utils';
+import {
+  kartuRegister,
+  NAMA_PASAR,
+  PRODUK_REGISTER,
+  type KartuRegister,
+  type Platform,
+  type ProdukRegister,
+  type StatusPasar,
+} from '@/lib/produk';
+import { daftarWarna, type WarnaMaster } from '@/lib/warna';
 import DetailProduk from './register-produk/DetailProduk';
 import FormProdukBaru, { type DataProdukBaru } from './register-produk/FormProdukBaru';
+import FormWarnaBaru from './register-produk/FormWarnaBaru';
+import IsiWarna from './register-produk/IsiWarna';
+import PopupBuktiPasar from './register-produk/PopupBuktiPasar';
 
 // ===== REGISTER > Register Produk =====
 //
@@ -51,8 +65,23 @@ import FormProdukBaru, { type DataProdukBaru } from './register-produk/FormProdu
 //
 // Data contoh, belum terhubung database — lihat BannerPratinjau.
 
-/** Tab di atas daftar. Satu isinya sekarang, tapi bentuknya sudah tab. */
-const TAB = [{ id: 'products', label: 'Products' }] as const;
+/**
+ * Tab di atas daftar: daftar produk, dan master warna.
+ *
+ * Dua isinya sengaja BEDA BENTUK. Products menampilkan kartu (ada foto, harga,
+ * angka stok); Colour menampilkan tabel dua kolom (nama + kode). Yang dibaca di
+ * masing-masing memang berbeda: di Products "produk ini ada berapa", di Colour
+ * "warna ini kodenya apa".
+ *
+ * Keduanya tetap satu halaman karena warna cuma punya arti lewat produk: kode
+ * warna masuk ke `kodeVarian` produk, jadi orang yang sedang menyiapkan produk
+ * sering perlu menengok daftar kodenya. Dua halaman terpisah memaksa berpindah
+ * menu untuk hal yang dipakai bergantian.
+ */
+const TAB = [
+  { id: 'products', label: 'Products' },
+  { id: 'colour', label: 'Colour' },
+] as const;
 
 /**
  * Kolom yang bisa disaring — sama gaya dengan Master Data Product, supaya
@@ -118,12 +147,35 @@ export default function RegisterProduk({
   const [cari, setCari] = useState('');
   const [filter, setFilter] = useState<Record<string, string[]>>({});
   const [formTerbuka, setFormTerbuka] = useState(false);
+  const [formWarnaTerbuka, setFormWarnaTerbuka] = useState(false);
+
+  // Bukti pendaftaran yang sedang dibuka: produk + platformnya. Satu state,
+  // bukan dua, supaya keduanya tidak mungkin menunjuk kombinasi yang berbeda.
+  const [bukti, setBukti] = useState<{ produk: string; status: StatusPasar } | null>(null);
 
   // Produk hasil form "Tambah Produk". Terpisah dari `PRODUK_REGISTER` (konstanta
   // contoh) dan AWALNYA KOSONG — jadi data contoh utuh, dan yang dibuat user
   // tinggal di memori sampai halaman dimuat ulang (keputusan owner 28 Sep 2026:
   // "UI dulu", belum menyentuh database).
   const [baru, setBaru] = useState<ProdukRegister[]>(produkAwal);
+
+  // Warna tambahan dari form "Tambah Warna", TERPISAH dari warna turunan
+  // katalog — dua sumber dengan aturan berbeda: yang turunan tidak bisa
+  // dihapus, yang diketik bisa. Menyatukannya jadi satu array akan membuat
+  // "warna dari katalog" dan "warna yang baru dibuat" tidak bisa dibedakan lagi.
+  //
+  // Disimpan di SINI, bukan di dalam `IsiWarna`: Radix Tabs melepas panel yang
+  // tidak aktif, jadi state yang hidup di dalam tabnya akan hilang begitu
+  // pemilik menengok tab Products lalu kembali.
+  const [warnaBaru, setWarnaBaru] = useState<WarnaMaster[]>([]);
+
+  const warna = useMemo<WarnaMaster[]>(() => {
+    const peta = new Map<string, WarnaMaster>();
+    for (const w of [...daftarWarna(), ...warnaBaru]) {
+      if (!peta.has(w.kode)) peta.set(w.kode, w);
+    }
+    return [...peta.values()];
+  }, [warnaBaru]);
 
   // Kartu dibangun ulang dari katalog gabungan, bukan disalin per kartu. Kalau
   // kartu hasil form dirakit sendiri di sini, ringkasan per warna dan totalnya
@@ -235,6 +287,18 @@ export default function RegisterProduk({
     setFormTerbuka(false);
   }
 
+  /**
+   * Simpan warna dari form "Tambah Warna".
+   *
+   * Kodenya sudah dirapikan jadi huruf besar oleh formnya (lihat
+   * `normalisasiKode`), jadi di sini tidak dirapikan lagi — satu tempat
+   * merapikan, bukan dua yang bisa berbeda aturannya.
+   */
+  function simpanWarna(data: WarnaMaster) {
+    setWarnaBaru((lama) => [...lama, data]);
+    setFormWarnaTerbuka(false);
+  }
+
   return (
     <div className="space-y-4">
       {/* Bentuknya kartu, bukan tabel — jadi banner ikut menyesuaikan kalimatnya,
@@ -261,158 +325,180 @@ export default function RegisterProduk({
         </p>
       </div>
 
-      {/* Tab di atas daftar. Dipasang walau isinya baru satu: begitu kategori
-          kedua datang, yang berubah hanya daftar isinya — bukan tata letaknya.
-          Tabnya sendiri belum menyaring apa pun (satu-satunya tab selalu
-          terpilih), dan itu tidak menyesatkan karena tidak ada tab lain yang
-          bisa diklik.
+      {/* Tab Products / Colour, bentuk garis bawah — contoh ReUI `c-tabs-2`.
+          Dipasang lewat `components/ui/tabs.tsx`, yang varian `line`-nya
+          ditambahkan untuk halaman ini; lima halaman lain tetap memakai varian
+          `default` yang lama, jadi bentuk pil di sana tidak ikut berubah.
 
-          `role="tablist"` + `role="tab"` dipakai, bukan `aria-pressed`, supaya
-          terbaca sebagai tab oleh pembaca layar dan bisa dinavigasi. Catatan:
-          `components/ui/tabs.tsx` yang terpasang tidak cocok di sini — ia
-          terpasang untuk menyaring isi daftar, sedangkan ini bersifat tab
-          kategori dan belum memfilter apa pun. Kalau nanti tab kedua benar-benar
-          menyaring, pindah ke Tabs bawaan. */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div role="tablist" className="inline-flex rounded-lg border bg-muted/40 p-0.5">
+          Sebelumnya di sini ada tablist buatan sendiri dari dua Button, dengan
+          catatan "kalau nanti tab kedua benar-benar menyaring, pindah ke Tabs
+          bawaan". Tab kedua sudah datang, jadi catatan itu dijalankan. Tabs
+          bawaan juga membawa yang tidak bisa ditiru tombol biasa: panah
+          kiri/kanan untuk berpindah tab, dan `role="tabpanel"` yang menautkan
+          isi ke tabnya untuk pembaca layar. */}
+      <Tabs
+        value={tab}
+        onValueChange={(v) => setTab(v as (typeof TAB)[number]['id'])}
+      >
+        {/* `w-full` dari contoh ReUI-nya dipertahankan supaya barisnya selebar
+            halaman, tapi isinya dibuat rata KIRI, bukan rata tengah seperti
+            contohnya. Contoh itu hidup di kotak selebar `max-w-xs`, dan di
+            sana rata tengah memang yang benar. Di sini tabnya milik satu
+            halaman penuh — rata tengah akan menaruh dua tab menggantung di
+            tengah layar lebar, terpisah dari judul dan isinya, sementara rata
+            kiri sejajar dengan judul di atasnya. */}
+        <TabsList variant="line" className="w-full justify-start">
           {TAB.map((t) => (
-            <Button
-              key={t.id}
-              role="tab"
-              aria-selected={tab === t.id}
-              variant={tab === t.id ? 'default' : 'ghost'}
-              size="sm"
-              onClick={() => setTab(t.id)}
-            >
+            <TabsTrigger key={t.id} value={t.id}>
               {t.label}
-            </Button>
+            </TabsTrigger>
           ))}
-        </div>
+        </TabsList>
 
-        {/* Pencarian + filter, urutan yang sama dengan Master Data Product: ketik
-            dulu, baru persempit. owner sudah terbiasa dengan pasangan ini, dan
-            mengubah urutannya di sini justru jadi satu tempat lagi yang harus
-            diingat. */}
-        <div className="relative w-full max-w-xs sm:w-auto">
-          <Search
-            aria-hidden
-            className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
-          />
-          <Input
-            value={cari}
-            onChange={(e) => setCari(e.target.value)}
-            placeholder="Cari produk, kode, warna…"
-            aria-label="Cari produk"
-            className="pl-8"
-          />
-        </div>
+        {/* Pencarian + filter ikut ke DALAM tab Products, bukan tinggal di baris
+            tab. Kalau keduanya dibiarkan di luar, ia akan ikut terlihat saat tab
+            Colour dibuka — dan kotak "Cari produk, kode, warna…" di atas tabel
+            warna menjanjikan pencarian yang tidak dilakukannya. Yang tidak
+            menyaring apa pun lebih baik tidak terlihat. */}
+        <TabsContent value="products" className="mt-4 space-y-4">
+          <div className="flex flex-wrap items-center gap-3">
 
-        {/* Satu tombol Filter, dengan submenu per kolom — persis seperti Master
-            Data Product. `DropdownMenuGroup` membungkus isi menu karena Base UI
-            menuntut begitu; tanpa itu seluruh halaman putih. */}
-        <DropdownMenu>
-          <DropdownMenuTrigger
-            render={
-              <Button variant="outline" size="sm" className="gap-2">
-                <ListFilter className="h-4 w-4" />
-                Filter
-                {jumlahFilterAktif > 0 && (
-                  <Badge className="ml-0.5 h-5 min-w-5 px-1 tabular-nums">
-                    {jumlahFilterAktif}
-                  </Badge>
-                )}
-              </Button>
-            }
-          />
-          <DropdownMenuContent align="start" className="w-52">
-            <DropdownMenuGroup>
-              <DropdownMenuLabel className="text-xs text-muted-foreground">
-                Saring daftar
-              </DropdownMenuLabel>
-            </DropdownMenuGroup>
-            {kolom.map((c) => (
-              <DropdownMenuSub key={c.key}>
-                <DropdownMenuSubTrigger>
-                  {c.label}
-                  {(filter[c.key] ?? []).length > 0 && (
-                    <span className="ml-auto text-xs text-muted-foreground tabular-nums">
-                      {filter[c.key].length}
-                    </span>
-                  )}
-                </DropdownMenuSubTrigger>
-                <DropdownMenuSubContent>
-                  {c.options.length === 0 ? (
-                    <DropdownMenuItem disabled>Tidak ada pilihan</DropdownMenuItem>
-                  ) : (
-                    c.options.map((o) => (
-                      <DropdownMenuCheckboxItem
-                        key={o}
-                        checked={(filter[c.key] ?? []).includes(o)}
-                        onCheckedChange={() => toggleFilter(c.key, o)}
-                      >
-                        {o}
-                      </DropdownMenuCheckboxItem>
-                    ))
-                  )}
-                </DropdownMenuSubContent>
-              </DropdownMenuSub>
-            ))}
-            {jumlahFilterAktif > 0 && (
-              <>
-                <DropdownMenuSeparator />
+            {/* Pencarian + filter, urutan yang sama dengan Master Data Product: ketik
+                dulu, baru persempit. owner sudah terbiasa dengan pasangan ini, dan
+                mengubah urutannya di sini justru jadi satu tempat lagi yang harus
+                diingat. */}
+            <div className="relative w-full max-w-xs sm:w-auto">
+              <Search
+                aria-hidden
+                className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground"
+              />
+              <Input
+                value={cari}
+                onChange={(e) => setCari(e.target.value)}
+                placeholder="Cari produk, kode, warna…"
+                aria-label="Cari produk"
+                className="pl-8"
+              />
+            </div>
+
+            {/* Satu tombol Filter, dengan submenu per kolom — persis seperti Master
+                Data Product. `DropdownMenuGroup` membungkus isi menu karena Base UI
+                menuntut begitu; tanpa itu seluruh halaman putih. */}
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button variant="outline" size="sm" className="gap-2">
+                    <ListFilter className="h-4 w-4" />
+                    Filter
+                    {jumlahFilterAktif > 0 && (
+                      <Badge className="ml-0.5 h-5 min-w-5 px-1 tabular-nums">
+                        {jumlahFilterAktif}
+                      </Badge>
+                    )}
+                  </Button>
+                }
+              />
+              <DropdownMenuContent align="start" className="w-52">
                 <DropdownMenuGroup>
-                  <DropdownMenuItem
-                    onClick={() => setFilter({})}
-                    className="justify-center font-medium"
-                  >
-                    <SlidersHorizontal className="h-4 w-4" />
-                    Bersihkan semua filter
-                  </DropdownMenuItem>
+                  <DropdownMenuLabel className="text-xs text-muted-foreground">
+                    Saring daftar
+                  </DropdownMenuLabel>
                 </DropdownMenuGroup>
-              </>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+                {kolom.map((c) => (
+                  <DropdownMenuSub key={c.key}>
+                    <DropdownMenuSubTrigger>
+                      {c.label}
+                      {(filter[c.key] ?? []).length > 0 && (
+                        <span className="ml-auto text-xs text-muted-foreground tabular-nums">
+                          {filter[c.key].length}
+                        </span>
+                      )}
+                    </DropdownMenuSubTrigger>
+                    <DropdownMenuSubContent>
+                      {c.options.length === 0 ? (
+                        <DropdownMenuItem disabled>Tidak ada pilihan</DropdownMenuItem>
+                      ) : (
+                        c.options.map((o) => (
+                          <DropdownMenuCheckboxItem
+                            key={o}
+                            checked={(filter[c.key] ?? []).includes(o)}
+                            onCheckedChange={() => toggleFilter(c.key, o)}
+                          >
+                            {o}
+                          </DropdownMenuCheckboxItem>
+                        ))
+                      )}
+                    </DropdownMenuSubContent>
+                  </DropdownMenuSub>
+                ))}
+                {jumlahFilterAktif > 0 && (
+                  <>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuGroup>
+                      <DropdownMenuItem
+                        onClick={() => setFilter({})}
+                        className="justify-center font-medium"
+                      >
+                        <SlidersHorizontal className="h-4 w-4" />
+                        Bersihkan semua filter
+                      </DropdownMenuItem>
+                    </DropdownMenuGroup>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
 
-      {/* Hitungan hasil + tombol "Tambah Produk", satu baris — pertukaran yang
-          diminta pemilik: yang tadinya tertulis "4 produk" sekarang berdiri
-          berdampingan dengan tombol, dan tombol yang tadinya ada di baris
-          judul turun ke baris ini.
+          {/* Hitungan hasil + tombol "Tambah Produk", satu baris — pertukaran yang
+              diminta pemilik: yang tadinya tertulis "4 produk" sekarang berdiri
+              berdampingan dengan tombol, dan tombol yang tadinya ada di baris
+              judul turun ke baris ini.
 
-          Hitungan tidak hilang, hanya pindah baris. Dia tetap ada karena tanpa
-          dia cara satu-satunya untuk tahu filter sedang bekerja adalah menghitung
-          kartu sendiri — dan kalau kebetulan jumlahnya sama seperti biasanya,
-          orang menyimpulkan filternya tidak jalan.
+              Hitungan tidak hilang, hanya pindah baris. Dia tetap ada karena tanpa
+              dia cara satu-satunya untuk tahu filter sedang bekerja adalah menghitung
+              kartu sendiri — dan kalau kebetulan jumlahnya sama seperti biasanya,
+              orang menyimpulkan filternya tidak jalan.
 
-          Tombolnya di kanan karena itu tempat yang selalu dijangkau ibu jari
-          kanan, dan "tambah" adalah aksi yang paling sering diulang di halaman
-          ini — bukan "cari", yang sudah punya kotak dan jadi urusan keyboard. */}
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs text-muted-foreground tabular-nums">
-          {tersembunyi > 0
-            ? `Menampilkan ${kartu.length} dari ${semua.length} produk`
-            : `${semua.length} produk`}
-        </p>
-        <Button onClick={() => setFormTerbuka(true)}>
-          <Plus className="mr-2 h-4 w-4" />
-          Tambah Produk
-        </Button>
-      </div>
+              Tombolnya di kanan karena itu tempat yang selalu dijangkau ibu jari
+              kanan, dan "tambah" adalah aksi yang paling sering diulang di halaman
+              ini — bukan "cari", yang sudah punya kotak dan jadi urusan keyboard. */}
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs text-muted-foreground tabular-nums">
+              {tersembunyi > 0
+                ? `Menampilkan ${kartu.length} dari ${semua.length} produk`
+                : `${semua.length} produk`}
+            </p>
+            <Button onClick={() => setFormTerbuka(true)}>
+              <Plus className="mr-2 h-4 w-4" />
+              Tambah Produk
+            </Button>
+          </div>
 
-      {kartu.length === 0 ? (
-        <p className="rounded-lg border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
-          {jumlahFilterAktif > 0
-            ? 'Tidak ada produk yang cocok dengan pencarian dan filter ini.'
-            : `Tidak ada produk yang cocok dengan "${cari}".`}
-        </p>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
-          {kartu.map((k) => (
-            <KartuProduk key={k.id} kartu={k} onBuka={() => setDetailId(k.id)} />
-          ))}
-        </div>
-      )}
+          {kartu.length === 0 ? (
+            <p className="rounded-lg border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
+              {jumlahFilterAktif > 0
+                ? 'Tidak ada produk yang cocok dengan pencarian dan filter ini.'
+                : `Tidak ada produk yang cocok dengan "${cari}".`}
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+              {kartu.map((k) => (
+                <KartuProduk
+                  key={k.id}
+                  kartu={k}
+                  onBuka={() => setDetailId(k.id)}
+                  onBukti={(status) => setBukti({ produk: k.nama, status })}
+                />
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Master warna. Isinya cuma nama + kode — lihat catatan di IsiWarna. */}
+        <TabsContent value="colour" className="mt-4">
+          <IsiWarna warna={warna} onTambahWarna={() => setFormWarnaTerbuka(true)} />
+        </TabsContent>
+      </Tabs>
 
       <DetailProduk
         produk={produkTerbuka}
@@ -426,29 +512,52 @@ export default function RegisterProduk({
         onTutup={() => setFormTerbuka(false)}
         onSimpan={simpanProduk}
       />
+
+      <FormWarnaBaru
+        terbuka={formWarnaTerbuka}
+        // Seluruh warna yang sudah ada, termasuk yang baru dibuat di sesi ini —
+        // kalau cuma warna katalog yang dikirim, kode yang baru saja dipakai
+        // bisa dimasukkan dua kali.
+        kodeTerpakai={warna}
+        onTutup={() => setFormWarnaTerbuka(false)}
+        onSimpan={simpanWarna}
+      />
+
+      <PopupBuktiPasar
+        terbuka={bukti !== null}
+        produk={bukti?.produk ?? ''}
+        status={bukti?.status ?? null}
+        onTutup={() => setBukti(null)}
+      />
     </div>
   );
 }
 
 /**
- * Satu kartu produk: foto potret 3:4, nama, harga, dua angka, lalu kaki.
+ * Satu kartu produk: foto potret 3:4 dengan nama/kategori/kode di kakinya,
+ * tiga baris marketplace, lalu jumlah warna dan varian.
  *
- * Rasionya 3:4, bukan 9:16. Pada lima kolom, kartu hanya ~205px di laptop
- * 1366 dan ~314px di monitor 1920 — dan 9:16 di lebar itu membuat fotonya
- * setinggi ~410px/~614px, sehingga kartu menjulur dan hanya ±4 produk yang
- * terlihat sekali lihat. Itu menegasikan keluhan aslinya ("kegedean bgt").
- * 3:4 memotongnya jadi ~273px/~419px, dan efek sampingnya bagus: ruang di
- * bawah foto bertambah, sehingga label penuh "Total Stock" muat lagi —
- * sedangkan pada 9:16 labelnya HARUS dipendekkan jadi "Total" supaya tidak
- * terpotong, dan "Total Stock" persis string yang diuji smoke test.
+ * Kenapa harga dan dua angka stok TIDAK lagi di sini (permintaan pemilik,
+ * 15 Okt 2026): kartu ini dibaca untuk menjawab "produk ini sudah bisa dijual
+ * di mana", bukan "stoknya berapa". Angka stok tetap ada — pindah ke dialog
+ * detail, yang memang tempat membacanya, dan di sana angkanya punya ruang
+ * untuk disebut lengkap ("bisa jual" vs "Total Stock") tanpa berebut tempat
+ * dengan baris marketplace.
  *
- * Baris per warna TIDAK ada di sini — sudah pindah ke dialog detail
- * (permintaan pemilik). Di lebar lima kolom, dua baris warna memakan ruang
- * yang membuat kartu setinggi foto + teks, dan produk 8 varian tetap
- * menzalim 8 baris. Rinciannya tidak hilang: dialog detail membukanya, dan
- * `warnaRingkas` masih utuh untuk pencarian maupun filter.
+ * Kenapa tiga baris marketplace selalu lengkap, termasuk yang "Not
+ * registered": yang dicari pemilik di sini justru yang BELUM didaftarkan.
+ * Menyembunyikannya akan membuat kartu produk yang belum lengkap terlihat
+ * sama dengan yang sudah lengkap — persis kebalikan dari gunanya.
  */
-function KartuProduk({ kartu, onBuka }: { kartu: KartuRegister; onBuka: () => void }) {
+function KartuProduk({
+  kartu,
+  onBuka,
+  onBukti,
+}: {
+  kartu: KartuRegister;
+  onBuka: () => void;
+  onBukti: (status: StatusPasar) => void;
+}) {
   return (
     <Card
       // Area kliknya SELURUH kartu, bukan cuma tombol kecil — di etalase orang
@@ -474,49 +583,68 @@ function KartuProduk({ kartu, onBuka }: { kartu: KartuRegister; onBuka: () => vo
       // bergeser dari tetangganya. `motion-reduce` mematikan transisinya
       // seluruhnya — bukan hanya durasinya, karena transformasi tanpa transisi
       // tetap jadi perubahan posisi yang tidak diumumkan.
-      className="cursor-pointer gap-0 p-0 transition-[transform,box-shadow] duration-200 ease-out hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97] motion-reduce:transform-none motion-reduce:transition-none"
+      className="cursor-pointer gap-0 overflow-hidden p-0 transition-[transform,box-shadow] duration-200 ease-out hover:shadow-md focus-visible:ring-2 focus-visible:ring-ring active:scale-[0.97] motion-reduce:transform-none motion-reduce:transition-none"
     >
-      {/* Foto SELURUH lebar kartu, bukan kotak kecil di sebelah nama.
-          Lebarnya seragam di semua kartu, jadi dua produk bisa dibandingkan
-          sekilas tanpa ada yang lebih besar dari yang lain. Teks placeholder-nya
-          sengaja kecil: kalau lebih besar dari isi kartu, yang dinilai jadi
-          placeholder-nya, bukan kartunya. */}
-      <div className="flex aspect-[3/4] w-full items-center justify-center overflow-hidden border-b bg-muted/40 text-[10px] uppercase tracking-wide text-muted-foreground">
-        {kartu.foto ? 'FOTO' : '—'}
+      {/* Foto SELURUH lebar kartu, dengan keterangan menempel di kakinya.
+          Keterangannya DI ATAS foto (`absolute`), bukan di bawahnya: pada
+          empat kolom, satu baris teks yang turun ke bawah foto membuat tinggi
+          kartu bergeser satu baris setiap kali nama produknya panjang — dan
+          kartu yang tingginya berbeda-beda dalam satu baris grid membuat
+          baris marketplace di sebelahnya tidak sejajar.
+
+          Gradien gelapnya wajib, bukan hiasan: nama produk ditulis putih di
+          atas foto yang isinya bisa apa saja, dan tanpa gradien foto berwarna
+          terang membuat namanya hilang. Gradiennya `to-t` dari hitam 80% ke
+          transparan — cukup gelap untuk teks putih, cukup pendek untuk tidak
+          menutupi fotonya. */}
+      <div className="relative aspect-[3/4] w-full overflow-hidden bg-muted/40">
+        {kartu.foto ? (
+          // Pratinjau: belum ada berkas asli, jadi ditampilkan penanda teks.
+          // <img> dengan src kosong akan memicu permintaan gagal ke server.
+          <div className="flex h-full w-full items-center justify-center text-[10px] uppercase tracking-wide text-muted-foreground">
+            FOTO
+          </div>
+        ) : (
+          <div className="flex h-full w-full items-center justify-center text-sm text-muted-foreground">
+            —
+          </div>
+        )}
+
+        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent px-2.5 pb-2 pt-8">
+          <div className="flex items-end justify-between gap-2">
+            <div className="min-w-0">
+              {/* Dua baris, bukan satu: "Oversized Hoodie Kereta" tidak muat
+                  satu baris di kartu selebar ini, dan `truncate` akan
+                  memotongnya jadi "Oversized Hoodie…" — lebih buruk daripada
+                  terbaca dua baris. */}
+              <div className="line-clamp-2 text-sm font-semibold leading-tight text-white">
+                {kartu.nama}
+              </div>
+              <div className="mt-0.5 truncate text-[10px] text-white/70">
+                {kartu.kategori}
+              </div>
+            </div>
+            {/* Kode desain di kanan, sejajar dengan kaki namanya. `shrink-0`
+                supaya kode yang panjang mendorong namanya menyempit, bukan
+                terpotong sendiri — kode inilah yang dipakai mencocokkan
+                produk, jadi ia yang tidak boleh hilang. */}
+            <div className="shrink-0 text-[10px] font-medium text-white/90 tabular-nums">
+              {kartu.kode}
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="flex flex-1 flex-col gap-2 p-2.5">
-        <div className="min-w-0">
-          {/* Dua baris, bukan satu: "Oversized Hoodie Kereta" tidak muat satu
-              baris di 205px, dan `truncate` akan memotongnya jadi "Oversized
-              Hoodie…" — lebih buruk daripada terbaca dua baris. */}
-          <div className="line-clamp-2 text-sm font-medium leading-tight">{kartu.nama}</div>
-          <div className="mt-0.5 truncate text-[10px] text-muted-foreground">
-            {kartu.kategori}
-          </div>
+        {/* Baris marketplace. Tiap baris: ikon platform, namanya, lalu status
+            dan tombol bukti di kanan. */}
+        <div className="flex flex-col gap-1">
+          {kartu.pasar.map((s) => (
+            <BarisPasar key={s.platform} status={s} onBukti={() => onBukti(s)} />
+          ))}
         </div>
 
-        {/* `text-nowrap` supaya "Rp 649.000" tidak pecah jadi dua baris pada
-            kartu selebar 205px — satu harga yang terbaca lebih berguna
-            daripada dua potongan yang harus disusun ulang di kepala. */}
-        <div className="text-nowrap text-sm font-semibold tabular-nums">
-          {rupiah(kartu.harga)}
-        </div>
-
-        {/* Dua angka, dan keduanya tetap BEDA namanya. Baris warna di
-            dialog menjumlah ke "bisa jual"; "Total Stock" adalah isi gudang
-            seluruhnya, termasuk yang terikat pesanan dan yang masih menunggu
-            diproses. Rowe Tee mis.: 205 + 165 = 370 yang bisa dijual, dari 400
-            yang ada. Kalau keduanya sama-sama disebut "total", orang akan
-            menghitung sendiri, menemukan selisih, lalu mengira kartu ini
-            rusak — jadi pemisahan namanya itu bagian dari angkanya, bukan
-            hiasan. */}
-        <div className="mt-auto flex items-end justify-between gap-2">
-          <AngkaBesar nilai={kartu.totalJual} label="bisa jual" />
-          <AngkaBesar nilai={kartu.totalStok} label="Total Stock" />
-        </div>
-
-        <div className="flex items-center justify-between text-[10px] text-muted-foreground">
+        <div className="mt-auto flex items-center justify-between text-[10px] text-muted-foreground">
           <span className="truncate">
             {kartu.jumlahWarna} warna · {kartu.jumlahVarian} varian
           </span>
@@ -527,17 +655,108 @@ function KartuProduk({ kartu, onBuka }: { kartu: KartuRegister; onBuka: () => vo
 }
 
 /**
- * Satu angka besar dengan label kecilnya.
+ * Lencana platform: huruf awal di kotak berwarna khas platformnya.
  *
- * `tabular-nums` dipakai karena angka-angka ini dibandingkan MELINTAR kartu:
- * membandingkan "400" dengan "85" yang angka nolnya bergeser membuat
- * perbandingannya lambat dan mudah salah baca.
+ * Warnanya SENGAJA hardcoded, bukan token tema — oranye Shopee dan hijau
+ * Shopify adalah warna merek, dan lencana yang ikut berubah warna saat tema
+ * berganti berhenti jadi pengenal. Karena itu teksnya tetap putih dan kotaknya
+ * diberi `aria-hidden`: yang membacakan nama platform untuk pembaca layar
+ * adalah teks di sebelahnya, bukan huruf di lencana ini.
  */
-function AngkaBesar({ nilai, label }: { nilai: number; label: string }) {
+const LENCANA_PASAR: Record<Platform, { huruf: string; kelas: string }> = {
+  shopee: { huruf: 'S', kelas: 'bg-[#EE4D2D]' },
+  tiktok: { huruf: 'T', kelas: 'bg-black' },
+  shopify: { huruf: 'S', kelas: 'bg-[#5E8E3E]' },
+};
+
+/**
+ * Satu baris marketplace: lencana, nama, pill status, dan tombol bukti.
+ *
+ * Tombol buktinya SELALU ada, juga saat "Not registered". Bukan kelalaian:
+ * foto bukti dan status pendaftaran itu dua hal terpisah — bukti bisa sudah
+ * diunggah sebelum statusnya diperbarui, dan menyembunyikan tombolnya membuat
+ * berkas yang ada jadi tidak bisa dijangkau sama sekali.
+ *
+ * Tombolnya `stopPropagation`: seluruh kartu ini area klik untuk membuka
+ * detail, jadi tanpa itu menekan tombol bukti akan membuka dua hal sekaligus —
+ * popup bukti DAN dialog detail produk.
+ */
+function BarisPasar({
+  status,
+  onBukti,
+}: {
+  status: StatusPasar;
+  onBukti: () => void;
+}) {
+  const lencana = LENCANA_PASAR[status.platform];
+
   return (
-    <div className="flex flex-col">
-      <span className="text-xl font-semibold leading-none tabular-nums">{nilai}</span>
-      <span className="mt-1 text-[10px] leading-tight text-muted-foreground">{label}</span>
+    <div className="flex items-center gap-2">
+      <span
+        aria-hidden
+        className={cn(
+          'inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-[9px] font-bold text-white',
+          lencana.kelas
+        )}
+      >
+        {lencana.huruf}
+      </span>
+      <span className="min-w-0 flex-1 truncate text-xs">
+        {NAMA_PASAR[status.platform]}
+      </span>
+
+      {/* Pill status memakai badge reui, tapi warnanya ditulis eksplisit —
+          bukan varian `success-outline` bawaannya.
+
+          Alasannya konkret, bukan selera: tema project ini TIDAK punya token
+          `--success` (lihat `src/index.css` — hanya primary/secondary/muted/
+          accent/destructive). Varian `success-outline` di badge reui memakai
+          `text-success-foreground`, dan karena token itu tidak ada, Tailwind v4
+          membuangnya diam-diam. Hasilnya "Registered" dan "Not registered"
+          tampil sebagai dua pill abu-abu yang sama persis — persis informasi
+          yang paling penting di kartu ini, hilang tanpa error.
+
+          Pasangan `bg-green-100 text-green-800` + varian gelapnya mengikuti
+          pill status yang sudah dipakai di halaman lain (KartuPo,
+          KartuFulfillment, Dashboard), jadi warnanya juga tidak karangan
+          sendiri di sini. */}
+      <BadgeReui
+        variant="outline"
+        size="sm"
+        radius="full"
+        className={cn(
+          'gap-1 border-transparent',
+          status.terdaftar
+            ? 'bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300'
+            : 'bg-muted text-muted-foreground'
+        )}
+      >
+        {/* Titik status, bukan ikon: pada ukuran 10px ikon apa pun berubah jadi
+            noda. Titiknya `aria-hidden` karena statusnya sudah terbaca dari
+            teks di sebelahnya. */}
+        <span
+          aria-hidden
+          className={cn(
+            'h-1.5 w-1.5 rounded-full',
+            status.terdaftar ? 'bg-green-600 dark:bg-green-400' : 'bg-muted-foreground/50'
+          )}
+        />
+        {status.terdaftar ? 'Registered' : 'Not registered'}
+      </BadgeReui>
+
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        aria-label={`Lihat foto bukti ${NAMA_PASAR[status.platform]}`}
+        title={`Lihat foto bukti ${NAMA_PASAR[status.platform]}`}
+        className="shrink-0 text-muted-foreground"
+        onClick={(e) => {
+          e.stopPropagation();
+          onBukti();
+        }}
+      >
+        <ImageIcon className="h-3.5 w-3.5" />
+      </Button>
     </div>
   );
 }

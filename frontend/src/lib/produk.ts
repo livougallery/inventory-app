@@ -113,6 +113,54 @@ export interface WarnaRegister {
   size: string;
 }
 
+/**
+ * Marketplace tempat produk didaftarkan agar bisa dijual.
+ *
+ * Ditulis sebagai kode (`shopee`), bukan label tampilan: labelnya urusan
+ * render, dan yang tersimpan harus tetap sama walau tampilannya berganti.
+ */
+export type Platform = 'shopee' | 'tiktok' | 'shopify';
+
+/**
+ * Urutan tetap platform di kartu.
+ *
+ * Ditulis SEKALI di sini, bukan diurut ulang per kartu: urutan baris yang
+ * berbeda-beda antar kartu membuat mata harus mencari ulang tiap kali, padahal
+ * gunanya baris ini justru membandingkan status antar produk.
+ */
+export const PLATFORM: Platform[] = ['shopee', 'tiktok', 'shopify'];
+
+/**
+ * Label tampilan platform. Kode tetap bahasa Inggris, labelnya Indonesia.
+ *
+ * Ditulis SEKALI di sini, bukan di tiap halaman yang menampilkannya: kartu
+ * produk dan popup bukti sama-sama menyebut nama platform, dan dua peta yang
+ * terpisah cepat atau lambat berbeda ejaan — bedanya baru ketahuan saat
+ * presentasi.
+ */
+export const NAMA_PASAR: Record<Platform, string> = {
+  shopee: 'Shopee',
+  tiktok: 'TikTok',
+  shopify: 'Shopify',
+};
+
+/** Status satu produk di satu marketplace. */
+export interface StatusPasar {
+  platform: Platform;
+  terdaftar: boolean;
+  /**
+   * Foto bukti pendaftaran di platform itu.
+   *
+   * `null` = belum ada berkas. Saat ini SELALU null: belum ada satu pun foto
+   * bukti, dan — lebih penting — belum diputuskan foto ini disimpan di tabel
+   * mana. Yang sudah pasti cuma bentuknya: satu gambar per (produk, platform).
+   *
+   * Tidak dikosongkan dari tipe walau selalu null: begitu datanya ada, yang
+   * berubah cukup isinya, bukan bentuk kartunya lagi.
+   */
+  fotoBukti: string | null;
+}
+
 /** Satu kartu produk di daftar Register — satu produk, bukan satu varian. */
 export interface KartuRegister {
   id: string;
@@ -144,6 +192,17 @@ export interface KartuRegister {
   varian: VarianRegister[];
   /** Satu baris per warna — inilah yang tampil di kartu daftar. */
   warnaRingkas: WarnaRegister[];
+  /**
+   * Status pendaftaran produk ini di tiap marketplace, satu entri per platform
+   * dan SELALU lengkap tiga — bukan cuma yang sudah terdaftar.
+   *
+   * Lengkap karena yang dibaca pemilik di kartu adalah "mana yang belum",
+   * bukan cuma "mana yang sudah". Kalau hanya yang terdaftar yang dikirim,
+   * platform yang belum terdaftar akan hilang dari kartu, dan tidak adanya
+   * baris terbaca sebagai "platform ini tidak dipakai" — padahal artinya
+   * "belum didaftarkan", dan itu dua hal yang berbeda saat harus ditindak.
+   */
+  pasar: StatusPasar[];
   /** Jumlah warna berbeda di produk ini. */
   jumlahWarna: number;
   /** Jumlah varian (warna × ukuran) di produk ini. */
@@ -444,6 +503,34 @@ const STOK: Record<string, { masuk: number; menunggu: number; jual?: number }> =
 };
 
 /**
+ * Status pendaftaran contoh per produk, di-key `productId`.
+ *
+ * Dipisah dari katalog di atas dengan alasan yang sama seperti `STOK`: ini
+ * keadaan BISNIS (sudah didaftarkan ke platform mana saja), bukan spesifikasi
+ * produk — dan menaruhnya di dalam tiap produk berarti 4 kesempatan untuk
+ * tidak konsisten soal platform mana yang ada.
+ *
+ * `terdaftar` sengaja hanya ditulis untuk yang SUDAH terdaftar. Selebihnya
+ * dianggap belum — jadi menambah platform baru nanti tidak perlu menyunting
+ * empat produk sekaligus, cukup menambah namanya di `PLATFORM`. Produk yang
+ * belum terdaftar di platform apa pun cukup tidak punya entri sama sekali.
+ *
+ * BELUM TERHUBUNG DATABASE, sama seperti sisa katalog ini.
+ */
+const PASAR: Record<string, Partial<Record<Platform, boolean>>> = {
+  // Semua platform — produk pertama, sudah lengkap.
+  'PRD-01': { shopee: true, tiktok: true, shopify: true },
+  // Hanya Shopee: menggambarkan produk yang pendaftarannya belum tuntas, jadi
+  // keadaan "sebagian" ini benar-benar terlihat di kartu dan bukan cuma
+  // diandaikan ada.
+  'PRD-02': { shopee: true },
+  // Semua platform.
+  'PRD-03': { shopee: true, tiktok: true, shopify: true },
+  // Hanya TikTok: produk terbaru yang baru masuk satu platform.
+  'PRD-04': { tiktok: true },
+};
+
+/**
  * Rombak katalog jadi satu kartu per produk — bentuk yang dibaca daftar
  * Register.
  *
@@ -531,6 +618,16 @@ export function kartuRegister(
     // menyembunyikan angka, itu membuat total lebih kecil dari kenyataan.
     const totalStok = totalMasuk + varian.reduce((s, v) => s + v.stokMenunggu, 0);
 
+    // Selalu tiga baris, urut `PLATFORM` — lihat catatan di `StatusPasar`.
+    // Yang tidak disebut di `PASAR` berarti belum terdaftar, dan itu tetap
+    // dikirim sebagai baris supaya kartunya bisa menampilkan "belum" alih-alih
+    // diam-diam menghilangkan platformnya.
+    const pasar: StatusPasar[] = PLATFORM.map((platform) => ({
+      platform,
+      terdaftar: PASAR[p.id]?.[platform] === true,
+      fotoBukti: null,
+    }));
+
     return {
       id: p.id,
       nama: p.nama,
@@ -542,6 +639,7 @@ export function kartuRegister(
       harga: p.harga,
       varian,
       warnaRingkas,
+      pasar,
       jumlahWarna: p.spesifikasi.warna.length,
       jumlahVarian: varian.length,
       totalMasuk,

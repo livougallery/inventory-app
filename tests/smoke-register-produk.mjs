@@ -310,13 +310,42 @@ export const daftar = {
   produkDengan: angkaProduk(denganBaru),
   produkTanpa: angkaProduk(tanpaBaru),
   namaTerlihat: denganBaru.includes(PRODUK_UJI.nama),
-  hargaTerlihat: denganBaru.includes('249'),
-  // KARTU TIDAK merender design code. Kartu menampilkan nama, kategori, harga,
-  // dan dua angka stok -- design code itu milik dialog detail. Menguji
-  // kodeVarian di markup kartu akan selalu merah dan tidak membuktikan apa pun,
-  // jadi yang diperiksa di sini kategori (yang memang tampil), dan kode
-  // variannya diuji lewat kartuRegister di bawah.
+  // KARTU TIDAK LAGI merender harga (permintaan pemilik, 15 Okt 2026). Yang
+  // sekarang tampil di kartu: nama, kategori, KODE DESAIN, tiga baris
+  // marketplace, dan jumlah warna/varian. Harga dan angka stoknya pindah ke
+  // dialog detail.
+  //
+  // Jadi hargaTerlihat sengaja diukur sebagai HARUS TIDAK ADA — bukan
+  // dihapus dari test. Kalau cuma dihapus, harga yang diam-diam kembali ke
+  // kartu tidak akan ketahuan oleh apa pun.
+  hargaTidakTerlihat: !denganBaru.includes('249'),
+  // Kode desain justru kebalikannya: dulu TIDAK ada di kartu (ada di dialog
+  // detail saja), sekarang menempel di kaki foto. Diukur sebagai SELISIH
+  // jumlah kemunculan, bukan includes().
+  //
+  // includes() di sini akan hijau tanpa menguji apa pun: produk uji memakai
+  // designCode yang SAMA dengan produk pertama katalog (LVU-TOP-11), jadi
+  // stringnya sudah ada di halaman walau kartu barunya tidak dirender sama
+  // sekali. Yang membuktikan ada kartu baru adalah jumlahnya bertambah satu.
+  kodeDengan: (denganBaru.match(new RegExp(PRODUK_UJI.spesifikasi.designCode, 'g')) || [])
+    .length,
+  kodeTanpa: (tanpaBaru.match(new RegExp(PRODUK_UJI.spesifikasi.designCode, 'g')) || [])
+    .length,
   kategoriTerlihat: denganBaru.includes(PRODUK_UJI.kategori),
+  // Baris marketplace. Ketiganya harus ada untuk SETIAP produk, termasuk yang
+  // belum terdaftar — justru itu yang dicari di kartu ini.
+  pasarTerlihat: ['Shopee', 'TikTok', 'Shopify'].every((p) => denganBaru.includes(p)),
+  statusTerlihat:
+    denganBaru.includes('Registered') && denganBaru.includes('Not registered'),
+  // Produk uji (PRD-BARU-1) tidak punya entri di peta PASAR, jadi KETIGA
+  // barisnya harus terbaca "Not registered".
+  //
+  // Diukur sebagai SELISIH terhadap render tanpa produk baru, bukan sebagai
+  // jumlah mutlak: katalog contohnya sendiri sudah punya baris "Not registered"
+  // (PRD-02 hanya Shopee, PRD-04 hanya TikTok), jadi angka mutlak berapa pun
+  // tidak membuktikan apa pun tentang produk yang baru ditambahkan.
+  statusBelumDengan: (denganBaru.match(/Not registered/g) || []).length,
+  statusBelumTanpa: (tanpaBaru.match(/Not registered/g) || []).length,
 };
 
 // Kartu hasil form, diperiksa lewat FUNGSI ASLI yang dipakai halaman.
@@ -628,9 +657,49 @@ daftar.namaTerlihat
   ? ok(`nama produk baru tampil di kartu: "${PRODUK_UJI.nama}"`)
   : salah('nama produk baru', `"${PRODUK_UJI.nama}" tidak ditemukan di halaman`);
 
-daftar.hargaTerlihat && daftar.kategoriTerlihat
-  ? ok('harga dan kategori ikut tampil di kartu')
-  : salah('isi kartu baru', `harga=${daftar.hargaTerlihat} kategori=${daftar.kategoriTerlihat}`);
+// Kode desain muncul satu kali lebih banyak setelah produk baru ditambahkan.
+// Dihitung sebagai selisih karena produk uji memakai designCode yang sama
+// dengan produk pertama katalog — lihat catatan di `daftar.kodeDengan`.
+const selisihKode = daftar.kodeDengan - daftar.kodeTanpa;
+selisihKode === 1 && daftar.kategoriTerlihat
+  ? ok(`kode desain dan kategori tampil di kartu baru (kode naik ${selisihKode})`)
+  : salah(
+      'isi kartu baru',
+      `kode ${daftar.kodeTanpa} -> ${daftar.kodeDengan} (harus naik 1); kategori=${daftar.kategoriTerlihat}`
+    );
+
+// Harga TIDAK boleh kembali ke kartu. Diukur sebagai ketiadaan, bukan dihapus
+// dari test: harga yang diam-diam muncul lagi di kartu tidak akan ketahuan oleh
+// check mana pun kalau assertion-nya cuma dibuang.
+daftar.hargaTidakTerlihat
+  ? ok('harga tidak lagi tampil di kartu (pindah ke dialog detail)')
+  : salah('harga di kartu', 'harga muncul lagi di kartu');
+
+// ===== Baris marketplace =====
+
+console.log('\n== Marketplace di kartu ==');
+
+daftar.pasarTerlihat
+  ? ok('ketiga marketplace tampil di kartu (Shopee, TikTok, Shopify)')
+  : salah('baris marketplace', 'ada platform yang tidak muncul di kartu');
+
+daftar.statusTerlihat
+  ? ok('status "Registered" dan "Not registered" keduanya tampil')
+  : salah(
+      'status marketplace',
+      `registered=${daftar.statusTerlihat}; salah satu status tidak dirender`
+    );
+
+// Produk uji tidak ada di peta PASAR, jadi ketiga barisnya harus "Not
+// registered" — tepat 3 lebih banyak daripada render tanpa produk itu. Kalau
+// produk baru malah ikut mewarisi status produk contoh, selisihnya bukan 3.
+const selisihBelum = daftar.statusBelumDengan - daftar.statusBelumTanpa;
+selisihBelum === 3
+  ? ok(`produk baru tampil "Not registered" di ketiga platform (naik ${selisihBelum})`)
+  : salah(
+      'status produk baru',
+      `tanpa=${daftar.statusBelumTanpa} dengan=${daftar.statusBelumDengan}; selisih harus 3`
+    );
 
 // Bentuk kartunya, dihitung oleh definisi yang sama dengan katalog.
 kartu.jumlahWarna === 2
