@@ -126,7 +126,8 @@ import {
   KARTU_BARU, kartuBaru, stageKartu, stageSetelah,
   totalPcs, jumlahVarian, kekurangan, bahanKartu, kunciBahan, ringkasBahan,
   barisVarian, ringkasCutting, JENIS_BUKTI_CUTTING, JENIS_BUKTI_UPLOAD,
-  jenisBuktiTahap,
+  JENIS_BUKTI_INVOICE_LOGISTIC, jenisBuktiTahap, KEDATANGAN_CONTOH,
+  JENIS_BUKTI_RECEIVE, barisPenerimaan, ringkasTerima,
 } from './src/pages/production-fulfillment/data-kanban';
 import {
   hppProduksi, hppWhiteLabel, gerbangHpp, cekSumberWorkcode, hargaJual,
@@ -203,6 +204,22 @@ const aksiLengkap = {
   // sini, tombolnya tetap dirender tapi tidak menutup apa pun — dan test yang
   // cuma memeriksa markup akan hijau.
   tutupTemuan: () => {},
+  // Sepasang handler store KEEMPAT: bukti penerimaan (tiket 6). Alasan sama
+  // dengan tiga pasang di atas — 'IsiPopup' menukar 'tambahBukti'/'hapusBukti'
+  // menjadi dua handler ini untuk stage Receive, jadi tanpa keduanya di sini
+  // kotak bukti penerimaan diam-diam tidak bisa menambah berkas.
+  tambahBuktiReceive: () => {},
+  hapusBuktiReceive: () => {},
+  // Dua handler kedatangan (tiket 6). 'SeksiReceive' memanggil 'ubahTahap'
+  // untuk pemutus selisih (Q9) dan 'simpanKedatangan'/'hapusKedatangan' untuk
+  // formulir penerimaan. SSR tidak memanggilnya — tidak ada yang diklik — tapi
+  // objek aksi yang tidak lengkap membuat bentuk yang diuji di sini berbeda
+  // dari yang dipakai papan, dan itu justru yang membuat pemeriksaan routing
+  // berhenti mewakili jalur sungguhan.
+  ubahTahap: () => {},
+  simpanKedatangan: () => {},
+  hapusKedatangan: () => {},
+  kembalikanCutting: () => {},
 };
 
 const renderHpp = (p) => <SeksiHppPrice {...p} barisHpp={barisContohHpp} />;
@@ -613,6 +630,190 @@ export const popupReceiveBawaan = kartuReceiveBawaan
       />
     )
   : '';
+
+// ===== Tiket 6: stage Receive =====
+//
+// Popup Receive dirender DENGAN data kedatangan, bukan tanpa. Bedanya bukan
+// kecil: tanpa 'kedatangan', yang ter-render cuma formulir kosong dengan empat
+// angka nol — dan seluruh pemeriksaan di bawah akan hijau tanpa menguji
+// aritmetika yang justru jadi inti stage ini. 'KEDATANGAN_CONTOH' dipakai
+// apa adanya supaya yang diuji adalah data yang benar-benar tampil saat
+// presentasi, bukan data karangan test.
+
+const kartuProdReceive = KARTU_PRODUCTION.find((k) => k.stage === 'receive');
+const kartuWlReceive = KARTU_WHITELABEL.find((k) => k.stage === 'receive');
+
+// Diekspor karena pemeriksaannya di luar hanya boleh MEMBACA kartu ini, bukan
+// membangunnya sendiri: 'barisVarian' dan render JSX cuma ada di dalam bundel.
+export const idReceiveProd = kartuProdReceive.id;
+export const idReceiveWl = kartuWlReceive.id;
+export const varianReceiveProd = barisVarian(kartuProdReceive).map((b) => b.kunci);
+
+// Data kedatangan mentahnya ikut diekspor. Pemeriksaan "reject benar-benar
+// dikurangkan" di luar harus menjumlahkan 'datang' dan 'reject' SENDIRI lalu
+// membandingkannya dengan angka yang dirender — kalau ia membaca angka yang
+// sudah dihitung komponen, yang diuji cuma salinan itu terhadap dirinya sendiri.
+// 'KEDATANGAN_CONTOH' tidak bisa diakses langsung dari luar: namanya hanya ada
+// di dalam bundel.
+export const kedatanganContoh = KEDATANGAN_CONTOH;
+
+// Daftar id jenis bukti per tahap ikut diekspor. Pemeriksaan "id penerimaan
+// tidak dipakai tahap lain" di luar harus MEMBANDINGKAN daftarnya, dan daftar
+// itu cuma ada di dalam bundel — impor di dalam blok entri tidak menyeberang
+// keluar, jadi tanpa ekspor ini namanya tidak dikenal di sana.
+export const idJenisBukti = {
+  receive: JENIS_BUKTI_RECEIVE.map((j) => j.id),
+  cutting: JENIS_BUKTI_CUTTING.map((j) => j.id),
+  invoiceLogistic: JENIS_BUKTI_INVOICE_LOGISTIC.map((j) => j.id),
+  upload: JENIS_BUKTI_UPLOAD.map((j) => j.id),
+  hpp: JENIS_BUKTI_HPP.map((j) => j.id),
+};
+
+// Baris tabel penerimaan untuk draft kartu White Label, dihitung komponennya
+// sendiri. Dipakai memeriksa bahwa "Masuk Stok" yang TAMPIL adalah
+// "datang − reject" (23 dari 25 datang, 2 reject), bukan "datang" mentah.
+export const barisDraftWl = (() => {
+  const daftar = KEDATANGAN_CONTOH[kartuWlReceive.id] ?? [];
+  const draft = daftar.find((k) => k.status === 'draft');
+  if (!draft) return [];
+  return barisPenerimaan(kartuWlReceive, ringkasTerima(kartuWlReceive, daftar), draft).map(
+    (b) => ({ kunci: b.kunci, warna: b.warna, ukuran: b.ukuran, plan: b.plan, datang: b.datang, reject: b.reject, masuk: b.masuk, sisa: b.sisa })
+  );
+})();
+
+export const popupReceiveProd = renderToStaticMarkup(
+  <IsiPopup
+    kartu={kartuProdReceive}
+    stage={stageReceive}
+    stageBerikutnya={setelah(PAPAN_PRODUCTION, 'receive')}
+    sumber="production"
+    kedatangan={KEDATANGAN_CONTOH}
+    buktiReceive={{}}
+    aksi={aksiLengkap}
+  />
+);
+
+export const popupReceiveWl = renderToStaticMarkup(
+  <IsiPopup
+    kartu={kartuWlReceive}
+    stage={PAPAN_WHITELABEL.find((s) => s.id === 'receive')}
+    stageBerikutnya={setelah(PAPAN_WHITELABEL, 'receive')}
+    sumber="whitelabel"
+    kedatangan={KEDATANGAN_CONTOH}
+    buktiReceive={{}}
+    aksi={aksiLengkap}
+  />
+);
+
+// Angka-angka yang seharusnya muncul, dihitung ULANG dari sumbernya di sini —
+// bukan disalin dari hasil render. Kalau 'ringkasTerima' salah, dua angka ini
+// berbeda dan pemeriksaannya menunjuk ke rumusnya, bukan ke tampilannya.
+export const hitungReceiveProd = (() => {
+  const k = KEDATANGAN_CONTOH[kartuProdReceive.id] ?? [];
+  const final = k.filter((x) => x.status === 'final');
+  let masuk = 0;
+  for (const x of final) {
+    for (const kunci of Object.keys(x.datang)) {
+      masuk += Math.max(0, (x.datang[kunci] ?? 0) - (x.reject[kunci] ?? 0));
+    }
+  }
+  const plan = totalPcs(kartuProdReceive);
+  return { plan, masuk, sisa: plan - masuk, jumlah: final.length };
+})();
+
+// Satu kedatangan final di kartu WL, satu draft — jadi yang dihitung hanya
+// yang final, dan badge draft-nya tetap terlihat.
+export const hitungReceiveWl = (() => {
+  const k = KEDATANGAN_CONTOH[kartuWlReceive.id] ?? [];
+  const final = k.filter((x) => x.status === 'final');
+  let masuk = 0;
+  for (const x of final) {
+    for (const kunci of Object.keys(x.datang)) {
+      masuk += Math.max(0, (x.datang[kunci] ?? 0) - (x.reject[kunci] ?? 0));
+    }
+  }
+  return {
+    plan: totalPcs(kartuWlReceive),
+    masuk,
+    draft: k.filter((x) => x.status === 'draft').length,
+    final: final.length,
+  };
+})();
+
+// Jalur KEDUA dari gerbang Q9: kartu yang variannya BELUM lengkap tapi
+// selisihnya sudah diputuskan.
+//
+// Kartunya adalah kartu contoh 'p-06' yang sama, dengan kedatangan yang sama
+// (110 dari 180 pcs — memang belum lengkap), hanya 'tahapAkhir'-nya diisi
+// Solution + Log Solution. Jadi yang diuji benar-benar jalur kedua, bukan
+// "kartu lengkap yang kebetulan punya solution".
+export const popupReceivePutuskan = renderToStaticMarkup(
+  <IsiPopup
+    kartu={{
+      ...kartuProdReceive,
+      // Dua-duanya terisi, karena gerbangnya menuntut keduanya: pilihan tanpa
+      // penjelasan tidak bisa ditindaklanjuti siapa pun, dan penjelasan tanpa
+      // pilihan tidak bisa diproses sistem.
+      tahapAkhir: { solution: 'resent_stock', logSolution: 'Kurang 70 pcs dikirim menyusul.' },
+    }}
+    stage={stageReceive}
+    stageBerikutnya={setelah(PAPAN_PRODUCTION, 'receive')}
+    sumber="production"
+    kedatangan={KEDATANGAN_CONTOH}
+    buktiReceive={{}}
+    aksi={aksiLengkap}
+  />
+);
+
+// Pembanding: kartu yang sama, kedatangan yang sama, TAPI tanpa Solution/Log.
+// Tanpa pembanding ini, tombol yang selalu hidup (mis. karena 'disabled'-nya
+// hilang) akan lolos di pemeriksaan "jalur kedua boleh lanjut".
+export const popupReceiveTanpaPutusan = popupReceiveProd;
+
+// Jalur PERTAMA dari gerbang Q9: SEMUA varian terpenuhi, jadi Solution tidak
+// dibutuhkan sama sekali. Angka pcs-nya diambil dari 'barisVarian' kartu itu
+// sendiri, bukan ditulis tangan — kalau plan kartunya berubah, fixture ini ikut
+// berubah dan pemeriksaannya tetap menguji hal yang benar.
+const kedatanganLengkap = {
+  [kartuProdReceive.id]: [
+    {
+      urut: 1,
+      tanggal: '2026-09-30',
+      lokasi: 'gudang',
+      sumber: 'stok',
+      datang: Object.fromEntries(barisVarian(kartuProdReceive).map((b) => [b.kunci, b.qty])),
+      reject: {},
+      keterangan: '',
+      dicatatOleh: 'Test',
+      status: 'final',
+    },
+  ],
+};
+
+export const popupReceiveLengkap = renderToStaticMarkup(
+  <IsiPopup
+    kartu={kartuProdReceive}
+    stage={stageReceive}
+    stageBerikutnya={setelah(PAPAN_PRODUCTION, 'receive')}
+    sumber="production"
+    kedatangan={kedatanganLengkap}
+    buktiReceive={{}}
+    aksi={aksiLengkap}
+  />
+);
+
+// Angka harapan untuk keadaan itu, dihitung dari sumber yang sama.
+export const hitungReceiveLengkap = {
+  plan: totalPcs(kartuProdReceive),
+  masuk: barisVarian(kartuProdReceive).reduce((s, b) => s + b.qty, 0),
+};
+
+// Per-varian untuk tabel penerimaan: dari 'barisVarian()' yang sama dengan yang
+// dipakai komponen, jadi yang diuji bukan salinan rumus.
+export const varianReceiveProdLengkap = barisVarian(kartuProdReceive).map((b) => ({
+  kunci: b.kunci,
+  plan: b.qty,
+}));
 
 // Jumlah entri jejak yang benar-benar sampai ke markup, plus pcs yang tertulis
 // di tiap entri. Diambil dari teks render, bukan dari state yang dipasang di
@@ -1709,7 +1910,7 @@ const url = pathToFileURL(bundel).href;
 
 const m = await import(url);
 
-const { produksi, whitelabel, popupPerStage, popupProposeWL, popupHppWl, popupHppWlTerisi, popupHppTerkunci, popupTanpaStage, jumlahKartuBukti, tujuanHpp, popupHppTanpaTujuan, labelPopup, fakta, faktaWL, alur, cekSumberWorkcode, bahanKartu, tabelWarna, tabelBahan, tabelBahanKosong, bahanTerpisah, barisWarnaContoh, pisahBahan, halPapan, halTabel, halRegister, halHpp, barisContohHpp, katalogProduk, kartuDaftar, kolomFilterRegister, isiForm, vendorPerPapan, saranNama, cariAda, cariTidakAda, cariSebagian, detailPerProduk, PRODUK_REGISTER, KATEGORI_VENDOR, gerbangCutting, totalCuttingContoh, popupCuttingTerisi, popupCuttingTerkunci, popupReceiveKembali, popupCuttingSetelahKembali, popupReceiveBawaan, jejakTerlihat, popupTanpaAlasan, hppWL, hppProd, hppPresisi, jumlahPcsLB, hppSemua, gerbangHppKartu, cekWorkcode, hppTabel, angkaLama, fp, petaHarga, margin, hargaDari, wlTidakLengkap, kartuDesimalBerlebih, renderHppPrice, seksiHppWl, seksiHppProd, seksiHppWlKosong, seksiHppWlAmbigu, hppWhiteLabel, hppProduksi, hargaJual, MARGIN_HARGA_JUAL, barisBiayaKartu, popupInvLogistic, popupInvProduct, popupUpload, popupInvProductLivou, popupInvProductReimburse, buktiPerJalur, popupInvLogisticTerkunci, popupInvLogisticBerisi, popupUploadNol, rencanaUpload, namaBerkasLogistic, idStage, temuan, popupFinanceProd, popupFinanceWl, popupFinanceBersih, popupFinanceTertutup, popupFinanceTerima, popupFinanceWlBawahBeli } =
+const { produksi, whitelabel, popupPerStage, popupProposeWL, popupHppWl, popupHppWlTerisi, popupHppTerkunci, popupTanpaStage, jumlahKartuBukti, tujuanHpp, popupHppTanpaTujuan, labelPopup, fakta, faktaWL, alur, cekSumberWorkcode, bahanKartu, tabelWarna, tabelBahan, tabelBahanKosong, bahanTerpisah, barisWarnaContoh, pisahBahan, halPapan, halTabel, halRegister, halHpp, barisContohHpp, katalogProduk, kartuDaftar, kolomFilterRegister, isiForm, vendorPerPapan, saranNama, cariAda, cariTidakAda, cariSebagian, detailPerProduk, PRODUK_REGISTER, KATEGORI_VENDOR, gerbangCutting, totalCuttingContoh, popupCuttingTerisi, popupCuttingTerkunci, popupReceiveKembali, popupCuttingSetelahKembali, popupReceiveBawaan, jejakTerlihat, popupTanpaAlasan, hppWL, hppProd, hppPresisi, jumlahPcsLB, hppSemua, gerbangHppKartu, cekWorkcode, hppTabel, angkaLama, fp, petaHarga, margin, hargaDari, wlTidakLengkap, kartuDesimalBerlebih, renderHppPrice, seksiHppWl, seksiHppProd, seksiHppWlKosong, seksiHppWlAmbigu, hppWhiteLabel, hppProduksi, hargaJual, MARGIN_HARGA_JUAL, barisBiayaKartu, popupInvLogistic, popupInvProduct, popupUpload, popupInvProductLivou, popupInvProductReimburse, buktiPerJalur, popupInvLogisticTerkunci, popupInvLogisticBerisi, popupUploadNol, rencanaUpload, namaBerkasLogistic, idStage, temuan, popupFinanceProd, popupFinanceWl, popupFinanceBersih, popupFinanceTertutup, popupFinanceTerima, popupFinanceWlBawahBeli, popupReceiveProd, popupReceiveWl, hitungReceiveProd, hitungReceiveWl, popupReceivePutuskan, popupReceiveTanpaPutusan, popupReceiveLengkap, idReceiveProd, idReceiveWl, kedatanganContoh, idJenisBukti, barisDraftWl } =
   m;
 
 // ===== 1. Papan Production =====
@@ -2158,43 +2359,53 @@ popupReceiveBawaan.length > 0 && !popupReceiveBawaan.includes('Data Cutting terk
 // tiket 4 stage itu punya isi sendiri di kedua papan. Dan sejak tiket 5,
 // 'invoice-product' + 'upload' ikut punya isi sendiri — lihat blok tiket 5.
 // Tiket 3 menambahkan 'finance-validate' ke daftar yang punya isi: stage itu
-// sekarang menampilkan daftar temuan.
+// sekarang menampilkan daftar temuan. Tiket 6 menutup daftarnya: 'receive'
+// sekarang punya formulir penerimaan, jadi KEDELAPAN stage berisi.
 //
-// Daftar pengecualiannya ditulis sebagai daftar, bukan dirangkai dengan `&&`
-// di dalam filter: yang tersisa setelah semua tiket selesai tinggal 'receive'
-// — satu-satunya stage yang alurnya memang belum diputuskan.
+// Sejak itu tidak ada lagi stage kosong di papan Production, dan itu justru
+// membuat pemeriksaan di bawah berubah bentuk: yang diperiksa bukan lagi "sisa
+// stage kosong benar-benar kosong", melainkan "tidak ada satu pun stage yang
+// masih menampilkan keterangan kosong". Kalau daftarnya dibiarkan seperti
+// semula, `stageKosong` jadi array kosong dan loop-nya hijau tanpa memeriksa
+// apa pun — persis kegagalan yang blok kontrol di bawah ini ada untuk mencegah.
 const stagePunyaIsi = [
   'propose',
   'prepare',
   'cutting',
+  'receive',
   'hpp-price',
   'invoice-product',
   'upload',
   'finance-validate',
 ];
-const stageKosong = Object.entries(popupPerStage).filter(([id]) => !stagePunyaIsi.includes(id));
-let stageMasihBerisi = 0;
-for (const [id, html] of stageKosong) {
-  if (!html.includes('Belum ada isi khusus untuk stage ini')) {
-    stageMasihBerisi++;
-    salah(`stage "${id}"`, 'tidak menampilkan keterangan kosong');
-  }
-  if (html.includes('Material Requirements (BOM)')) {
-    stageMasihBerisi++;
-    salah(`stage "${id}"`, 'masih menampilkan tabel BOM seperti di Propose');
-  }
-}
-stageMasihBerisi === 0
-  ? ok(`${stageKosong.length} stage lain kosong dengan keterangan, bukan salinan Propose`)
-  : salah('stage kosong', `${stageMasihBerisi} masalah`);
+// Kedelapan kolom papan Production harus tercakup. Kalau ada stage baru yang
+// ditambahkan ke `PAPAN_PRODUCTION` tanpa masuk daftar ini, pemeriksaan di
+// bawah tidak akan menyentuhnya sama sekali.
+const semuaStageTercakup = Object.keys(popupPerStage).every((id) => stagePunyaIsi.includes(id));
+semuaStageTercakup
+  ? ok('kedelapan stage papan Production masuk daftar "punya isi"')
+  : salah(
+      'daftar stage berisi',
+      `belum tercakup: ${Object.keys(popupPerStage).filter((id) => !stagePunyaIsi.includes(id)).join(', ')}`
+    );
 
-// Daftar pengecualian di atas hanya berguna kalau isinya benar: kalau SEMUA
-// stage ikut dikecualikan, loop-nya tidak berjalan sekali pun dan pemeriksaan
-// di atas hijau tanpa memeriksa apa pun. Karena itu sisa daftarnya diperiksa.
-const sisaStageKosong = stageKosong.map(([id]) => id).join(',');
-sisaStageKosong === 'receive'
-  ? ok('kontrol: tinggal satu stage yang masih kosong (receive)')
-  : salah('kontrol daftar stage kosong', `dapat "${sisaStageKosong}"`);
+// Dan yang lebih langsung: tidak satu pun boleh menampilkan teks stage kosong.
+const stageYangMasihKosong = Object.entries(popupPerStage)
+  .filter(([, html]) => html.includes('Belum ada isi khusus untuk stage ini'))
+  .map(([id]) => id);
+stageYangMasihKosong.length === 0
+  ? ok('tidak ada stage yang masih menampilkan "Belum ada isi khusus"')
+  : salah('stage masih kosong', `masih kosong: ${stageYangMasihKosong.join(', ')}`);
+
+// Sebaliknya, tidak satu pun boleh menampilkan tabel BOM seperti Propose —
+// itu isi stage Propose/Prepare, bukan milik stage lain.
+const stageSalahTabel = Object.entries(popupPerStage)
+  .filter(([id]) => id !== 'propose' && id !== 'prepare')
+  .filter(([, html]) => html.includes('Material Requirements (BOM)'))
+  .map(([id]) => id);
+stageSalahTabel.length === 0
+  ? ok('tabel BOM hanya muncul di Propose dan Prepare')
+  : salah('BOM bocor', `muncul di ${stageSalahTabel.join(', ')}`);
 
 // Cutting sekarang punya isi, jadi TIDAK boleh menampilkan keterangan kosong.
 // Dicek terpisah karena ia satu-satunya stage yang boleh begitu, dan
@@ -3994,17 +4205,19 @@ bukanFallback
   ? ok('routing: hpp-price tidak jatuh ke "Belum ada isi khusus"')
   : salah('routing hpp-price fallback', 'popup hpp-price menampilkan teks stage kosong');
 
-// Sebaliknya, stage yang memang belum punya alur HARUS tetap falling through.
-// Tanpa ini, perbaikan di atas bisa lulus dengan membiarkan SEMUA stage
-// menampilkan 'SeksiBelumAda' di samping isi yang benar.
+// Sebaliknya, jalur fallback HARUS tetap hidup — kalau tidak, perbaikan di
+// atas bisa lulus dengan membiarkan semua stage menampilkan isi yang benar
+// karena kebetulan, bukan karena routing-nya bekerja.
 //
-// Setelah tiket 3, tinggal 'receive' yang menjadi bukti bahwa fallback-nya
-// hidup — 'finance-validate' sudah punya seksi sendiri, dan pemeriksaannya ada
-// di blok tiket 3 di bawah.
-const stageLainMasihKosong = popupPerStage['receive']?.includes(teksBelumAda) === true;
-stageLainMasihKosong
-  ? ok('routing: stage tanpa alur tetap menampilkan "Belum ada isi khusus"')
-  : salah('routing stage kosong', 'receive tidak lagi menampilkan teks stage kosong');
+// Sejak tiket 6, KEDELAPAN stage papan Production punya isi sendiri, jadi
+// tidak ada lagi stage yang bisa dipakai sebagai bukti fallback-nya hidup.
+// Yang tersisa adalah popup TANPA stage — dan itu justru kontrol yang lebih
+// keras: `IsiPopup` tanpa `stage` tidak punya satu pun flag yang benar, jadi
+// ia wajib jatuh ke `SeksiBelumAda`.
+const fallbackHidup = popupTanpaStage.includes(teksBelumAda);
+fallbackHidup
+  ? ok('routing: popup tanpa stage tetap jatuh ke "Belum ada isi khusus"')
+  : salah('routing fallback', 'popup tanpa stage tidak menampilkan teks stage kosong');
 
 // Dan tiga stage yang sudah punya seksi TIDAK BOLEH lagi menampilkannya.
 // Diperiksa terpisah dari yang di atas: kalau digabung jadi satu syarat,
@@ -4013,21 +4226,22 @@ stageLainMasihKosong
 // popup White Label di blok tiket 5.
 const stageBaruTidakKosong =
   popupPerStage['invoice-product']?.includes(teksBelumAda) === false &&
-  popupPerStage['upload']?.includes(teksBelumAda) === false;
+  popupPerStage['upload']?.includes(teksBelumAda) === false &&
+  popupPerStage['receive']?.includes(teksBelumAda) === false;
 stageBaruTidakKosong
-  ? ok('routing: invoice-product & upload tidak lagi jatuh ke "Belum ada isi khusus"')
+  ? ok('routing: invoice-product, upload & receive tidak jatuh ke "Belum ada isi khusus"')
   : salah(
-      'routing stage tiket 5',
-      `invoice-product=${popupPerStage['invoice-product']?.includes(teksBelumAda)}, upload=${popupPerStage['upload']?.includes(teksBelumAda)} — keduanya harus false`
+      'routing stage tiket 5-6',
+      `invoice-product=${popupPerStage['invoice-product']?.includes(teksBelumAda)}, upload=${popupPerStage['upload']?.includes(teksBelumAda)}, receive=${popupPerStage['receive']?.includes(teksBelumAda)} — ketiganya harus false`
     );
 
 // Kontrol positif untuk routing-nya sendiri: teks 'Belum ada isi khusus' benar
-// ada di markup Asli pada tahap ini (dari stage yang memang belum punya alur),
-// jadi pola yang dipakai di atas bukan sekadar tidak cocok pada apa pun.
-const polaFallbackSering = popupPerStage['receive']?.split(teksBelumAda).length - 1;
+// ada di markup yang dirender pada tahap ini (dari popup tanpa stage), jadi
+// pola yang dipakai di atas bukan sekadar tidak cocok pada apa pun.
+const polaFallbackSering = popupTanpaStage.split(teksBelumAda).length - 1;
 const fallbackDitemukan = polaFallbackSering === 1;
 fallbackDitemukan
-  ? ok('kontrol: pola teks fallback benar-benar cocok pada stage kosong')
+  ? ok('kontrol: pola teks fallback benar-benar cocok pada popup tanpa stage')
   : salah('kontrol fallback', `kemunculan=${polaFallbackSering}, harusnya tepat 1`);
 
 // -- Bukti dibaca dari kartu yang benar
@@ -4844,6 +5058,382 @@ const wlTanpaBarisHppBersih = !popupFinWlIsi.includes('data-temuan="hpp-price:hp
 wlTanpaBarisHppBersih
   ? ok('kontrol: kartu White Label tanpa baris shipment tidak punya temuan itu')
   : salah('kontrol barisHpp', 'temuan HPP muncul padahal tidak ada baris shipment yang dioper');
+
+// ===== Tiket 6: stage Receive =====
+
+console.log('\n== Tiket 6: stage Receive — form, aritmetika, dan gerbang ==');
+
+// -- Yang paling penting: `Masuk Stok = Datang − Reject` dan
+//    `Sisa = Plan − (Sudah Datang + Masuk Stok)` benar-benar sampai ke layar.
+//
+// Angkanya dicari sebagai teks di markup, bukan diperiksa dari state: rumus
+// yang benar tapi tidak dirender tetap gagal di sini, dan itu memang yang
+// ingin dicegah — presentasi menunjukkan layar, bukan state.
+const angkaDariMarkup = (html, label) => {
+  // Kartu angka ditulis sebagai <div>label</div><div>nilai pcs</div>. Pola
+  // pencariannya sengaja sempit supaya tidak menangkap angka lain di tabel.
+  const pola = new RegExp(`${label}</div><div[^>]*>([\\d.]+) pcs`);
+  return Number(pola.exec(html)?.[1] ?? NaN);
+};
+
+// KONTROL NEGATIF untuk pembaca angka itu: dijalankan pada markup yang dirakit
+// dari potongan asli halaman ini, dalam dua bentuk yang HARUS dibedakan —
+// nilai yang ada, dan nilai yang tidak ada.
+//
+// Tanpa kontrol ini, pola yang terlalu longgar (mis. `.*?` yang melintasi
+// seluruh dokumen) akan "menemukan" angka apa pun yang kebetulan ada di
+// belakangnya, dan tiga pemeriksaan di bawah hijau tanpa membaca kartu angka
+// sama sekali. Pola yang menangkap label tetapi salah angka justru yang paling
+// berbahaya: ia terlihat bekerja.
+const kartuAngkaAsli = (label, nilai) =>
+  `<div class="x"><div class="text-[11px]">${label}</div><div class="text-lg font-semibold tabular-nums">${nilai}</div></div>`;
+const kontrolAngkaBenar = angkaDariMarkup(kartuAngkaAsli('Plan', '145 pcs'), 'Plan');
+const kontrolAngkaSalahLabel = angkaDariMarkup(kartuAngkaAsli('Masuk Stok', '110 pcs'), 'Plan');
+kontrolAngkaBenar === 145 && Number.isNaN(kontrolAngkaSalahLabel)
+  ? ok('kontrol: pembaca kartu angka memisahkan label yang benar dan yang salah')
+  : salah(
+      'kontrol pembaca angka',
+      `benar=${kontrolAngkaBenar}, salah-label=${kontrolAngkaSalahLabel} — harus 145 dan NaN`
+    );
+
+const planRender = angkaDariMarkup(popupReceiveProd, 'Plan');
+const masukRender = angkaDariMarkup(popupReceiveProd, 'Masuk Stok');
+const sisaRender = angkaDariMarkup(popupReceiveProd, 'Sisa');
+planRender === hitungReceiveProd.plan
+  ? ok(`receive: kartu "Plan" menampilkan ${hitungReceiveProd.plan} pcs`)
+  : salah('receive plan', `render=${planRender}, seharusnya ${hitungReceiveProd.plan}`);
+
+masukRender === hitungReceiveProd.masuk
+  ? ok(`receive: kartu "Masuk Stok" menampilkan ${hitungReceiveProd.masuk} pcs (Datang − Reject)`)
+  : salah('receive masuk stok', `render=${masukRender}, seharusnya ${hitungReceiveProd.masuk}`);
+
+sisaRender === hitungReceiveProd.sisa
+  ? ok(`receive: kartu "Sisa" menampilkan ${hitungReceiveProd.sisa} pcs`)
+  : salah('receive sisa', `render=${sisaRender}, seharusnya ${hitungReceiveProd.sisa}`);
+
+// Kontrol aritmetika: `Masuk Stok` TIDAK boleh sama dengan `Datang` mentah.
+//
+// Ini inti keputusan pemilik — yang dicatat orang di lapangan adalah "20
+// datang, 2 rusak", dan yang masuk stok adalah 18. Kalau reject diabaikan,
+// dua angka itu jadi sama persis. Di kartu contoh White Label memang ada
+// reject 2 pcs, jadi perbedaannya nyata dan bisa dibuktikan dari data.
+const datangMentahWl = (kedatanganContoh[idReceiveWl] ?? [])
+  .filter((k) => k.status === 'final')
+  .flatMap((k) => Object.values(k.datang))
+  .reduce((s, n) => s + n, 0);
+const rejectWl = (kedatanganContoh[idReceiveWl] ?? [])
+  .filter((k) => k.status === 'final')
+  .flatMap((k) => Object.values(k.reject))
+  .reduce((s, n) => s + n, 0);
+const masukWlRender = angkaDariMarkup(popupReceiveWl, 'Masuk Stok');
+masukWlRender === hitungReceiveWl.masuk
+  ? ok(`receive WL: Masuk Stok ${hitungReceiveWl.masuk} pcs dihitung dari kedatangan final saja`)
+  : salah('receive WL masuk', `render=${masukWlRender}, seharusnya ${hitungReceiveWl.masuk}`);
+
+// Bukti bahwa reject-nya benar-benar DIKURANGKAN, bukan kebetulan sama.
+//
+// Dua sisi diperiksa, dan keduanya perlu:
+//
+//   1. Kartunya. Reject di kedatangan FINAL ikut mengurangi Masuk Stok kartu.
+//   2. Tabelnya. Reject di DRAFT ikut mengurangi barisnya — 25 datang dengan 2
+//      reject harus tampil sebagai 23 masuk, bukan 25.
+//
+// Sisi (2) yang paling mudah hilang: kalau tabel menampilkan `datang` mentah di
+// kolom "Masuk Stok", angkanya tetap terlihat wajar dan tidak ada yang gagal.
+// Reject 2 pcs-nya ada di DRAFT, jadi jumlah final saja tidak akan menemukannya.
+const datangKurangiReject = datangMentahWl - rejectWl;
+datangKurangiReject === masukWlRender && rejectWl === 0
+  ? ok(
+      `receive WL: ${datangMentahWl} datang dari kedatangan final masuk semuanya (tidak ada reject final)`
+    )
+  : salah(
+      'receive reject final',
+      `datang=${datangMentahWl}, reject=${rejectWl}, datang−reject=${datangKurangiReject}, render=${masukWlRender}`
+    );
+
+// Sisi (2): reject yang benar-benar ada — di draft — harus dikurangkan di
+// barisnya. Angka 25/2/23 diambil dari baris yang dihitung komponen, lalu
+// dicocokkan dengan yang tercetak di markup.
+const barisRejectWl = barisDraftWl.filter((b) => b.reject > 0);
+const rejectBenarDikurangkan =
+  barisRejectWl.length > 0 && barisRejectWl.every((b) => b.masuk === b.datang - b.reject);
+rejectBenarDikurangkan
+  ? ok(
+      `receive WL: baris dengan reject menghitung Masuk Stok = Datang − Reject (${barisRejectWl
+        .map((b) => `${b.datang}−${b.reject}=${b.masuk}`)
+        .join(', ')})`
+    )
+  : salah(
+      'receive reject dikurangkan',
+      barisRejectWl.length === 0
+        ? 'tidak ada baris ber-reject di draft — pemeriksaan ini tidak menguji apa pun'
+        : `baris: ${JSON.stringify(barisRejectWl)}`
+    );
+
+// Dan yang tercetak di layar harus angka yang sama. `masuk` dari komponen bisa
+// benar sementara tabelnya mencetak kolom yang salah, jadi keduanya diperiksa.
+const barisTercetak = barisRejectWl.filter(
+  (b) =>
+    popupReceiveWl.includes(`Datang sekarang ${b.warna} ${b.ukuran}`) &&
+    popupReceiveWl.includes(String(b.masuk))
+);
+barisRejectWl.length > 0 && barisTercetak.length === barisRejectWl.length
+  ? ok('receive WL: baris ber-reject itu benar-benar ter-render di tabel')
+  : salah(
+      'receive reject tercetak',
+      `baris ber-reject=${barisRejectWl.length}, ketemu di markup=${barisTercetak.length}`
+    );
+
+// -- Draft TIDAK ikut dihitung sebagai barang masuk.
+//
+// Ini pembeda yang paling mudah hilang: kalau draft ikut dijumlahkan, angka
+// "Sisa" berkurang padahal belum ada yang menekan Simpan — dan begitu draft-nya
+// dibatalkan, angkanya berubah lagi tanpa jejak.
+const draftWl = (kedatanganContoh[idReceiveWl] ?? []).filter((k) => k.status === 'draft');
+const draftPunyaAngka = draftWl.some((k) => Object.keys(k.datang).length > 0);
+const masukTanpaDraft = masukWlRender === hitungReceiveWl.masuk;
+draftPunyaAngka && masukTanpaDraft
+  ? ok('receive: draft berisi angka TIDAK ikut dihitung sebagai Masuk Stok')
+  : salah(
+      'receive draft',
+      `draft punya angka=${draftPunyaAngka}, masuk tanpa draft=${masukTanpaDraft} — keduanya harus true`
+    );
+
+// Badge draft harus tetap terlihat, supaya bedanya bisa dibaca di layar dan
+// bukan cuma benar di dalam hitungan.
+popupReceiveWl.includes('Draft')
+  ? ok('receive: kedatangan berstatus draft ditandai di riwayat')
+  : salah('receive badge draft', 'draft tidak bisa dibedakan dari yang sudah tersimpan');
+
+// -- Formulir penerimaan: kolomnya sesuai mockup owner.
+const kolomReceive = [
+  'Datang Sekarang',
+  'Reject',
+  'Masuk Stok',
+  'Sisa',
+  'Sudah Datang',
+];
+const kolomHilang = kolomReceive.filter((k) => !popupReceiveProd.includes(k));
+kolomHilang.length === 0
+  ? ok('receive: tabel penerimaan punya kolom Plan/Sudah Datang/Datang/Reject/Masuk/Sisa')
+  : salah('receive kolom', `hilang: ${kolomHilang.join(', ')}`);
+
+// Riwayat: kolom "Dicatat Oleh" dari mockup, dan namanya benar-benar tampil.
+popupReceiveProd.includes('Dicatat Oleh') && popupReceiveProd.includes('Jan Chun Siong')
+  ? ok('receive: riwayat kedatangan menampilkan "Dicatat Oleh" dengan namanya')
+  : salah('receive dicatat oleh', 'kolom atau namanya tidak sampai ke markup');
+
+// -- Formulir terbuka sejak awal di kartu yang masih ada sisanya.
+//
+// Ini yang bikin mockup owner terlihat apa adanya saat presentasi: p-06 punya
+// dua kedatangan selesai (nomor berikutnya 3), dan formulirnya sudah terbuka
+// dengan badge "Receipt #3". Kalau formulirnya di balik satu klik, tabel per
+// varian — inti mockup itu — tidak terlihat sampai ada yang menekan tombol.
+//
+// Nomor receipt-nya diperiksa juga, bukan cuma keberadaan formulirnya: nomor
+// itu dihitung dari kedatangan yang sudah ada, jadi kartu yang nomornya salah
+// berarti `urutBaru`-nya salah, dan kedatangan berikutnya akan menimpa baris
+// yang sudah ada lewat pencocokan `urut`.
+const nomorReceiptProd = /Receipt #(\d+)/.exec(popupReceiveProd)?.[1];
+const punyaTabelProd = popupReceiveProd.includes('Datang Sekarang');
+punyaTabelProd && nomorReceiptProd === String(hitungReceiveProd.jumlah + 1)
+  ? ok(
+      `receive: formulir sudah terbuka di kartu yang ada sisanya, dengan Receipt #${nomorReceiptProd}`
+    )
+  : salah(
+      'receive formulir terbuka',
+      `tabel ada=${punyaTabelProd}, Receipt #=${nomorReceiptProd}, seharusnya ${hitungReceiveProd.jumlah + 1}`
+    );
+
+// Kontrol dua arah: kartu yang SEMUA variannya sudah penuh tidak boleh membuka
+// formulir. Di sana tidak ada lagi yang bisa dicatat, dan tombol "Catat Barang
+// Datang"-nya memang mati — formulir yang tetap terbuka hanya menyisakan isian
+// yang tidak mungkin disimpan.
+const punyaTabelLengkap = popupReceiveLengkap.includes('Datang Sekarang');
+!punyaTabelLengkap
+  ? ok('kontrol: kartu yang sudah penuh TIDAK membuka formulir penerimaan')
+  : salah(
+      'kontrol formulir penuh',
+      'formulir terbuka padahal semua varian sudah terpenuhi — tidak ada yang bisa dicatat'
+    );
+
+// -- Gerbang Q9: lengkap ATAU selisihnya sudah diputuskan.
+//
+// Tiga keadaan diuji, dan ketiganya diperlukan. Satu keadaan saja tidak bisa
+// membedakan "gerbang membaca syaratnya" dari "gerbang selalu mati" atau
+// "gerbang selalu hidup".
+//
+// Tombolnya dicari lewat pembantu yang sama dengan tiket 5 (`tombolLanjutDari`),
+// yang membaca ATRIBUT `disabled` — bukan kata "disabled" di markup. Class
+// Button Base UI selalu memuat `disabled:opacity-50`, jadi pencarian teks
+// selalu menemukannya pada tombol yang justru AKTIF.
+//
+// PEMBANTU INI SENGAJA DIREPLIKASI di sini, bukan memakai `tombolMatiTiket5`
+// yang dideklarasikan di blok tiket 5 di BAWAH: blok ini berjalan lebih dulu,
+// dan `const` belum terinisialisasi — memakainya melempar ReferenceError, yang
+// di skrip ini terlihat seperti smoke test mati, bukan seperti pemeriksaan
+// gagal. Definisi aslinya tetap satu arah dan diperiksa di blok tiket 5.
+const tombolLanjutDariSini = (html) => {
+  const cocok = html.match(
+    /<button[^>]*>(?:(?!<\/button>)[\s\S])*?Lanjut ke(?:(?!<\/button>)[\s\S])*?<\/button>/
+  );
+  return cocok ? cocok[0] : '';
+};
+const tombolReceiveMati = (html) => /\sdisabled(\s|=|>|\/)/.test(tombolLanjutDariSini(html));
+
+// Keadaan 1 — belum lengkap, belum diputuskan: tombol MATI, pemutus muncul.
+tombolReceiveMati(popupReceiveProd)
+  ? ok('receive: tombol Lanjut mati selama masih ada sisa yang belum diputuskan')
+  : salah('receive gerbang', 'tombol Lanjut hidup padahal varian belum terpenuhi');
+
+popupReceiveProd.includes('Solution') && popupReceiveProd.includes('Log Solution')
+  ? ok('receive: pemutus selisih (Solution + Log Solution) tampil saat ada sisa')
+  : salah('receive pemutus', 'Solution/Log Solution tidak muncul padahal masih ada sisa');
+
+// Keadaan 2 — masih belum lengkap, TAPI selisihnya sudah diputuskan: tombol
+// HIDUP. Ini jalur kedua dari keputusan owner, dan tanpa diuji ia cuma ada di
+// kode — kartu yang selisihnya sudah diputuskan akan tetap tertahan selamanya.
+const putusanHidup = !tombolReceiveMati(popupReceivePutuskan);
+putusanHidup
+  ? ok('receive: selisih yang sudah diputuskan membuka gerbang walau varian belum penuh')
+  : salah(
+      'receive jalur kedua',
+      'Solution + Log terisi tapi tombol Lanjut masih mati — keputusan owner tidak berpengaruh'
+    );
+
+// Kontrol bahwa keadaan 2 memang berbeda dari keadaan 1 karena Solution-nya,
+// bukan karena sebab lain: keduanya kartu yang sama dengan kedatangan yang
+// sama, jadi satu-satunya pembeda adalah `tahapAkhir`.
+const putusanBerbeda = tombolReceiveMati(popupReceiveTanpaPutusan) && !tombolReceiveMati(popupReceivePutuskan);
+putusanBerbeda
+  ? ok('kontrol: dua popup itu identik kecuali Solution — dan hanya itu yang mengubah gerbangnya')
+  : salah('kontrol jalur kedua', 'kedua popup tidak berbeda, jadi pemeriksaan di atas tidak membuktikan apa pun');
+
+// Keadaan 3 — semua varian penuh: tombol HIDUP, dan kolom pemutus HILANG.
+// Kolomnya harus hilang, bukan cuma diabaikan: meminta orang mengisi keputusan
+// untuk selisih yang tidak ada adalah cara membuatnya berhenti membacanya.
+const lanjutHidup = !tombolReceiveMati(popupReceiveLengkap);
+lanjutHidup
+  ? ok('receive: kartu yang semua variannya penuh boleh lanjut')
+  : salah('receive lengkap', 'tombol Lanjut masih mati padahal tidak ada sisa');
+
+!popupReceiveLengkap.includes('Log Solution')
+  ? ok('receive: pemutus selisih hilang saat semua varian sudah terpenuhi')
+  : salah('receive pemutus berlebih', 'Solution diminta padahal tidak ada selisih');
+
+// -- Q10: dasar kesesuaian berbeda per papan.
+//
+// White Label mengukurnya ke surat jalan; Production ke hasil cutting. Dua
+// kalimat ini tidak boleh tertukar, karena itu justru yang membedakan keduanya
+// — dan salahnya tidak memunculkan error apa pun.
+//
+// Yang diperiksa adalah kalimat LENGKAPNYA, bukan kata "surat jalan" saja.
+// Kata itu muncul di dua tempat berbeda — kalimat keterangan di atas, dan
+// catatan di kaki tabel penerimaan — jadi pemeriksaan potongan tidak bisa
+// membedakan keduanya, dan salah satunya bisa hilang tanpa ketahuan.
+const dasarWl = 'Kesesuaiannya diukur terhadap surat jalan';
+const dasarProd = 'Kesesuaiannya diukur terhadap hasil cutting, bukan surat jalan.';
+popupReceiveWl.includes(dasarWl)
+  ? ok('receive WL: dasar kesesuaian disebut surat jalan')
+  : salah('receive WL dasar', 'kalimat dasarnya tidak muncul di popup White Label');
+
+// Kontrol dua arah untuk kalimat yang sama. Di papan Production kalimat itu
+// TIDAK BOLEH muncul — kalau muncul, kartu Production dituntut mencocokkan
+// kiriman ke surat jalan yang tidak pernah ia terima.
+!popupReceiveProd.includes(dasarWl)
+  ? ok('receive Production: TIDAK memakai dasar surat jalan')
+  : salah('receive Production dasar', 'popup Production menyebut dasar surat jalan');
+
+popupReceiveProd.includes(dasarProd)
+  ? ok('receive Production: dasarnya hasil cutting, dan itu ditulis apa adanya')
+  : salah('receive Production kalimat', 'kalimat dasar hasil cutting tidak muncul');
+
+// Kotak bukti mengikuti papan: White Label punya Surat Jalan, Production tidak.
+//
+// Diperiksa dari INPUT UNGGAHNYA (`aria-label="Unggah <judul>"`), bukan dari
+// teks judulnya. Judul "Surat Jalan" kebetulan juga muncul di kalimat
+// keterangan White Label, jadi mencari teksnya akan hijau walaupun kotak
+// buktinya hilang — persis kelas kesalahan yang sudah pernah lolos di repo ini.
+const kotakSuratJalanWl = popupReceiveWl.includes('Unggah Surat Jalan');
+const kotakSuratJalanProd = popupReceiveProd.includes('Unggah Surat Jalan');
+!kotakSuratJalanProd && kotakSuratJalanWl
+  ? ok('receive: kotak unggah Surat Jalan hanya ada di papan White Label')
+  : salah(
+      'receive kotak surat jalan',
+      `Production=${kotakSuratJalanProd}, WhiteLabel=${kotakSuratJalanWl} — harus false dan true`
+    );
+
+// Kotak bukti penerimaan harus benar-benar TERENDER di kedua papan.
+const kotakBuktiTerimaWl = popupReceiveWl.includes('Unggah Bukti Terima');
+const kotakBuktiTerimaProd = popupReceiveProd.includes('Unggah Bukti Terima');
+kotakBuktiTerimaWl && kotakBuktiTerimaProd
+  ? ok('receive: kotak unggah Bukti Terima ada di kedua papan')
+  : salah(
+      'receive kotak bukti terima',
+      `Production=${kotakBuktiTerimaProd}, WhiteLabel=${kotakBuktiTerimaWl}`
+    );
+
+// KONTROL untuk cara baca itu: label unggah memang khas per jenis bukti.
+// Dibandingkan dengan kotak milik tahap lain yang ada di halaman ini — kalau
+// pola `Unggah <judul>` cocok untuk apa pun, dua pemeriksaan di atas tidak
+// membedakan kotak yang benar dari yang salah.
+const labelUnggahCutting = 'Unggah Laporan Potong Kain';
+const labelUnggahCuttingAda = popupPerStage['cutting'].includes(labelUnggahCutting);
+labelUnggahCuttingAda && !popupReceiveProd.includes(labelUnggahCutting)
+  ? ok('kontrol: label unggah milik stage lain tidak ikut terbaca di Receive')
+  : salah(
+      'kontrol label unggah',
+      `label cutting di popup cutting=${labelUnggahCuttingAda}, bocor ke Receive=${popupReceiveProd.includes(labelUnggahCutting)}`
+    );
+
+// Kontrol penting: bukti penerimaan TIDAK boleh terhitung sebagai bukti stage
+// lain. Yang dibandingkan ID JENISNYA, karena itulah yang menentukan apakah
+// sebuah berkas terhitung dua kali saat peta bukti digabung di Finance
+// Validate — bukan teks judulnya, yang toh tidak dibaca di sana.
+//
+// Yang dibandingkan SEMUA store lain, bukan cuma Cutting dan Invoice Logistic:
+// Finance Validate menggabungkan Cutting + HPP + tiga tahap akhir jadi satu
+// peta. Store yang lupa ikut diperiksa berarti jalur tabrakannya tidak dijaga.
+const idBuktiTahapLain = [
+  ...idJenisBukti.cutting,
+  ...idJenisBukti.invoiceLogistic,
+  ...idJenisBukti.upload,
+  ...idJenisBukti.hpp,
+];
+const idBuktiTumpangTindih = idJenisBukti.receive.filter((id) => idBuktiTahapLain.includes(id));
+idBuktiTumpangTindih.length === 0
+  ? ok(
+      `receive: ${idJenisBukti.receive.length} id jenis bukti penerimaan tidak dipakai ${idBuktiTahapLain.length} id tahap lain`
+    )
+  : salah(
+      'receive id bentrok',
+      `id yang dipakai dua tahap: ${idBuktiTumpangTindih.join(', ')} — bukti akan terhitung dua kali`
+    );
+
+// Kontrol positif untuk cara baca itu: daftar BUATAN yang memang punya id sama
+// harus tertangkap oleh cara baca yang sama. Tanpa ini, `filter` yang selalu
+// mengembalikan array kosong membuat pemeriksaan di atas hijau tanpa membaca
+// apa pun — persis kesalahan yang sudah pernah lolos di repo ini.
+//
+// Kontrol ini SENGAJA tidak menyentuh data sungguhan: ia hanya membuktikan
+// `cariBentrok` bisa menemukan bentrok kalau ada. Kalau ia ikut menuntut data
+// asli bebas bentrok, ia gagal bersamaan dengan pemeriksaan utamanya dan
+// berhenti jadi pembanding yang berdiri sendiri.
+const cariBentrok = (a, b) => a.filter((id) => b.includes(id));
+const bentrokBuatan = cariBentrok(['bukti-terima', 'laporan-potong'], ['laporan-potong']);
+bentrokBuatan.length === 1 && bentrokBuatan[0] === 'laporan-potong'
+  ? ok('kontrol: pencarian id yang tumpang tindih memang bisa menemukan bentrok')
+  : salah(
+      'kontrol id bentrok',
+      `buatan=${JSON.stringify(bentrokBuatan)} (harus ['laporan-potong']) — cara bacanya tidak bisa menemukan bentrok`
+    );
+
+// Dan yang paling akhir: popup Finance Validate tetap dirender tanpa error
+// sesudah store keempat ditambahkan — kalau penggabungan peta di sana melempar,
+// seluruh halaman Finance mati dan itu harus ketahuan di sini.
+popupFinanceProd.length > 0 && popupFinanceWl.length > 0
+  ? ok('receive: Finance Validate tetap ter-render sesudah store keempat ditambahkan')
+  : salah('receive finance', 'popup Finance Validate kosong atau gagal dirender');
 
 // ===== Hasil =====
 

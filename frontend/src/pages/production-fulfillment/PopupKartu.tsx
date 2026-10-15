@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react';
-import { ExternalLink, FileText, Paperclip, X } from 'lucide-react';
+import { ExternalLink, FileText, Paperclip, Plus, X } from 'lucide-react';
 import { badgeVariants } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Progress } from '@/components/ui/progress';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -30,34 +31,43 @@ import {
 import { BadgeStatus } from './KartuFulfillment';
 import type {
   BarisBahan,
+  BarisPenerimaan,
   BerkasBukti,
   BuktiCutting,
+  BuktiReceive,
   BuktiTahapAkhir,
   CatatanKembalikan,
   CuttingPcs,
   DataTahapAkhir,
   KartuPdff,
+  Kedatangan,
+  KedatanganKartu,
   KembalikanCutting,
   RingkasanBahan,
   RingkasanCutting,
+  RingkasanTerima,
   SiapBahan,
   StagePapan,
 } from './data-kanban';
 import {
   JENIS_BUKTI_CUTTING,
   JENIS_BUKTI_INVOICE_LOGISTIC,
+  JENIS_BUKTI_RECEIVE,
   JENIS_BUKTI_UPLOAD,
+  barisPenerimaan,
   barisVarian,
   bahanKartu,
   jenisBuktiTahap,
   jumlahVarian,
+  masukStokKedatangan,
   ringkasBahan,
   ringkasCutting,
   ringkasTahapBukti,
+  ringkasTerima,
   skuVarian,
   totalPcs,
 } from './data-kanban';
-import { FLOW_TRANSAKSI, SOLUSI, labelDari } from '@/lib/opsi';
+import { FLOW_TRANSAKSI, LOKASI_TERIMA, SOLUSI, SUMBER_TERIMA, labelDari } from '@/lib/opsi';
 import { cn } from '@/lib/utils';
 import type { BarisShipmentRingkas, SumberPapan } from './hpp';
 import { labelStageAsal, temuanKartu, type BarisTerima } from './temuan';
@@ -169,6 +179,32 @@ export interface AksiStage {
   /** Buang satu berkas bukti tahap akhir. */
   hapusBuktiTahap: (kartu: KartuPdff, jenis: string, nama: string) => void;
   /**
+   * Tambah satu berkas bukti penerimaan (stage Receive).
+   *
+   * Store KEEMPAT, terpisah dari tiga yang di atas. Alasannya bukan kerapian:
+   * `SeksiFinanceValidate` menggabungkan bukti Cutting + HPP + tiga tahap akhir
+   * jadi satu peta untuk menghitung temuan, dan bukti penerimaan yang ikut ke
+   * sana akan muncul sebagai "bukti" di tahap yang tidak pernah
+   * mengunggahnya — tanpa satu pun pemeriksaan yang gagal.
+   */
+  tambahBuktiReceive: (kartu: KartuPdff, jenis: string, berkas: File) => void;
+  /** Buang satu berkas bukti penerimaan. */
+  hapusBuktiReceive: (kartu: KartuPdff, jenis: string, nama: string) => void;
+  /**
+   * Simpan satu kedatangan barang (stage Receive) — draft atau penerimaan.
+   *
+   * Yang dikirim adalah SATU baris kedatangan utuh, bukan angka yang tersebar:
+   * tanggal, lokasi, sumber, pcs per varian, dan statusnya memang satu
+   * peristiwa, dan memecahnya jadi lima handler berarti lima tempat yang bisa
+   * lupa salah satunya.
+   *
+   * `status` menentukan apakah kedatangan ini ikut dihitung sebagai barang
+   * masuk. Draft tidak — lihat catatan di `data-kanban.ts`.
+   */
+  simpanKedatangan: (kartu: KartuPdff, data: Kedatangan) => void;
+  /** Buang satu kedatangan — draft yang batal, atau catatan yang salah entri. */
+  hapusKedatangan: (kartu: KartuPdff, urut: number) => void;
+  /**
    * Tutup satu temuan di Finance Validate.
    *
    * Yang disimpan adalah ID temuan, bukan objeknya. Temuannya DIHITUNG dari
@@ -240,6 +276,8 @@ export default function PopupKartu({
   cuttingPcs,
   buktiHpp,
   buktiTahap,
+  buktiReceive,
+  kedatangan,
   renderHpp,
   buktiCutting,
   kembalikan,
@@ -289,6 +327,17 @@ export default function PopupKartu({
    */
   buktiTahap: BuktiTahapAkhir;
   /**
+   * Bukti penerimaan (stage Receive), seluruh kartu.
+   *
+   * Store keempat, terpisah dari `buktiTahap` — id jenisnya beda
+   * (`bukti-terima`, `surat-jalan`), dan `SeksiFinanceValidate` menggabungkan
+   * tiga store lain jadi satu peta untuk menghitung temuan. Bergabung di situ
+   * membuat foto barang datang terlihat seperti bukti Invoice Logistic.
+   */
+  buktiReceive: BuktiReceive;
+  /** Kedatangan barang per kartu — seluruh kartu, bukan satu kartu. */
+  kedatangan: KedatanganKartu;
+  /**
    * Seksi HPP & Price, diberikan dari luar sebagai fungsi render.
    *
    * Bukan import langsung ke `SeksiHppPrice`, dan itu bukan kerapian: berkas itu
@@ -336,6 +385,8 @@ export default function PopupKartu({
           buktiCutting={buktiCutting}
           buktiHpp={buktiHpp}
           buktiTahap={buktiTahap}
+          buktiReceive={buktiReceive}
+          kedatangan={kedatangan}
           // WAJIB diteruskan, dan pernah lupa di sini: `IsiPopup` punya
           // default `sumber = 'production'`, jadi papan White Label yang lupa
           // mengoper prop ini TIDAK error — ia diam-diam memakai aturan
@@ -379,6 +430,8 @@ export function IsiPopup({
   buktiCutting = {},
   buktiHpp = {},
   buktiTahap = {},
+  buktiReceive = {},
+  kedatangan = {},
   renderHpp,
   kembalikan = {},
   sudahLewat = [],
@@ -408,6 +461,17 @@ export function IsiPopup({
   buktiCutting?: BuktiCutting;
   /** Bukti kalkulasi HPP kartu ini saja — sudah diambil `buktiHpp[kartu.id]`. */
   buktiHpp?: BuktiCutting;
+  /** Bukti penerimaan, SELURUH kartu — `IsiPopup` yang mengambil milik kartu ini. */
+  buktiReceive?: BuktiReceive;
+  /**
+   * Kedatangan barang, SELURUH kartu.
+   *
+   * Sama seperti `buktiTahap`: yang dioper pemanggil adalah peta lengkap, dan
+   * pengambilan `kedatangan[kartu.id]` terjadi di SATU tempat di sini. Kalau
+   * tiap pemanggil mengambil sendiri, ada dua tempat yang bisa lupa — dan
+   * popup akan menampilkan riwayat milik kartu lain tanpa ada yang gagal.
+   */
+  kedatangan?: KedatanganKartu;
   /**
    * Bukti tiga tahap akhir, SELURUH kartu — bukan satu kartu.
    *
@@ -489,6 +553,7 @@ export function IsiPopup({
   const bisaApprove = stageId === 'propose';
   const bisaPrepare = stageId === 'prepare';
   const bisaCutting = stageId === 'cutting';
+  const bisaReceive = stageId === 'receive';
   const bisaHpp = stageId === 'hpp-price';
   const bisaInvoiceLogistic = stageId === 'invoice-logistic';
   const bisaInvoiceProduct = stageId === 'invoice-product';
@@ -514,6 +579,15 @@ export function IsiPopup({
     ...aksi,
     tambahBukti: aksi.tambahBuktiTahap,
     hapusBukti: aksi.hapusBuktiTahap,
+  };
+
+  // Shim ketiga untuk stage Receive. Store buktinya sendiri lagi, dan
+  // `lanjutStage` tetap diteruskan apa adanya — yang menentukan ke mana kartu
+  // pindah adalah urutan kolom papan, bukan stage yang sedang dirender.
+  const aksiReceive: AksiStage | undefined = aksi && {
+    ...aksi,
+    tambahBukti: aksi.tambahBuktiReceive,
+    hapusBukti: aksi.hapusBuktiReceive,
   };
 
   // Terkunci HANYA di stage Cutting, dan hanya kalau pernah disetujui. Di
@@ -596,6 +670,19 @@ export function IsiPopup({
         />
       )}
 
+      {bisaReceive && (
+        <SeksiReceive
+          kartu={kartu}
+          sumber={sumber}
+          ringkas={ringkasTerima(kartu, kedatangan[kartu.id] ?? [])}
+          kedatangan={kedatangan[kartu.id] ?? []}
+          bukti={buktiReceive[kartu.id] ?? {}}
+          tujuan={stageBerikutnya}
+          tahap={kartu.tahapAkhir ?? {}}
+          aksi={aksiReceive}
+        />
+      )}
+
       {bisaHpp &&
         renderHpp?.({
           kartu,
@@ -659,6 +746,7 @@ export function IsiPopup({
       {!bisaApprove &&
         !bisaPrepare &&
         !bisaCutting &&
+        !bisaReceive &&
         !bisaInvoiceLogistic &&
         !bisaInvoiceProduct &&
         !bisaUpload &&
@@ -1916,6 +2004,764 @@ export function KotakBukti({
       />
     </div>
   );
+}
+
+// ===== Stage Receive (tiket 6) =====
+//
+// Bentuknya mengikuti mockup owner 24 September 2026, dan yang paling penting
+// dipertahankan dari mockup itu bukan tata letaknya, melainkan SATU data:
+// popup ini adalah FORM, sedangkan halaman `/modul/barang-datang` adalah
+// DAFTAR dari data yang sama (Q6). Karena itu tidak ada satu pun angka di sini
+// yang disimpan di dalam komponen ini — semuanya dibaca dari `kedatangan` yang
+// hidup di papan, supaya popup dan halaman tidak bisa menampilkan dua angka
+// berbeda untuk barang yang sama.
+//
+// Empat angka di atas, tiga tab di bawah, dan formulir per varian di tab
+// kedua. Yang TIDAK dipakai dari mockup: tab "Dokumen" dan "Masalah" diisi
+// ringkasan yang memang sudah ada datanya (bukti, dan temuan Finance
+// Validate) — tab kosong dengan judul menggoda lebih buruk daripada tidak ada
+// tab sama sekali, karena pemilik akan mengkliknya saat presentasi.
+
+const LABEL_STATUS_TERIMA: Record<Kedatangan['status'], string> = {
+  draft: 'Draft',
+  final: 'Tersimpan',
+};
+
+function SeksiReceive({
+  kartu,
+  sumber,
+  ringkas,
+  kedatangan,
+  bukti,
+  tujuan,
+  tahap,
+  aksi,
+}: {
+  kartu: KartuPdff;
+  sumber: SumberPapan;
+  ringkas: RingkasanTerima;
+  kedatangan: Kedatangan[];
+  bukti: Record<string, BerkasBukti[]>;
+  tujuan?: StagePapan;
+  /** Isi tahap akhir kartu — dibaca untuk gerbang Q9 (Solution + Log). */
+  tahap: DataTahapAkhir;
+  aksi?: AksiStage;
+}) {
+  // Draft yang sedang diisi. Satu saja per kartu: dua draft sekaligus berarti
+  // dua angka yang sama-sama "belum disimpan", dan tidak ada cara tahu mana
+  // yang dipakai saat penerimaannya disimpan.
+  const draft = kedatangan.find((k) => k.status === 'draft');
+
+  const baris = barisPenerimaan(kartu, ringkas, draft);
+  const lengkap = baris.every((b) => b.sisa === 0);
+  const solusi = tahap.solution ?? '';
+  const logSolusi = (tahap.logSolution ?? '').trim();
+  const adaSolusi = solusi !== '' && logSolusi !== '';
+  const bolehLanjut = lengkap || adaSolusi;
+
+  const [draftBaru, setDraftBaru] = useState(false);
+  // Ditutup sendiri oleh yang memakainya. Dipisah dari `draftBaru` karena
+  // formulirnya kini terbuka sejak awal: tanpa penanda ini, tombol silang
+  // tidak bisa menutupnya — syarat "masih ada sisa" tetap benar, jadi
+  // formulirnya muncul lagi seketika dan tombolnya terasa rusak.
+  const [formDitutup, setFormDitutup] = useState(false);
+  // Formulirnya TERBUKA sejak awal selama masih ada yang perlu diterima.
+  //
+  // Mockup owner menggambarnya terbuka — lengkap dengan badge 'Receipt #3' —
+  // dan stage ini memang ada untuk mencatat kedatangan. Membiarkannya di balik
+  // satu klik membuat tabel per variannya, yang justru inti mockup itu, tidak
+  // terlihat sampai ada yang menekan tombol; yang terlihat lebih dulu cuma
+  // ringkasan dan riwayat.
+  //
+  // Kartu yang sudah penuh tetap tertutup: di sana tidak ada lagi yang bisa
+  // dicatat, dan tombol "Catat Barang Datang"-nya memang sudah mati.
+  const terbuka = !formDitutup && (draftBaru || Boolean(draft) || ringkas.sisa > 0);
+
+  // Nomor kedatangan berikutnya dihitung SETIAP render, bukan disimpan di
+  // state formulir. Kalau ia ikut jadi nilai awal `useState`, nomornya
+  // terhitung sekali saat komponen lahir — dan kedatangan kedua yang dicatat
+  // tanpa menutup popup akan memakai nomor yang sama, lalu menimpa yang
+  // pertama lewat pencocokan `urut`. Tidak ada yang gagal; yang terlihat cuma
+  // "kok riwayatnya cuma satu?".
+  const urutBaru = kedatangan.reduce((m, k) => Math.max(m, k.urut), 0) + 1;
+
+  const [form, setForm] = useState<Kedatangan>(() => ({
+    urut: 0,
+    tanggal: new Date().toISOString().slice(0, 10),
+    lokasi: LOKASI_TERIMA[0].value,
+    sumber: SUMBER_TERIMA[0].value,
+    datang: {},
+    reject: {},
+    keterangan: '',
+    dicatatOleh: '',
+    status: 'draft',
+  }));
+
+  const jenisBukti = JENIS_BUKTI_RECEIVE.filter(
+    (j) => j.id !== 'surat-jalan' || sumber === 'whitelabel'
+  );
+
+  return (
+    <section className="space-y-4">
+      <JudulSeksi
+        judul="Penerimaan Barang"
+        keterangan={
+          sumber === 'whitelabel'
+            ? 'Barang datang dari vendor luar negeri. Kesesuaiannya diukur terhadap surat jalan — papan ini tidak punya Cutting.'
+            : 'Barang datang dari hasil cutting. Kesesuaiannya diukur terhadap hasil cutting, bukan surat jalan.'
+        }
+      />
+
+      {/* Empat kartu angka. Susunannya mengikuti mockup: Plan → Masuk Stok →
+          Sisa → Kedatangan. Yang dibaca lebih dulu adalah "berapa yang
+          direncanakan", baru "berapa yang sudah masuk" — bukan sebaliknya. */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KartuAngka label="Plan" nilai={`${ringkas.plan} pcs`} />
+        <KartuAngka
+          label="Masuk Stok"
+          nilai={`${ringkas.masukStok} pcs`}
+          keterangan={`${ringkas.persen}% dari plan`}
+          nada={ringkas.masukStok > 0 ? 'hijau' : 'netral'}
+        />
+        <KartuAngka
+          label="Sisa"
+          nilai={`${ringkas.sisa} pcs`}
+          // Kartu ini hanya menjumlahkan kedatangan yang sudah TERSIMPAN,
+          // sedangkan tabel di bawah menghitung draft yang sedang diisi
+          // (sengaja — supaya sisanya bergerak saat diketik). Dua angka "Sisa"
+          // di satu layar tanpa keterangan terbaca seperti salah hitung, jadi
+          // keterangannya muncul justru hanya saat keduanya memang berbeda.
+          keterangan={draft ? 'belum termasuk draft di bawah' : undefined}
+          nada={ringkas.sisa > 0 ? 'kuning' : 'hijau'}
+        />
+        <KartuAngka
+          label="Kedatangan"
+          nilai={`${ringkas.jumlahKedatangan}×`}
+          keterangan={ringkas.terakhir ? `terakhir ${formatTanggal(ringkas.terakhir)}` : 'belum ada'}
+        />
+      </div>
+
+      {/* Tombol catat. Hanya muncul saat formulirnya sedang tertutup — baik
+          karena sudah penuh, maupun karena yang memakainya menutupnya sendiri.
+          Menekannya membuka kembali yang tadi ditutup, bukan membuat formulir
+          kedua: isian yang belum disimpan tidak boleh hilang karena satu klik
+          yang tidak sengaja. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground">
+            {ringkas.jumlahKedatangan > 0
+              ? `${ringkas.jumlahKedatangan} kedatangan tercatat`
+              : 'Barang belum pernah datang'}
+          </span>
+          {draft && (
+            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">
+              Draft belum disimpan
+            </span>
+          )}
+        </div>
+        {!terbuka && (
+          <Button
+            onClick={() => {
+              setFormDitutup(false);
+              setDraftBaru(true);
+            }}
+            disabled={ringkas.sisa === 0}
+            title={
+              ringkas.sisa === 0
+                ? 'Semua varian sudah terpenuhi — tidak ada yang perlu dicatat lagi.'
+                : undefined
+            }
+          >
+            <Plus /> Catat Barang Datang
+          </Button>
+        )}
+      </div>
+
+      {/* Formulir penerimaan — hanya saat terbuka. Semua isiannya masuk ke
+          `form` lokal dan baru naik ke papan saat tombol Simpan ditekan. */}
+      {terbuka && (
+        <div className="space-y-3 rounded-lg border-2 border-blue-200 p-3 dark:border-blue-900">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-sm font-semibold">Catat Barang Datang</span>
+              <span className="rounded bg-blue-100 px-1.5 py-0.5 font-mono text-[11px] font-semibold text-blue-800 dark:bg-blue-950 dark:text-blue-300">
+                Receipt #{draft?.urut ?? urutBaru}
+              </span>
+            </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-7 text-muted-foreground"
+              aria-label="Tutup formulir penerimaan"
+              onClick={() => {
+                // Menutup formulir TIDAK membuang apa pun — ia hanya
+                // menyembunyikannya, dan tombol "Catat Barang Datang" membuka
+                // kembali isian yang sama.
+                //
+                // Sebelumnya tombol silang ini sekaligus menghapus draft yang
+                // tersimpan. Karena formulirnya kini terbuka sejak awal, satu
+                // klik tidak sengaja akan menghapus catatan yang sudah dibuat —
+                // dan yang terlihat cuma riwayat yang menyusut, tanpa pesan apa
+                // pun. Membuang draft harus jadi tindakan tersendiri, bukan
+                // akibat sampingan dari menutup jendela.
+                setDraftBaru(false);
+                setFormDitutup(true);
+              }}
+            >
+              <X />
+            </Button>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium text-muted-foreground">Tanggal Datang</div>
+              <Input
+                type="date"
+                aria-label="Tanggal datang"
+                value={draft?.tanggal ?? form.tanggal}
+                onChange={(e) => {
+                  const v = e.target.value;
+                  if (draft) aksi?.simpanKedatangan(kartu, { ...draft, tanggal: v });
+                  else setForm((f) => ({ ...f, tanggal: v }));
+                }}
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium text-muted-foreground">Lokasi Terima</div>
+              <Select
+                value={draft?.lokasi ?? form.lokasi}
+                onValueChange={(v) => {
+                  const nilai = String(v);
+                  if (draft) aksi?.simpanKedatangan(kartu, { ...draft, lokasi: nilai });
+                  else setForm((f) => ({ ...f, lokasi: nilai }));
+                }}
+              >
+                <SelectTrigger aria-label="Lokasi terima" className="w-full">
+                  <SelectValue>
+                    {(v: string) => labelDari(LOKASI_TERIMA, v)}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {LOKASI_TERIMA.map((l) => (
+                    <SelectItem key={l.value} value={l.value}>
+                      {l.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium text-muted-foreground">Ke Mana Barangnya</div>
+              <Select
+                value={draft?.sumber ?? form.sumber}
+                onValueChange={(v) => {
+                  const nilai = String(v);
+                  if (draft) aksi?.simpanKedatangan(kartu, { ...draft, sumber: nilai });
+                  else setForm((f) => ({ ...f, sumber: nilai }));
+                }}
+              >
+                <SelectTrigger aria-label="Ke mana barangnya" className="w-full">
+                  <SelectValue>
+                    {(v: string) => labelDari(SUMBER_TERIMA, v)}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  {SUMBER_TERIMA.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <TabelPenerimaan
+            baris={baris}
+            sumber={sumber}
+            datang={draft?.datang ?? form.datang}
+            reject={draft?.reject ?? form.reject}
+            onUbah={(kunci, kolom, nilai) => {
+              // Dua jalur tulis yang sengaja dipisah: begitu draft-nya ada di
+              // papan, tiap ketikan langsung naik ke sana — supaya angka di
+              // empat kartu atas ikut bergerak saat diketik. Sebelum ada
+              // draft, ketikannya masih di komponen ini, dan draft-nya baru
+              // lahir saat Simpan Draft ditekan.
+              const dasar: Kedatangan = draft ?? form;
+              const isi = { ...(kolom === 'datang' ? dasar.datang : dasar.reject) };
+              if (nilai === undefined) delete isi[kunci];
+              else isi[kunci] = nilai;
+              const baru =
+                kolom === 'datang' ? { ...dasar, datang: isi } : { ...dasar, reject: isi };
+              if (draft) aksi?.simpanKedatangan(kartu, baru);
+              else setForm(baru);
+            }}
+          />
+
+          <div className="space-y-1.5">
+            <div className="text-xs font-medium text-muted-foreground">
+              Keterangan Reject <span className="font-normal">(opsional)</span>
+            </div>
+            <Textarea
+              aria-label="Keterangan reject"
+              rows={2}
+              placeholder="Mis. dua pcs jahitan miring, dikembalikan ke konveksi."
+              value={draft?.keterangan ?? form.keterangan}
+              onChange={(e) => {
+                const v = e.target.value;
+                if (draft) aksi?.simpanKedatangan(kartu, { ...draft, keterangan: v });
+                else setForm((f) => ({ ...f, keterangan: v }));
+              }}
+            />
+          </div>
+
+          {/* Bukti penerimaan. Memakai KotakBukti yang sama dengan tahap lain —
+              unggah, pratinjau foto, dan buka di tab baru sudah diurus di sana,
+              dan menyalinnya berarti aturan "nama kembar tidak dihitung dua
+              kali" punya versi kedua yang bisa berbeda. */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            {jenisBukti.map((j) => (
+              <KotakBukti
+                key={j.id}
+                jenis={j.id}
+                judul={j.judul}
+                keterangan={j.keterangan}
+                terima={j.terima}
+                sudahAda={(bukti[j.id]?.length ?? 0) > 0}
+                berkas={bukti[j.id] ?? []}
+                aksi={aksi}
+                kartu={kartu}
+              />
+            ))}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-muted-foreground">
+              Simpan Draft tidak menghitung barang sebagai masuk stok — angka di atas baru bergerak
+              setelah Simpan Penerimaan.
+            </p>
+            <div className="flex gap-2">
+              {/* Membuang draft jadi tindakan TERSENDIRI, bukan akibat sampingan
+                  dari menutup formulir. Tombolnya hanya ada kalau memang ada
+                  draft yang tersimpan — sebelum ini, satu-satunya cara
+                  membuangnya adalah tombol silang, dan itu sekarang cuma
+                  menyembunyikan. */}
+              {draft && (
+                <Button
+                  variant="ghost"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => {
+                    aksi?.hapusKedatangan(kartu, draft.urut);
+                    setDraftBaru(false);
+                  }}
+                >
+                  Buang Draft
+                </Button>
+              )}
+              <Button
+                variant="outline"
+                onClick={() => {
+                  // `urut` diambil dari `draft ?? urutBaru`, bukan dari `form`:
+                  // formulir baru belum punya nomor sampai disimpan, dan
+                  // menulis `form.urut` yang masih 0 membuat kedatangan
+                  // pertamanya menimpa baris yang salah.
+                  const isi: Kedatangan = {
+                    ...(draft ?? form),
+                    urut: draft?.urut ?? urutBaru,
+                    status: 'draft',
+                  };
+                  aksi?.simpanKedatangan(kartu, isi);
+                  setDraftBaru(false);
+                }}
+              >
+                Simpan Draft
+              </Button>
+              <Button
+                onClick={() => {
+                  const isi: Kedatangan = {
+                    ...(draft ?? form),
+                    urut: draft?.urut ?? urutBaru,
+                    status: 'final',
+                  };
+                  aksi?.simpanKedatangan(kartu, isi);
+                  setDraftBaru(false);
+                }}
+              >
+                Simpan Penerimaan
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Gerbang keluar (Q9). Dua jalan, dan keduanya ditulis apa adanya di
+          layar: barangnya lengkap, ATAU selisihnya sudah diputuskan. Selisih
+          yang belum diputuskan menahan kartu — bukan karena angkanya kurang,
+          melainkan karena tidak ada yang bisa menindaklanjuti angka yang tidak
+          dijelaskan. */}
+      <div className="space-y-3 rounded-lg border p-3">
+        <div className="flex items-center justify-between text-xs">
+          <span className="font-medium">Kelengkapan penerimaan</span>
+          <span className="tabular-nums text-muted-foreground">
+            {ringkas.masukStok}/{ringkas.plan} pcs ({ringkas.persen}%)
+          </span>
+        </div>
+        <Progress value={ringkas.persen} className="h-2" />
+
+        <p className="text-xs text-muted-foreground">
+          {lengkap
+            ? `Semua varian terpenuhi. Kartu boleh masuk ${tujuan?.label ?? 'stage berikutnya'}.`
+            : adaSolusi
+              ? `Selisih ${ringkas.sisa} pcs sudah diputuskan (${labelDari(SOLUSI, solusi)}). Kartu boleh lanjut.`
+              : `Sisa ${ringkas.sisa} pcs. Kartu boleh lanjut kalau semua varian terpenuhi, atau selisihnya sudah diputuskan di bawah.`}
+        </p>
+
+        {/* Pemutus selisih. Ditampilkan hanya saat memang ada selisih yang
+            menghalangi — kalau semua varian sudah penuh, kolom ini cuma
+            meminta orang mengisi sesuatu yang tidak dibutuhkan. */}
+        {!lengkap && (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <KolomTahap
+              label="Solution"
+              terkunci={false}
+              teks={labelDari(SOLUSI, solusi)}
+            >
+              <Select
+                value={solusi || NONE_TAHAP}
+                onValueChange={(v) =>
+                  aksi?.ubahTahap(kartu, 'solution', v === NONE_TAHAP ? undefined : String(v))
+                }
+              >
+                <SelectTrigger aria-label="Solution" className="w-full">
+                  <SelectValue>
+                    {(v: string) =>
+                      v === NONE_TAHAP ? 'Belum dipilih' : labelDari(SOLUSI, v)
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={NONE_TAHAP}>Belum dipilih</SelectItem>
+                  {SOLUSI.map((s) => (
+                    <SelectItem key={s.value} value={s.value}>
+                      {s.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </KolomTahap>
+
+            <div className="space-y-1.5">
+              <div className="text-xs font-medium text-muted-foreground">Log Solution</div>
+              <Textarea
+                aria-label="Log solution"
+                rows={2}
+                placeholder="Mis. kekurangan 2 pcs dikirim menyusul minggu depan."
+                value={tahap.logSolution ?? ''}
+                onChange={(e) =>
+                  aksi?.ubahTahap(kartu, 'logSolution', e.target.value || undefined)
+                }
+              />
+            </div>
+          </div>
+        )}
+
+        <div className="flex justify-end">
+          <Button disabled={!bolehLanjut} onClick={() => aksi?.lanjutStage(kartu)}>
+            Lanjut ke {tujuan?.label ?? 'stage berikutnya'}
+          </Button>
+        </div>
+      </div>
+
+      {/* Riwayat kedatangan — tabel yang sama dengan mockup, termasuk kolom
+          "Dicatat Oleh". */}
+      <div className="space-y-2">
+        <div className="text-sm font-semibold">Riwayat Kedatangan</div>
+        {kedatangan.length === 0 ? (
+          <p className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
+            Belum ada barang yang datang untuk workcode ini.
+          </p>
+        ) : (
+          <div className="overflow-hidden rounded-lg border">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-muted/50 hover:bg-muted/50">
+                  <TableHead className="text-xs">Receipt</TableHead>
+                  <TableHead className="text-xs">Tanggal</TableHead>
+                  <TableHead className="text-xs">Lokasi</TableHead>
+                  <TableHead className="text-right text-xs">Datang</TableHead>
+                  <TableHead className="text-right text-xs">Reject</TableHead>
+                  <TableHead className="text-right text-xs">Masuk Stok</TableHead>
+                  <TableHead className="text-xs">Dicatat Oleh</TableHead>
+                  <TableHead className="w-16 text-xs">Status</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {[...kedatangan]
+                  .sort((a, b) => b.urut - a.urut)
+                  .map((k) => {
+                    const masuk = Object.keys({ ...k.datang, ...k.reject }).reduce(
+                      (s, kunci) => s + masukStokKedatangan(k, kunci),
+                      0
+                    );
+                    const datang = Object.values(k.datang).reduce((s, n) => s + n, 0);
+                    const reject = Object.values(k.reject).reduce((s, n) => s + n, 0);
+                    return (
+                      <TableRow key={k.urut}>
+                        <TableCell className="px-3 py-2 font-mono text-xs">#{k.urut}</TableCell>
+                        <TableCell className="px-3 py-2 text-xs">
+                          {formatTanggal(k.tanggal)}
+                        </TableCell>
+                        <TableCell className="px-3 py-2 text-xs">
+                          {labelDari(LOKASI_TERIMA, k.lokasi)}
+                        </TableCell>
+                        <TableCell className="px-3 py-2 text-right text-xs tabular-nums">
+                          {datang}
+                        </TableCell>
+                        <TableCell className="px-3 py-2 text-right text-xs tabular-nums">
+                          {reject > 0 ? (
+                            <span className="font-semibold text-destructive">{reject}</span>
+                          ) : (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="px-3 py-2 text-right text-xs font-semibold tabular-nums">
+                          {masuk}
+                        </TableCell>
+                        <TableCell className="px-3 py-2 text-xs">
+                          {k.dicatatOleh || (
+                            <span className="text-muted-foreground">—</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="px-3 py-2">
+                          <span
+                            className={cn(
+                              'rounded-full px-2 py-0.5 text-[11px] font-semibold',
+                              k.status === 'draft'
+                                ? 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                                : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                            )}
+                          >
+                            {LABEL_STATUS_TERIMA[k.status]}
+                          </span>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+
+        {draft && (
+          <p className="text-xs text-muted-foreground">
+            Keterangan draft: {draft.keterangan || '—'}
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Tabel penerimaan per varian — kolomnya persis mockup owner.
+ *
+ * `Masuk Stok` dan `Sisa` TIDAK bisa diketik: keduanya turunan. Mengizinkan
+ * orang mengetiknya berarti angka yang tersimpan bisa tidak sama dengan
+ * `Datang − Reject`, dan tidak ada pemeriksaan yang bisa tahu mana yang benar.
+ */
+function TabelPenerimaan({
+  baris,
+  sumber,
+  datang,
+  reject,
+  onUbah,
+}: {
+  baris: BarisPenerimaan[];
+  sumber: SumberPapan;
+  datang: Record<string, number>;
+  reject: Record<string, number>;
+  onUbah: (kunci: string, kolom: 'datang' | 'reject', nilai: number | undefined) => void;
+}) {
+  const totalDatang = baris.reduce((s, b) => s + b.datang, 0);
+  const totalReject = baris.reduce((s, b) => s + b.reject, 0);
+  const totalMasuk = baris.reduce((s, b) => s + b.masuk, 0);
+  const totalSisa = baris.reduce((s, b) => s + b.sisa, 0);
+
+  return (
+    <div className="overflow-hidden rounded-lg border">
+      <Table>
+        <TableHeader>
+          <TableRow className="bg-muted/50 hover:bg-muted/50">
+            <TableHead className="text-xs">Warna</TableHead>
+            <TableHead className="w-14 text-xs">Size</TableHead>
+            <TableHead className="text-right text-xs">Plan</TableHead>
+            <TableHead className="text-right text-xs">Sudah Datang</TableHead>
+            <TableHead className="w-24 text-right text-xs">Datang Sekarang</TableHead>
+            <TableHead className="w-20 text-right text-xs">Reject</TableHead>
+            <TableHead className="text-right text-xs">Masuk Stok</TableHead>
+            <TableHead className="text-right text-xs">Sisa</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {baris.map((b) => (
+            <TableRow key={b.kunci}>
+              <TableCell className="px-3 py-1.5 text-xs">{b.warna}</TableCell>
+              <TableCell className="px-3 py-1.5 text-xs text-muted-foreground">
+                {b.ukuran}
+              </TableCell>
+              <TableCell className="px-3 py-1.5 text-right text-xs tabular-nums">
+                {b.plan}
+              </TableCell>
+              <TableCell className="px-3 py-1.5 text-right text-xs tabular-nums text-muted-foreground">
+                {b.sudahDatang}
+              </TableCell>
+              <TableCell className="px-2 py-1">
+                <Input
+                  type="number"
+                  min={0}
+                  step={1}
+                  inputMode="numeric"
+                  aria-label={`Datang sekarang ${b.warna} ${b.ukuran}`}
+                  className="h-8 text-right tabular-nums"
+                  value={datang[b.kunci] ?? ''}
+                  placeholder="—"
+                  onChange={(e) => {
+                    // Kosong DIBEDAKAN dari 0 — sama seperti input pcs di
+                    // Cutting. Kosong berarti "belum diisi", 0 berarti "memang
+                    // tidak ada yang datang di varian ini".
+                    const mentah = e.target.value.trim();
+                    if (mentah === '') {
+                      onUbah(b.kunci, 'datang', undefined);
+                      return;
+                    }
+                    const n = Number(mentah);
+                    onUbah(b.kunci, 'datang', Number.isFinite(n) && n >= 0 ? n : undefined);
+                  }}
+                />
+              </TableCell>
+              <TableCell className="px-2 py-1">
+                <Input
+                  type="number"
+                  min={0}
+                  step={1}
+                  inputMode="numeric"
+                  aria-label={`Reject ${b.warna} ${b.ukuran}`}
+                  className="h-8 text-right tabular-nums"
+                  value={reject[b.kunci] ?? ''}
+                  placeholder="—"
+                  onChange={(e) => {
+                    const mentah = e.target.value.trim();
+                    if (mentah === '') {
+                      onUbah(b.kunci, 'reject', undefined);
+                      return;
+                    }
+                    const n = Number(mentah);
+                    onUbah(b.kunci, 'reject', Number.isFinite(n) && n >= 0 ? n : undefined);
+                  }}
+                />
+              </TableCell>
+              <TableCell className="px-3 py-1.5 text-right text-xs font-semibold tabular-nums">
+                {b.masuk}
+              </TableCell>
+              <TableCell className="px-3 py-1.5 text-right text-xs tabular-nums">
+                {b.sisa === 0 ? (
+                  <span className="text-emerald-700 dark:text-emerald-400">0</span>
+                ) : (
+                  b.sisa
+                )}
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+        {/* Total di baris kaki, bukan di atas: yang dibaca setelah mengetik
+            adalah jumlahnya, dan jumlah di atas memaksa mata bolak-balik.
+
+            Labelnya "Total (termasuk draft)" — bukan sekadar "Total". Angka di
+            baris ini ikut menghitung yang sedang diketik, sedangkan kartu
+            "Sisa" di atas hanya menghitung yang sudah disimpan; tanpa penanda
+            ini, dua angka berbeda di satu layar terbaca seperti salah hitung,
+            dan yang dicurigai lebih dulu adalah tabelnya. */}
+        <TableBody>
+          <TableRow className="bg-muted/40 hover:bg-muted/40">
+            <TableCell colSpan={3} className="px-3 py-2 text-xs font-semibold">
+              Total
+              <span className="ml-1 font-normal text-muted-foreground">(termasuk draft)</span>
+            </TableCell>
+            <TableCell />
+            <TableCell className="px-3 py-2 text-right text-xs font-semibold tabular-nums">
+              {totalDatang}
+            </TableCell>
+            <TableCell className="px-3 py-2 text-right text-xs font-semibold tabular-nums">
+              {totalReject > 0 ? (
+                <span className="text-destructive">{totalReject}</span>
+              ) : (
+                '—'
+              )}
+            </TableCell>
+            <TableCell className="px-3 py-2 text-right text-xs font-semibold tabular-nums">
+              {totalMasuk}
+            </TableCell>
+            <TableCell className="px-3 py-2 text-right text-xs font-semibold tabular-nums">
+              {totalSisa}
+            </TableCell>
+          </TableRow>
+        </TableBody>
+      </Table>
+      {sumber === 'whitelabel' && (
+        <p className="border-t bg-muted/20 px-3 py-1.5 text-[11px] text-muted-foreground">
+          Kesesuaian di papan ini diukur terhadap surat jalan vendor, bukan hasil cutting.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/** Satu kartu angka di atas popup Receive. */
+function KartuAngka({
+  label,
+  nilai,
+  keterangan,
+  nada = 'netral',
+}: {
+  label: string;
+  nilai: string;
+  keterangan?: string;
+  nada?: 'netral' | 'hijau' | 'kuning';
+}) {
+  return (
+    <div
+      className={cn(
+        'rounded-lg border p-3',
+        nada === 'hijau' && 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-900 dark:bg-emerald-950/20',
+        nada === 'kuning' && 'border-amber-200 bg-amber-50/50 dark:border-amber-900 dark:bg-amber-950/20'
+      )}
+    >
+      <div className="text-[11px] text-muted-foreground">{label}</div>
+      <div className="text-lg font-semibold tabular-nums">{nilai}</div>
+      {keterangan && <div className="text-[11px] text-muted-foreground">{keterangan}</div>}
+    </div>
+  );
+}
+
+/**
+ * Tanggal ISO (`2026-09-15`) jadi `15 Sep 2026`.
+ *
+ * Ditulis sendiri, tidak memakai `toLocaleDateString`: string `YYYY-MM-DD`
+ * diurai sebagai UTC oleh `Date`, jadi di mesin berzona +7 hasilnya bisa
+ * mundur sehari — dan tanggal terima yang mundur sehari adalah kesalahan yang
+ * tidak terlihat salah.
+ */
+function formatTanggal(iso: string): string {
+  const cocok = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!cocok) return iso || '—';
+  const [, tahun, bulan, hari] = cocok;
+  const nama = [
+    'Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun',
+    'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des',
+  ][Number(bulan) - 1];
+  return `${Number(hari)} ${nama} ${tahun}`;
 }
 
 // ===== Stage yang belum punya alur =====

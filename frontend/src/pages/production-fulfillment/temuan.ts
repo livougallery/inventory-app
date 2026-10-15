@@ -36,13 +36,13 @@ import { barisShipmentUntuk, hppProduksi, hppWhiteLabel } from './hpp';
 //
 // Dua catatan jujur soal jangkauannya:
 //
-//   - Nomor 3 BELUM PUNYA SUMBER DATA di model kanban. Stage Receive masih
-//     `SeksiBelumAda` (alurnya belum diputuskan pemilik) dan tidak ada field
-//     `Sisa` di `KartuPdff`. Pemeriksaannya tetap ditulis di sini lengkap
-//     dengan parameternya, supaya begitu model Receive lahir tinggal dioper —
-//     dan supaya rumusnya bisa diuji sekarang. Selama pemanggil tidak mengoper
-//     `terima`, temuan ini tidak pernah muncul: kartu contoh tidak boleh
-//     dituduh "barang belum lengkap" hanya karena datanya belum ada.
+//   - Nomor 3 sekarang PUNYA sumber data: stage Receive sudah berisi
+//     (`SeksiReceive` di PopupKartu), dan pemanggilnya mengoper `terima` dari
+//     `ringkasTerima()` + `barisPenerimaan()`. Catatan lama di sini mengatakan
+//     Receive masih `SeksiBelumAda` dan tidak punya field `Sisa` — itu sudah
+//     tidak benar dan sempat menyesatkan. Yang tetap berlaku: selama pemanggil
+//     TIDAK mengoper `terima`, temuan ini tidak pernah muncul, supaya kartu
+//     yang datanya memang belum ada tidak dituduh "barang belum lengkap".
 //
 //   - Nomor 2 adalah PENJAGA, bukan temuan yang bisa muncul hari ini. Rumus
 //     HPP White Label adalah `biayaBeli + biayaKirim`, dan ongkos kirim tidak

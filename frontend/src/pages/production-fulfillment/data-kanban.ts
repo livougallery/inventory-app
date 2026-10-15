@@ -147,6 +147,18 @@ export interface DataTahapAkhir {
    */
   solution?: string;
   /**
+   * Catatan kenapa solusi itu dipilih (Q9: "Solution + Log Solution terisi").
+   *
+   * Dipisah dari `solution`, bukan digabung jadi satu teks: yang satu KODE
+   * yang dipakai untuk menyaring dan menghitung, yang satu kalimat bebas yang
+   * dibaca manusia. Menggabungkannya membuat "berapa kartu yang diselesaikan
+   * dengan refund" tidak bisa dijawab tanpa membaca semua catatannya.
+   *
+   * Diisi di stage Receive, saat selisihnya memang harus diputuskan sebelum
+   * kartu boleh lanjut.
+   */
+  logSolution?: string;
+  /**
    * Ke mana barang dibayar — `FLOW_TRANSAKSI` di `lib/opsi.ts`.
    *
    * `livou_transfer` dan `reimbursement` meminta BUKTI YANG BERBEDA, jadi
@@ -831,6 +843,273 @@ export function ringkasTahapBukti(
 
 /** Bukti tiga tahap akhir, per kartu. Bentuknya sama dengan `BuktiCutting`. */
 export type BuktiTahapAkhir = Record<string, Record<string, BerkasBukti[]>>;
+
+// ===== Receive: kedatangan barang (tiket 6) =====
+//
+// Bentuknya mengikuti keputusan Q5: SATU BARIS = SATU KEDATANGAN, bukan satu
+// baris per kartu. Satu workcode bisa datang beberapa kali (contoh owner:
+// "kekurangan 2 pcs dikirim menyusul"), dan tiap kiriman punya tanggal, surat
+// jalan, dan lokasinya sendiri. Kalau kedatangan digabung jadi satu angka di
+// kartu, "kapan sisanya datang" tidak bisa dijawab dari layar mana pun.
+//
+// Angka pcs disimpan per KUNCI varian — kunci yang sama dengan `barisVarian()`
+// (`BLK|S`, `IVR|XL`). Bukan per nama varian: dua baris yang kebetulan
+// berwarna sama harus bisa dibedakan, dan kunci itu sudah menghitungnya.
+
+/**
+ * Satu peristiwa kedatangan barang.
+ *
+ * `datang` dan `reject` DIPISAH, bukan disimpan sebagai satu angka bersih.
+ * Yang dicatat orang di lapangan adalah "20 datang, 2 rusak" — dan dua angka
+ * itu yang dipakai untuk menghitung `Masuk Stok = Datang − Reject`. Kalau yang
+ * disimpan cuma hasil bersihnya, angka reject-nya hilang dan tidak ada cara
+ * menjawab "berapa yang ditolak bulan ini" tanpa membuka ulang foto buktinya.
+ */
+export interface Kedatangan {
+  /** Nomor urut per kartu, 1..n. Ditampilkan sebagai badge `Receipt #n`. */
+  urut: number;
+  tanggal: string;
+  /** Id dari `LOKASI_TERIMA` di `lib/opsi.ts` — bukan teks bebas. */
+  lokasi: string;
+  /** Id dari `SUMBER_TERIMA` — menentukan apa yang terjadi setelah disimpan. */
+  sumber: string;
+  /** Pcs datang fisik per kunci varian, SEBELUM dikurangi reject. */
+  datang: Record<string, number>;
+  /** Pcs reject per kunci varian. */
+  reject: Record<string, number>;
+  /**
+   * Angka yang tertulis di surat jalan vendor, kalau ada.
+   *
+   * Dipakai HANYA di papan White Label sebagai dasar kesesuaian (Q10) — di sana
+   * tidak ada Cutting, jadi satu-satunya pembanding yang dimiliki adalah surat
+   * jalannya. Di papan Production kolom ini tidak ditampilkan: dasarnya hasil
+   * cutting, dan dua angka pembanding sekaligus membuat "kok tidak sesuai"
+   * muncul dari selisih yang memang bukan urusan stage ini.
+   */
+  suratJalanQty?: number;
+  /** Kenapa ada reject. Opsional — menjawab "kenapa" tanpa perlu rapat. */
+  keterangan: string;
+  /** Nama pencatat, dari sesi yang login (`GET /api/me`). Kosong = belum ada. */
+  dicatatOleh: string;
+  /**
+   * `draft` = masih ketikan, belum dihitung sebagai barang masuk.
+   * `final` = sudah disimpan sebagai penerimaan.
+   *
+   * Yang membedakan keduanya penting dan bukan sekadar penanda: `Masuk Stok`
+   * di kartu angka hanya menjumlahkan yang `final`. Draft yang ikut dihitung
+   * membuat sisa terlihat nol padahal barangnya belum pernah disimpan — dan
+   * begitu draft-nya dihapus, angkanya berubah lagi tanpa jejak.
+   */
+  status: 'draft' | 'final';
+}
+
+/** Kedatangan per kartu, dua tingkat seperti store bukti lainnya. */
+export type KedatanganKartu = Record<string, Kedatangan[]>;
+
+/** Jenis bukti Receive. Id-nya unik, tidak dipakai tahap lain. */
+export const JENIS_BUKTI_RECEIVE = [
+  {
+    id: 'bukti-terima',
+    judul: 'Bukti Terima',
+    keterangan: 'Foto barang saat diterima, sebelum dihitung per varian.',
+    terima: '.jpg,.jpeg,.png,.webp',
+  },
+  {
+    id: 'surat-jalan',
+    judul: 'Surat Jalan',
+    keterangan: 'Surat jalan dari vendor — dasar kesesuaian di papan White Label.',
+    terima: '.pdf,.jpg,.jpeg,.png,.webp',
+  },
+] as const;
+
+/**
+ * Bukti penerimaan, per kartu. Bentuknya sama dengan `BuktiTahapAkhir`, tapi
+ * store-nya SENDIRI — bukan ditumpangkan ke sana.
+ *
+ * Alasannya sama dengan pemisahan store HPP dan tiga tahap akhir: id-nya
+ * berbeda (`bukti-terima`, `surat-jalan`), dan Finance Validate menggabungkan
+ * store tahap akhir jadi satu peta untuk menghitung temuan. Berkas penerimaan
+ * yang ikut ke peta itu akan muncul sebagai "bukti" di tahap yang tidak pernah
+ * mengunggahnya — tanpa ada yang gagal.
+ */
+export type BuktiReceive = Record<string, Record<string, BerkasBukti[]>>;
+
+/** Masuk stok satu varian pada satu kedatangan: `datang − reject`, tidak negatif. */
+export function masukStokKedatangan(k: Kedatangan, kunci: string): number {
+  // Tidak pernah negatif: reject yang lebih besar dari yang datang itu salah
+  // ketik, dan mengembalikan angka negatif akan mengurangi stok varian lain
+  // lewat penjumlahan total — diam-diam, tanpa ada baris yang terlihat salah.
+  return Math.max(0, (k.datang[kunci] ?? 0) - (k.reject[kunci] ?? 0));
+}
+
+/** Ringkasan penerimaan satu kartu — sumber empat kartu angka di mockup. */
+export interface RingkasanTerima {
+  plan: number;
+  /** Pcs yang sudah masuk stok dari kedatangan FINAL saja. */
+  masukStok: number;
+  /** `plan − masukStok`, tidak negatif. */
+  sisa: number;
+  /** Berapa kali barang datang (kedatangan final). */
+  jumlahKedatangan: number;
+  /** Tanggal kedatangan terakhir, sudah diformat. Kosong kalau belum ada. */
+  terakhir: string;
+  /** Persentase `masukStok` terhadap `plan`, dibulatkan. */
+  persen: number;
+  /** Per kunci varian: yang sudah masuk stok dari kedatangan final. */
+  sudahDatang: Record<string, number>;
+}
+
+/**
+ * Rekap kedatangan satu kartu.
+ *
+ * Hanya kedatangan `final` yang dihitung, dan itu disengaja: draft adalah
+ * ketikan yang belum disimpan, jadi menampilkannya sebagai barang masuk membuat
+ * "Sisa" berkurang sebelum ada yang menekan Simpan — angka di layar tidak
+ * pernah cocok dengan apa yang benar-benar tercatat.
+ */
+export function ringkasTerima(kartu: KartuPdff, kedatangan: Kedatangan[]): RingkasanTerima {
+  const final = kedatangan.filter((k) => k.status === 'final');
+  const sudahDatang: Record<string, number> = {};
+  for (const k of final) {
+    for (const b of barisVarian(kartu)) {
+      const n = masukStokKedatangan(k, b.kunci);
+      if (n > 0) sudahDatang[b.kunci] = (sudahDatang[b.kunci] ?? 0) + n;
+    }
+  }
+  const masukStok = Object.values(sudahDatang).reduce((s, n) => s + n, 0);
+  const plan = totalPcs(kartu);
+  const urut = [...final].sort((a, b) => a.tanggal.localeCompare(b.tanggal));
+  return {
+    plan,
+    masukStok,
+    sisa: Math.max(0, plan - masukStok),
+    jumlahKedatangan: final.length,
+    terakhir: urut.length > 0 ? urut[urut.length - 1].tanggal : '',
+    persen: plan > 0 ? Math.round((masukStok / plan) * 100) : 0,
+    sudahDatang,
+  };
+}
+
+/**
+ * Satu baris tabel penerimaan per varian — persis kolom mockup owner.
+ *
+ * `draft` adalah kedatangan yang SEDANG diisi. Kalau tidak ada, kolom "Datang
+ * Sekarang", "Reject", dan "Masuk Stok" berisi nol dan "Sisa" tetap dihitung
+ * dari yang sudah tercatat.
+ *
+ * "Sisa" sengaja IKUT menghitung draft, bukan hanya yang tersimpan. Yang
+ * mengetik perlu melihat sisanya bergerak saat ia mengetik — kalau angkanya
+ * baru berubah setelah disimpan, tidak ada cara tahu ketikannya salah sebelum
+ * menekan tombol, dan kesalahannya baru ketahuan dari stok yang tidak cocok.
+ */
+export interface BarisPenerimaan {
+  kunci: string;
+  warna: string;
+  ukuran: string;
+  sku: string;
+  plan: number;
+  /** Sudah masuk stok dari kedatangan FINAL sebelumnya. */
+  sudahDatang: number;
+  /** Datang fisik pada draft yang sedang diisi. */
+  datang: number;
+  reject: number;
+  /** `datang − reject` pada draft. */
+  masuk: number;
+  /** `plan − (sudahDatang + masuk)`, tidak negatif. */
+  sisa: number;
+}
+
+export function barisPenerimaan(
+  kartu: KartuPdff,
+  ringkas: RingkasanTerima,
+  draft?: Kedatangan
+): BarisPenerimaan[] {
+  return barisVarian(kartu).map((b) => {
+    const sudah = ringkas.sudahDatang[b.kunci] ?? 0;
+    const datang = draft?.datang[b.kunci] ?? 0;
+    const reject = draft?.reject[b.kunci] ?? 0;
+    const masuk = draft ? masukStokKedatangan(draft, b.kunci) : 0;
+    return {
+      kunci: b.kunci,
+      warna: b.warna,
+      ukuran: b.ukuran,
+      sku: skuVarian(kartu, b.kode, b.ukuran),
+      plan: b.qty,
+      sudahDatang: sudah,
+      datang,
+      reject,
+      masuk,
+      sisa: Math.max(0, b.qty - (sudah + masuk)),
+    };
+  });
+}
+
+/**
+ * Data contoh kedatangan — bahan presentasi, bukan data dari database.
+ *
+ * Dua kartu, dua keadaan yang sengaja berbeda supaya keduanya bisa ditunjukkan
+ * tanpa mengetik apa pun saat presentasi:
+ *
+ *   * `p-06` Aluna Top (Production) — dua kedatangan selesai, formulirnya
+ *     KOSONG. Yang dipertunjukkan: sisa per varian dan "Receipt #3" yang siap
+ *     diisi.
+ *   * `w-04` Belle Cardigan (White Label) — satu kedatangan selesai + satu
+ *     DRAFT berisi angka. Yang dipertunjukkan: `Masuk Stok = Datang − Reject`
+ *     sudah terlihat di layar, dan badge-nya berbunyi "Draft".
+ */
+export const KEDATANGAN_CONTOH: KedatanganKartu = {
+  'p-06': [
+    {
+      urut: 1,
+      tanggal: '2026-09-08',
+      lokasi: 'gudang',
+      sumber: 'stok',
+      datang: { 'BLK|S': 25, 'BLK|M': 30, 'BLK|L': 25 },
+      reject: {},
+      keterangan: '',
+      dicatatOleh: 'Jan Chun Siong',
+      status: 'final',
+    },
+    {
+      urut: 2,
+      tanggal: '2026-09-15',
+      lokasi: 'gudang',
+      sumber: 'stok',
+      datang: { 'IVR|S': 25, 'IVR|M': 30 },
+      reject: {},
+      keterangan: '',
+      dicatatOleh: 'Jan Chun Siang',
+      status: 'final',
+    },
+  ],
+  'w-04': [
+    {
+      urut: 1,
+      tanggal: '2026-09-10',
+      lokasi: 'gudang',
+      sumber: 'stok',
+      datang: { 'CRM|S': 25, 'CRM|M': 30, 'NVY|S': 20 },
+      reject: {},
+      keterangan: '',
+      dicatatOleh: 'Jan Chun Siong',
+      status: 'final',
+      suratJalanQty: 75,
+    },
+    {
+      urut: 2,
+      tanggal: '2026-09-22',
+      lokasi: 'konveksi',
+      sumber: 'stok',
+      // Reject 2 pcs pada satu varian: angka inilah yang membuat
+      // `Masuk Stok = Datang − Reject` terbaca di layar tanpa perlu diketik.
+      datang: { 'CRM|L': 25, 'NVY|M': 25, 'NVY|L': 25 },
+      reject: { 'CRM|L': 2 },
+      keterangan: 'Dua pcs jahitan miring, dikembalikan ke konveksi.',
+      dicatatOleh: 'Jan Chun Siang',
+      status: 'draft',
+    },
+  ],
+};
 
 /**
  * Ringkasan stage Cutting: sudahkah pekerjaan cutting satu kartu selesai.

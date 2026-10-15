@@ -134,6 +134,38 @@ export const SOLUSI = [
   { value: 'resent_stock', label: 'Resent Stock' },
 ] as const;
 
+/**
+ * Lokasi terima barang — dari master `locations`, BUKAN teks bebas.
+ *
+ * Alasannya sama dengan PIC (`opsi.ts` bagian atas): lokasi dipakai untuk
+ * filter dan untuk memutuskan ke gudang mana barang masuk, dan filter hanya
+ * berguna kalau nilainya seragam. Dua orang yang mengetik "Gudang" dan
+ * "Gudang HQ" membuat satu gudang terlihat seperti dua.
+ *
+ * Dua nilai di bawah sama persis dengan seed `locations` di `db.js`. Endpoint
+ * `GET /api/locations` belum ada — daftar ini yang dipakai sampai koneksinya
+ * dibuat, dan sengaja ditulis di sini (bukan di dalam komponen) supaya begitu
+ * endpoint-nya ada, satu-satunya yang berubah adalah sumber daftar ini.
+ */
+export const LOKASI_TERIMA = [
+  { value: 'gudang', label: 'Gudang (Livou HQ Office)' },
+  { value: 'konveksi', label: 'Konveksi' },
+] as const;
+
+/**
+ * Ke mana barang masuk saat diterima — pilihan tingkat KEDATANGAN.
+ *
+ * Berbeda dari `LOKASI_TERIMA` yang menyebut gedungnya, ini menyebut jenis
+ * alurnya, dan itu yang menentukan apa yang terjadi setelah "Simpan
+ * Penerimaan". Karena satu kiriman bisa datang sebagian ke stok dan sebagian
+ * langsung dikirim ke pembeli, pilihannya ada di tiap kedatangan — bukan satu
+ * nilai per kartu.
+ */
+export const SUMBER_TERIMA = [
+  { value: 'stok', label: 'Masuk Stok Gudang' },
+  { value: 'kirim_langsung', label: 'Kirim Langsung ke Pembeli' },
+] as const;
+
 // ---- BOM ----
 
 /**

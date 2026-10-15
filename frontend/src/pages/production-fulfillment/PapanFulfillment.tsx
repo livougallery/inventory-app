@@ -16,16 +16,18 @@ import FormProduksiBaru from './FormProduksiBaru';
 import type {
   BerkasBukti,
   BuktiCutting,
+  BuktiReceive,
   BuktiTahapAkhir,
   CuttingPcs,
   DataProduksiBaru,
   DataTahapAkhir,
   KartuPdff,
+  KedatanganKartu,
   KembalikanCutting,
   SiapBahan,
   StagePapan,
 } from './data-kanban';
-import { kartuBaru, ringkasCutting, stageKartu, stageSetelah } from './data-kanban';
+import { KEDATANGAN_CONTOH, kartuBaru, ringkasCutting, stageKartu, stageSetelah } from './data-kanban';
 
 // ===== Papan Kanban =====
 //
@@ -144,6 +146,31 @@ export default function PapanFulfillment({
    */
   const [buktiTahap, setBuktiTahap] = useState<BuktiTahapAkhir>({});
   /**
+   * Bukti penerimaan (stage Receive) — store KEEMPAT.
+   *
+   * Terpisah dari `buktiTahap` bukan karena id-nya bentrok, melainkan karena
+   * `SeksiFinanceValidate` menggabungkan tiga store lain jadi satu peta untuk
+   * menghitung temuan. Foto barang datang yang ikut ke peta itu akan muncul
+   * sebagai bukti di tahap yang tidak pernah mengunggahnya.
+   */
+  const [buktiReceive, setBuktiReceive] = useState<BuktiReceive>({});
+  /**
+   * Kedatangan barang per kartu (stage Receive).
+   *
+   * Dimulai dari `KEDATANGAN_CONTOH` — data pratinjau, bukan database. Yang
+   * diketik orang di popup ditumpuk di atasnya, sama seperti `tahapAkhir`:
+   * kartu contoh yang sudah punya riwayat tetap menampilkannya, dan kartu yang
+   * belum punya mulai dari kosong.
+   *
+   * BUKAN di dalam `KartuPdff`. Kalau kedatangan disimpan di kartu, tiap
+   * ketikan di formulir penerimaan berarti menyalin seluruh kartu — dan kartu
+   * itu juga dibaca kolom kanban, jadi satu ketikan di popup akan me-render
+   * ulang seluruh papan.
+   */
+  const [kedatangan, setKedatangan] = useState<KedatanganKartu>(() =>
+    Object.fromEntries(Object.entries(KEDATANGAN_CONTOH).map(([id, isi]) => [id, [...isi]]))
+  );
+  /**
    * Isian tiga tahap akhir (kode shipment, tanggal, flow, jumlah upload POS).
    *
    * Disimpan di luar kartu, sama seperti `cuttingPcs` dan `siapBahan`: kartu di
@@ -202,11 +229,26 @@ export default function PapanFulfillment({
   // sendiri-sendiri, padahal bentuk cleanup-nya identik — dan satu store yang
   // lupa didaftarkan berarti berkasnya menahan memori sampai halaman ditutup,
   // tanpa gejala apa pun.
-  const buktiRef = useRef({ cutting: buktiCutting, hpp: buktiHpp, tahap: buktiTahap });
-  buktiRef.current = { cutting: buktiCutting, hpp: buktiHpp, tahap: buktiTahap };
+  const buktiRef = useRef({
+    cutting: buktiCutting,
+    hpp: buktiHpp,
+    tahap: buktiTahap,
+    receive: buktiReceive,
+  });
+  buktiRef.current = {
+    cutting: buktiCutting,
+    hpp: buktiHpp,
+    tahap: buktiTahap,
+    receive: buktiReceive,
+  };
   useEffect(
     () => () => {
-      const semua = [buktiRef.current.cutting, buktiRef.current.hpp, buktiRef.current.tahap];
+      const semua = [
+        buktiRef.current.cutting,
+        buktiRef.current.hpp,
+        buktiRef.current.tahap,
+        buktiRef.current.receive,
+      ];
       for (const perKartu of semua) {
         for (const perJenis of Object.values(perKartu)) {
           for (const daftar of Object.values(perJenis)) {
@@ -332,6 +374,27 @@ export default function PapanFulfillment({
     tambahBuktiTahap: (k, jenis, berkas) =>
       setBuktiTahap((lama) => tambahBerkas(lama, k.id, jenis, berkas)),
     hapusBuktiTahap: (k, jenis, nama) => setBuktiTahap((lama) => buangBerkas(lama, k.id, jenis, nama)),
+    // Receive memakai fungsi yang sama lagi, dengan store keempat.
+    tambahBuktiReceive: (k, jenis, berkas) =>
+      setBuktiReceive((lama) => tambahBerkas(lama, k.id, jenis, berkas)),
+    hapusBuktiReceive: (k, jenis, nama) =>
+      setBuktiReceive((lama) => buangBerkas(lama, k.id, jenis, nama)),
+    simpanKedatangan: (k, data) =>
+      setKedatangan((lama) => {
+        const punya = lama[k.id] ?? [];
+        // Dicocokkan lewat `urut`, bukan posisi di array: yang dikirim dari
+        // formulir adalah salinan satu kedatangan, dan mencarinya berdasarkan
+        // indeks berarti satu baris yang terhapus di tempat lain menggeser
+        // seluruh sisanya — lalu penerimaan yang salah yang ikut tertimpa.
+        const ada = punya.some((x) => x.urut === data.urut);
+        const baru = ada ? punya.map((x) => (x.urut === data.urut ? data : x)) : [...punya, data];
+        return { ...lama, [k.id]: baru };
+      }),
+    hapusKedatangan: (k, urut) =>
+      setKedatangan((lama) => ({
+        ...lama,
+        [k.id]: (lama[k.id] ?? []).filter((x) => x.urut !== urut),
+      })),
     tutupTemuan: (k, id) =>
       setTemuanTertutup((lama) => {
         const punya = lama[k.id] ?? [];
@@ -470,6 +533,8 @@ export default function PapanFulfillment({
         buktiCutting={buktiCutting}
         buktiHpp={buktiHpp}
         buktiTahap={buktiTahap}
+        buktiReceive={buktiReceive}
+        kedatangan={kedatangan}
         renderHpp={(p) => <SeksiHppPrice {...p} barisHpp={barisContohHpp} />}
         kembalikan={kembalikan}
         disetujuiCutting={disetujuiCutting}
