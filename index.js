@@ -1,11 +1,3 @@
-console.log('=== INDEX.JS START ===');
-// Clear module cache to force reload after code changes
-console.log('[INIT] Clearing require cache...');
-for (const key in require.cache) {
-  delete require.cache[key];
-}
-console.log('[INIT] Cache cleared, reloading modules...');
-
 const express = require('express');
 const session = require('express-session');
 const PgSession = require('connect-pg-simple')(session);
@@ -24,19 +16,11 @@ const db = require('./db');
 const photoUpload = require('./services/photoUpload');
 
 function createApp(options = {}) {
-  console.log('[createApp] Starting');
   const app = express();
-
-  // DEBUG: Log ALL requests for debugging
-  app.use((req, res, next) => {
-    console.log(`⚡ ${req.method} ${req.path}`);
-    next();
-  });
 
   // Body parsing middleware (MUST be before auth routes)
   app.use(express.urlencoded({ extended: true }));
   app.use(express.json());
-  console.log('[createApp] Body parsing middleware added');
 
   // Session middleware - MUST come BEFORE everything
   app.use(session({
@@ -49,7 +33,6 @@ function createApp(options = {}) {
     saveUninitialized: false,
     cookie: { secure: false } // set true in production with HTTPS
   }));
-  console.log('[createApp] Session middleware added');
 
   // SPA routes only - exclude login (handled by EJS forms + auth routes)
   const SPA_ROUTES = new Set([
@@ -91,50 +74,37 @@ function createApp(options = {}) {
     // tests/spaRoutes.test.js.
     '/modul/material-fulfillment'
   ]);
-  console.log('[createApp] SPA_ROUTES created (no /login):', SPA_ROUTES.size);
-  console.log('[createApp] SPA_ROUTES created (no /login):', SPA_ROUTES.size);
-  console.log('[createApp] /dashboard in SPA_ROUTES?', SPA_ROUTES.has('/dashboard'));
 
-  console.log('[createApp] About to load CSRF middleware...');
 
   try {
     const { generateToken } = require('./middleware/csrf');
-    console.log('[createApp] CSRF loaded successfully');
     app.use(generateToken);
-    console.log('[createApp] CSRF middleware applied');
   } catch (e) {
     console.error('[createApp] CSRF ERROR:', e.message);
     throw e;
   }
 
   // Error view setup - MUST come before any route handlers
-  console.log('[createApp] Setting up EJS layouts...');
   app.use(expressLayouts);
   app.set('layout', 'layout');
   app.set('layout extractScripts', true);
   app.set('view engine', 'ejs');
   app.set('views', path.join(__dirname, 'views'));
-  console.log('[createApp] EJS layout setup complete');
 
   // API routes (JSON endpoints) - these should NOT be affected by SPA serving
-  console.log('[createApp] Loading API routes...');
   app.use('/api/materials', require('./features/material/backend/routes'));
   app.use('/api/negara', require('./features/negara/backend/routes'));
   app.use('/api/vendors', require('./features/vendor/backend/routes'));
   app.use('/api/purchase-orders', require('./features/purchase-order/backend/routes'));
   app.use('/api/currencies', require('./features/currency/backend/routes'));
   app.use('/api', require('./routes/api'));
-  console.log('[createApp] API routes registered');
 
   // Authentication routes (handles login/register/logout)
   // MUST come before SPA middleware to handle form submissions
-  console.log('[createApp] Registering auth routes...');
   const authRoutes = require('./routes/auth');
   app.use(authRoutes);
-  console.log('[createApp] ✅ Auth routes registered with router:', typeof authRoutes);
 
   // Serve login page as EJS (alternative to mounted route if needed)
-  console.log('[createApp] Setting up login route...');
   app.get('/login', (req, res) => {
     res.render('auth/login', {
       user: null,
@@ -142,10 +112,8 @@ function createApp(options = {}) {
       csrfToken: req.csrfToken ? req.csrfToken() : ''
     });
   });
-  console.log('[createApp] Login route registered');
 
   // WORKAROUND: Explicit handlers for problematic routes that Express isn't routing properly
-  console.log('[createApp] Adding explicit catch-all handler for unmatched paths...');
 
   const serveSPA = (req, res, next) => {
     const fs = require('fs');
@@ -153,7 +121,6 @@ function createApp(options = {}) {
     const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
 
     if (require('fs').existsSync(distPath)) {
-      console.log(`[EXPLICIT SERVE] Serving SPA for ${req.path}`);
       return res.sendFile(distPath);
     }
     next();
@@ -165,7 +132,6 @@ function createApp(options = {}) {
   app.get('/pembelian-material', serveSPA);
   app.get('/bom', serveSPA);
   app.get('/dashboard', serveSPA); // Add dashboard to serve SPA
-  console.log('[createApp] Explicit handlers added for /master-data, /bom, and /dashboard');
 
   // Berkas yang diunggah (foto nota PO, foto material) — HARUS SEBELUM
   // middleware SPA dan catch-all di bawah.
@@ -194,17 +160,14 @@ function createApp(options = {}) {
 
   // SPA middleware - serves React build for migrated routes ONLY
   // This must come AFTER login route but BEFORE dashboard route
-  console.log('[createApp] About to add SPA middleware...');
 
   app.use((req, res, next) => {
-    console.log(`[SPA EXEC] Intercepted: ${req.method} ${req.path}`);
 
     const fs = require('fs');
     const pathModule = require('path');
     const distPath = pathModule.join(__dirname, 'frontend/dist/index.html');
 
     if (!fs.existsSync(distPath)) {
-      console.log(`[SPA EXEC] ERROR: Cannot find dist at ${distPath}`);
       return next();
     }
 
@@ -212,21 +175,16 @@ function createApp(options = {}) {
                       SPA_ROUTES.has(req.path + '/') ||
                       SPA_ROUTES.has(req.path.replace(/\/$/, ''));
 
-    console.log(`[SPA EXEC] SPA_ROUTES.size=${SPA_ROUTES.size}, exact=${SPA_ROUTES.has(req.path)}, withSlash=${SPA_ROUTES.has(req.path + '/')}, strip=${SPA_ROUTES.has(req.path.replace(/\/$/, ''))}`);
 
     if (isMigrated) {
-      console.log(`[SPA SERVING] Sending ${req.path}`);
       return res.sendFile(distPath);
     }
 
-    console.log(`[SPA NOT MATCH] Passing to next()`);
     next();
   });
 
-  console.log('[createApp] SPA middleware added SUCCESSFULLY');
 
   // DASHBOARD ROUTE REMOVED - All routes now handled by React SPA
-  console.log('[createApp] Dashboard EJS route REMOVED - served by React SPA only');
   // Controller EJS-nya sudah dihapus (tiket 02). Baris commented-out ini
   // sengaja dibiarkan sebagai penjelasan bahwa keputusan "React saja" itu
   // disengaja -- jangan dipulihkan hanya karena `/dashboard` terlihat
@@ -245,7 +203,6 @@ function createApp(options = {}) {
   // CATCH-ALL: Serve SPA for any unmatched route that's in SPA_ROUTES
   // This MUST come AFTER all explicit routes including static assets
   app.use((req, res, next) => {
-    console.log(`[CATCH-ALL] ${req.method} ${req.path}`);
 
     const fs = require('fs');
     const pathModule = require('path');
@@ -258,7 +215,6 @@ function createApp(options = {}) {
                         SPA_ROUTES.has(req.path.replace(/\/$/, ''));
 
       if (isMigrated) {
-        console.log(`[CATCH-ALL SERVING SPA] ${req.path}`);
         return res.sendFile(distPath);
       }
     }
@@ -270,7 +226,6 @@ function createApp(options = {}) {
                         SPA_ROUTES.has(req.path.replace(/\/$/, ''));
 
       if (isMigrated) {
-        console.log(`[CATCH-ALL SERVING SPA] ${req.path}`);
         return res.sendFile(distPath);
       }
     }
@@ -347,14 +302,10 @@ async function seedDefaults() {
 // sudah bootstrap schema `test`, dan side effect ke DB runtime tidak boleh
 // terjadi saat test.
 if (require.main === module) {
-  console.log('[BOOT] require.main === module is TRUE');
   (async () => {
     try {
-      console.log('[BOOT] Starting bootstrap...');
       await db.bootstrapSchema();
-      console.log('[BOOT] Schema ready, about to call seedDefaults');
       await seedDefaults();
-      console.log('[BOOT] Seeding done, about to listen on PORT', PORT);
       app.listen(PORT, () => {
         console.log(`[SERVER LISTEN] Listening on http://localhost:${PORT}`);
       });

@@ -16,9 +16,7 @@
   "dependencies": {
     "@tanstack/table-core": "^9.1.2",
     "bcryptjs": "^3.0.3",
-    "better-sqlite3": "^12.11.1",
     "connect-pg-simple": "^10.0.0",
-    "connect-sqlite3": "^0.9.16",
     "dotenv": "^17.4.2",
     "ejs": "^6.0.1",
     "express": "^5.2.1",
