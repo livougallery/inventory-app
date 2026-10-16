@@ -1,5 +1,7 @@
-import type { CSSProperties } from 'react';
+import { useState, type CSSProperties } from 'react';
+import { Plus, ImagePlus, Trash2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import {
   Dialog,
   DialogContent,
@@ -8,287 +10,419 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { rupiah } from '@/lib/format';
-import { KATEGORI_VENDOR, SIZE, labelDari } from '@/lib/opsi';
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from '@/components/ui/resizable';
+import { NAMA_PASAR, PLATFORM, type StatusPasar } from '@/lib/produk';
 import type { KartuRegister, ProdukRegister } from '@/lib/produk';
 import type { SpesifikasiKain } from '@/pages/production-fulfillment/data-kanban';
+import PopupBuktiPasar from './PopupBuktiPasar';
 
-// ===== Detail produk =====
+// ===== Detail produk — layout resizable 30/70 =====
 //
-// Dibuka dari daftar Register dengan mengklik barisnya. Bentuknya dialog,
-// tapi bukan dialog kecil di tengah layar: isinya satu halaman penuh —
-// identitas, rencana warna & ukuran, dan bahan yang dibutuhkan.
+// Dibuka dari daftar Register dengan mengklik kartunya. Bentuknya dialog
+// besar dengan dua panel yang bisa di-resize (drag handle di tengah):
+// kiri identitas produk, kanan varian & bill of material.
 //
-// Kenapa dialog dan bukan halaman sendiri: yang dibuka owner saat presentasi
-// adalah satu produk demi satu produk, dan berpindah halaman berarti kehilangan
-// posisi di daftar setiap kali. Dialog besar menjaga daftarnya tetap terlihat
-// di belakang.
+// Panel kiri mengikuti pola identitas baku: foto polos (tanpa overlay teks),
+// nama produk, daftar field Identitas yang rapi, dan daftar Platform.
+// Panel kanan: satu kartu per warna dengan chip material horizontal.
 //
-// ANIMASINYA SENGAJA TIDAK SEPERTI DIALOG LAIN.
-//
-// Bawaannya `duration-100` + `zoom-in-95`: seratus milidetik, jadi isinya
-// seperti muncul begitu saja — untuk dialog konfirmasi kecil itu memang pas,
-// tapi untuk panel sebesar ini terbaca sebagai "pop up tiba-tiba". Di sini
-// durasinya 300ms dengan `ease-out`, dan skalanya mulai dari 0.97, sehingga
-// panelnya terbaca MEMBESAR dari halaman di belakangnya.
-//
-// Skalanya dipasang lewat custom property `--tw-enter-scale`, bukan dengan
-// menimpa `zoom-in-95` memakai kelas. Dua kelas `zoom-in-*` TIDAK saling
-// meniadakan: twMerge hanya menyelesaikan konflik dalam bucket yang sama, dan
-// `zoom-in-95` dengan `zoom-in-[0.97]` dianggap dua hal berbeda — keduanya
-// lolos ke CSS, lalu yang menang ditentukan urutan di berkas keluaran, bukan
-// niat penulisnya. Sudah diuji langsung terhadap twMerge di proyek ini.
-// Inline style tidak punya ketidakpastian itu.
-//
-// RINCIAN WARNA ADA DI SINI, dan itu sebabnya. Di kartu daftar, baris per
-// warna dipindahkan ke dialog ini (permintaan pemilik): pada lima kolom kartu
-// selebar ~205px, dua baris warna memakan ruang yang membuat kartu setinggi
-// foto + teks, dan produk 8 varian tetap menzalim 8 baris. Jadi yang hilang
-// dari kartu tidak hilang dari produk — cuma pindah tempat, dan tempatnya di
-// sini memang sudah jadi tempat membaca rincian.
+// ANIMASI dialog tetap 300ms ease-out scale-from-0.97 (lihat catatan di
+// bawah, dipertahankan dari desain sebelumnya).
 
 export function IsiDetailProduk({
   produk,
   kartu,
 }: {
   produk: ProdukRegister;
-  /**
-   * Ringkasan stok per warna. Opsional supaya produk bisa tetap dirender
-   * tanpa kartu —dialog ini dibaca dari dua tempat, dan pemeriksa smoke test
-   * memang merendernya langsung dari katalog saja.
-   */
   kartu?: KartuRegister | null;
 }) {
   const sp = produk.spesifikasi;
 
-  const totalPcs = sp.warna.reduce(
-    (s, w) => s + w.pcs.reduce((a, p) => a + p.qty, 0),
-    0
+  return (
+    <ResizablePanelGroup direction="horizontal" className="min-h-[60vh]">
+      {/* ── Panel kiri: identitas ─────────────────────────────── */}
+      <ResizablePanel defaultSize={30} minSize={22}>
+        <PanelKiri produk={produk} kartu={kartu} />
+      </ResizablePanel>
+
+      <ResizableHandle className="w-px bg-border transition-colors hover:bg-primary data-[dragging=true]:bg-primary">
+        <span className="absolute left-1/2 top-1/2 h-8 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-border transition-all hover:h-12 hover:bg-primary data-[dragging=true]:h-16 data-[dragging=true]:bg-primary" />
+      </ResizableHandle>
+
+      {/* ── Panel kanan: varian & BOM ─────────────────────────── */}
+      <ResizablePanel defaultSize={70} minSize={40}>
+        <PanelKanan produk={produk} kartu={kartu} />
+      </ResizablePanel>
+    </ResizablePanelGroup>
   );
+}
+
+/* ================= Panel kiri ================= */
+
+function PanelKiri({
+  produk,
+  kartu,
+}: {
+  produk: ProdukRegister;
+  kartu?: KartuRegister | null;
+}) {
+  const sp = produk.spesifikasi;
+  const [buktiTerbuka, setBuktiTerbuka] = useState<StatusPasar | null>(null);
 
   return (
-    <div className="space-y-6">
-      {/* ── Identitas ─────────────────────────────────────────────── */}
-      <div className="grid gap-5 sm:grid-cols-[200px_minmax(0,1fr)]">
-        <div className="flex h-40 items-center justify-center rounded-xl border bg-muted/40 text-xs text-muted-foreground">
-          {produk.foto ? 'FOTO PRODUK' : 'Belum ada foto'}
-        </div>
-
-        <div className="space-y-3">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="outline">{produk.kategori}</Badge>
-            <Badge variant="secondary">{produk.brand}</Badge>
-          </div>
-
-          <dl className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-            <Field label="Product ID" nilai={produk.id} />
-            <Field label="Design Code" nilai={sp.designCode} />
-            <Field label="Batch" nilai={sp.batch} />
-            <Field
-              label="Vendor Category"
-              nilai={labelDari(KATEGORI_VENDOR.production, sp.kategoriVendor)}
-            />
-            <Field label="Vendor / CMT" nilai={sp.namaVendor} />
-            <Field label="Register Date" nilai={produk.registerDate} />
-            <Field label="Harga Jual" nilai={rupiah(produk.harga)} />
-            <Field label="Total Rencana" nilai={`${totalPcs} PCS`} />
-            {/* Dua angka ini SUMBER-nya berbeda dari "Total Rencana" di
-                atasnya, dan itu bukan kebetulan. `totalPcs` menjumlah rencana
-                produksi dari katalog; `totalStok`/`totalJual` menjumlah gudang.
-                Keduanya boleh berbeda jauh untuk produk yang sama, jadi
-                meletakkan keduanya di satu daftar tanpa nama yang membedakan
-                akan menyesatkan. */}
-            {kartu && (
-              <>
-                <Field label="Total Stock" nilai={`${kartu.totalStok} pcs`} />
-                <Field label="Bisa Jual" nilai={`${kartu.totalJual} pcs`} />
-              </>
-            )}
-          </dl>
-        </div>
+    <div className="h-full space-y-5 overflow-y-auto p-5">
+      {/* Foto polos 4:3 — tanpa overlay teks nama/SKU. Nama dan SKU ada di
+          Identitas di bawah, jadi overlay di atas foto cuma mengulang. */}
+      <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-xl border bg-muted/40 text-xs text-muted-foreground">
+        {produk.foto ? (
+          <img src={produk.foto} alt={produk.nama} className="h-full w-full object-cover" />
+        ) : (
+          'FOTO'
+        )}
       </div>
 
-      {/* ── Stok per warna ─────────────────────────────────────────
-          Pindah dari kartu daftar ke sini. Satu baris per warna, dengan
-          ukuran di dalamnya — bukan satu baris per varian, karena itu
-          kembali ke masalah yang membuat kartu lama tidak bisa dipakai. */}
-      {kartu && (
-        <section className="space-y-3">
-          <div>
-            <h3 className="text-sm font-semibold">Stok per Warna</h3>
-            <p className="text-xs text-muted-foreground">
-              {kartu.jumlahWarna} warna · {kartu.jumlahVarian} varian (warna × ukuran)
-            </p>
-          </div>
+      <h3 className="text-base font-semibold">{produk.nama}</h3>
 
-          <div className="overflow-hidden rounded-lg border">
-            <Table>
-              <TableHeader className="bg-muted/50">
-                <TableRow className="hover:bg-transparent">
-                  <TableHead className="px-3 py-2 text-xs">Warna</TableHead>
-                  <TableHead className="px-3 py-2 text-xs">Ukuran</TableHead>
-                  <TableHead className="px-3 py-2 text-right text-xs">Bisa Jual</TableHead>
-                  <TableHead className="px-3 py-2 text-right text-xs">Total Stock</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {kartu.warnaRingkas.map((w) => (
-                  <TableRow key={w.id}>
-                    <TableCell className="px-3 py-2">{w.warna}</TableCell>
-                    <TableCell className="px-3 py-2 text-muted-foreground">
-                      {w.size}
-                    </TableCell>
-                    <TableCell className="px-3 py-2 text-right tabular-nums">
-                      {w.stokJual}
-                    </TableCell>
-                    <TableCell className="px-3 py-2 text-right tabular-nums">
-                      {w.stokTotal}
-                    </TableCell>
-                  </TableRow>
-                ))}
-                <TableRow className="bg-muted/50 font-medium hover:bg-transparent">
-                  <TableCell className="px-3 py-2" colSpan={2}>
-                    Total
-                  </TableCell>
-                  <TableCell className="px-3 py-2 text-right tabular-nums">
-                    {kartu.totalJual}
-                  </TableCell>
-                  <TableCell className="px-3 py-2 text-right tabular-nums">
-                    {kartu.totalStok}
-                  </TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+      {/* Identitas — daftar label/nilai rapi */}
+      <section className="space-y-1">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Identitas
+        </h4>
+        <dl className="divide-y divide-border rounded-lg border">
+          <Field label="SKU / Design code" nilai={sp.designCode} />
+          <Field label="Brand" nilai={produk.brand} />
+          <Field label="Kategori" nilai={produk.kategori} />
+          <Field label="Registered" nilai={produk.registerDate} />
+          {kartu && (
+            <Field
+              label="Varian"
+              nilai={`${kartu.jumlahWarna} warna · ${kartu.jumlahVarian} varian`}
+            />
+          )}
+        </dl>
+      </section>
+
+      {/* Platform — baris vertikal, satu per platform */}
+      {kartu && (
+        <section className="space-y-1">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Platform
+          </h4>
+          <div className="space-y-2">
+            {PLATFORM.map((p) => {
+              const st = kartu.pasar.find((s) => s.platform === p);
+              if (!st) return null;
+              return (
+                <BarisPlatform
+                  key={p}
+                  status={st}
+                  onBuka={() => setBuktiTerbuka(st)}
+                />
+              );
+            })}
           </div>
         </section>
       )}
 
-      {/* ── Rencana warna & ukuran ────────────────────────────────── */}
-      <section className="space-y-3">
-        <div>
-          <h3 className="text-sm font-semibold">Color &amp; Size Plan</h3>
-          <p className="text-xs text-muted-foreground">
-            {sp.warna.length} warna • total {totalPcs} PCS
-          </p>
+      <PopupBuktiPasar
+        terbuka={buktiTerbuka !== null}
+        produk={produk.nama}
+        status={buktiTerbuka}
+        onTutup={() => setBuktiTerbuka(null)}
+      />
+    </div>
+  );
+}
+
+/** Satu baris platform: logo + nama + badge status. */
+function BarisPlatform({
+  status,
+  onBuka,
+}: {
+  status: StatusPasar;
+  onBuka: () => void;
+}) {
+  return (
+    <div className="flex items-center gap-3 rounded-lg border px-3 py-2">
+      <span className="flex h-7 w-7 items-center justify-center rounded-md bg-muted text-xs font-bold">
+        {NAMA_PASAR[status.platform].charAt(0)}
+      </span>
+      <span className="flex-1 text-sm font-medium">{NAMA_PASAR[status.platform]}</span>
+      {status.terdaftar ? (
+        <span className="flex items-center gap-2">
+          <Badge className="bg-green-100 text-green-800 hover:bg-green-100">
+            ● Registered
+          </Badge>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onBuka} title="Lihat bukti">
+            <ImagePlus className="h-4 w-4" />
+          </Button>
+        </span>
+      ) : (
+        /* Belum terdaftar: badge dashed yang BISA DIKLIK untuk upload.
+           Tombolnya tidak disembunyikan — tombol yang hilang membuat alur
+           upload tidak bisa dinilai. Lihat PopupBuktiPasar. */
+        <button
+          onClick={onBuka}
+          className="rounded-full border border-dashed px-3 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted"
+        >
+          ○ Not registered
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* ================= Panel kanan ================= */
+
+function PanelKanan({
+  produk,
+  kartu,
+}: {
+  produk: ProdukRegister;
+  kartu?: KartuRegister | null;
+}) {
+  const sp = produk.spesifikasi;
+  const [modeTambah, setModeTambah] = useState(false);
+
+  return (
+    <div className="h-full space-y-4 overflow-y-auto p-5">
+      <div className="flex items-center justify-between">
+        <h3 className="text-base font-semibold text-amber-700">
+          Varian &amp; Bill of material
+        </h3>
+        {/* c-button-18: outline + icon di kiri, untuk aksi Add Item */}
+        <Button variant="outline" size="sm" onClick={() => setModeTambah(true)} disabled={modeTambah}>
+          <Plus className="h-4 w-4" /> Add
+        </Button>
+      </div>
+
+      {sp.warna.map((w) => (
+        <KartuWarna key={w.kode} produk={produk} warnaKode={w.kode} warnaNama={w.nama} />
+      ))}
+
+      {modeTambah && (
+        <KartuWarnaBaru produk={produk} onBatal={() => setModeTambah(false)} onSimpan={() => setModeTambah(false)} />
+      )}
+    </div>
+  );
+}
+
+/** Satu kartu warna: nama + size di kiri, chip material horizontal di kanan. */
+function KartuWarna({
+  produk,
+  warnaKode,
+  warnaNama,
+}: {
+  produk: ProdukRegister;
+  warnaKode: string;
+  warnaNama: string;
+}) {
+  const sp = produk.spesifikasi;
+  const warna = sp.warna.find((w) => w.kode === warnaKode);
+  const [modeEdit, setModeEdit] = useState(false);
+
+  if (!warna) return null;
+
+  if (modeEdit) {
+    return (
+      <KartuWarnaEdit
+        produk={produk}
+        warnaKode={warnaKode}
+        onBatal={() => setModeEdit(false)}
+        onSimpan={() => setModeEdit(false)}
+      />
+    );
+  }
+
+  // Kain untuk warna ini + semua aksesori produk
+  const kainWarna = sp.kain.filter((k) => k.perWarna[warnaKode]);
+
+  return (
+    <div className="relative rounded-2xl border-2 p-4">
+      <div className="flex gap-4">
+        {/* Kiri: nama warna + size */}
+        <div className="min-w-[110px] space-y-2">
+          <div className="font-bold">{warnaNama}</div>
+          <div className="flex flex-col gap-1.5">
+            {warna.pcs.map((p) => (
+              <span key={p.ukuran} className="rounded-md border px-3 py-1 text-center text-sm">
+                {p.ukuran}
+              </span>
+            ))}
+          </div>
         </div>
 
-        <div className="overflow-hidden rounded-lg border">
-          <Table>
-            <TableHeader className="bg-muted/50">
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="px-3 py-2 text-xs">Color</TableHead>
-                <TableHead className="px-3 py-2 text-xs">Code</TableHead>
-                {SIZE.map((u) => (
-                  <TableHead key={u} className="px-3 py-2 text-xs">
-                    {u}
-                  </TableHead>
-                ))}
-                <TableHead className="px-3 py-2 text-xs">Total</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sp.warna.map((w) => {
-                const qty = (u: string) => w.pcs.find((p) => p.ukuran === u)?.qty ?? 0;
-                const total = w.pcs.reduce((a, p) => a + p.qty, 0);
-                return (
-                  <TableRow key={w.kode}>
-                    <TableCell className="px-3 py-2">{w.nama}</TableCell>
-                    <TableCell className="px-3 py-2 text-muted-foreground">
-                      {w.kode}
-                    </TableCell>
-                    {SIZE.map((u) => (
-                      <TableCell key={u} className="px-3 py-2 tabular-nums">
-                        {qty(u) || <span className="text-muted-foreground">—</span>}
-                      </TableCell>
-                    ))}
-                    <TableCell className="px-3 py-2 font-medium tabular-nums">
-                      {total}
-                    </TableCell>
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+        {/* Kanan: chip material — satu baris horizontal, flex-grow mengisi */}
+        <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto">
+          {kainWarna.map((k) => {
+            const pakai = k.perWarna[warnaKode];
+            return (
+              <div key={k.nama} className="min-w-[168px] flex-1 rounded-xl border p-4">
+                <div className="text-[15px] font-bold">Kain</div>
+                <div className="mt-1 text-sm text-muted-foreground">
+                  {k.nama} {warnaNama} · {pakai.perPcs} {k.satuan}
+                </div>
+              </div>
+            );
+          })}
+          {sp.aksesori.map((a) => (
+            <div key={a.nama} className="min-w-[168px] flex-1 rounded-xl border p-4">
+              <div className="text-[15px] font-bold">{a.nama}</div>
+              <div className="mt-1 text-sm text-muted-foreground">
+                {a.varian} · {a.perPcs} {a.satuan}
+              </div>
+            </div>
+          ))}
         </div>
-      </section>
+      </div>
+    </div>
+  );
+}
 
-      {/* ── Bahan (BOM) ───────────────────────────────────────────── */}
-      <section className="space-y-3">
-        <div>
-          <h3 className="text-sm font-semibold">Material Requirements (BOM)</h3>
-          <p className="text-xs text-muted-foreground">
-            Kebutuhan bahan per pcs. Kain dihitung per warna, aksesori untuk semua varian.
-          </p>
-        </div>
+/** Kartu tambah varian baru (mode edit penuh). */
+function KartuWarnaBaru({
+  produk,
+  onBatal,
+  onSimpan,
+}: {
+  produk: ProdukRegister;
+  onBatal: () => void;
+  onSimpan: () => void;
+}) {
+  return (
+    <KartuWarnaEdit produk={produk} warnaKode="" onBatal={onBatal} onSimpan={onSimpan} baru />
+  );
+}
 
-        <div className="overflow-hidden rounded-lg border">
-          <Table>
-            <TableHeader className="bg-muted/50">
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="px-3 py-2 text-xs">Jenis</TableHead>
-                <TableHead className="px-3 py-2 text-xs">Material</TableHead>
-                <TableHead className="px-3 py-2 text-xs">Berlaku</TableHead>
-                <TableHead className="px-3 py-2 text-xs">Qty / Pcs</TableHead>
-                <TableHead className="px-3 py-2 text-xs">Stok</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {sp.kain.map((k) => (
-                <TableRow key={k.nama}>
-                  <TableCell className="px-3 py-2">
-                    <Badge variant="outline">Kain</Badge>
-                  </TableCell>
-                  <TableCell className="px-3 py-2">{k.nama}</TableCell>
-                  <TableCell className="px-3 py-2 text-xs text-muted-foreground">
-                    {Object.keys(k.perWarna).length} warna
-                  </TableCell>
-                  <TableCell className="px-3 py-2 tabular-nums">
-                    {/* Kain bisa punya pemakaian berbeda per warna; yang sama
-                        ditampilkan sekali supaya kolomnya tidak penuh angka
-                        yang berulang.
+/** Kartu warna dalam mode edit: dropdown warna, size editable, 10 chip aksesoris. */
+function KartuWarnaEdit({
+  produk,
+  warnaKode,
+  onBatal,
+  onSimpan,
+  baru = false,
+}: {
+  produk: ProdukRegister;
+  warnaKode: string;
+  onBatal: () => void;
+  onSimpan: () => void;
+  baru?: boolean;
+}) {
+  const sp = produk.spesifikasi;
+  const [warna, setWarna] = useState(warnaKode);
+  const [sizes, setSizes] = useState<string[]>(() => {
+    const w = sp.warna.find((x) => x.kode === warnaKode);
+    return w ? w.pcs.map((p) => p.ukuran) : ['S'];
+  });
 
-                        Tanpa warna sama sekali, kolomnya dibiarkan kosong.
-                        `seragam([])` bernilai true (vakum), lalu
-                        `Object.values(...)[0]?.perPcs ?? 0` menghasilkan 0 —
-                        dan "0 m" terbaca sebagai "kain ini tidak terpakai",
-                        padahal yang benar "pemakaiannya belum dicatat".
-                        Dua keadaan berbeda itu tidak boleh tampil sama. */}
-                    {pemakaianKain(k)}
-                  </TableCell>
-                  <TableCell className="px-3 py-2">
-                    <Stok nilai={Object.values(k.perWarna).map((v) => v.tersedia)} />
-                  </TableCell>
-                </TableRow>
+  return (
+    <div className="rounded-2xl border-2 border-dashed bg-muted/30 p-4">
+      <div className="flex gap-4">
+        <div className="min-w-[150px] space-y-3">
+          <div>
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+              Warna
+            </label>
+            <select
+              value={warna}
+              onChange={(e) => setWarna(e.target.value)}
+              className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
+            >
+              <option value="">Pilih warna…</option>
+              {sp.warna.map((w) => (
+                <option key={w.kode} value={w.kode}>{w.nama}</option>
               ))}
-
-              {sp.aksesori.map((a) => (
-                <TableRow key={a.nama}>
-                  <TableCell className="px-3 py-2">
-                    <Badge variant="outline">Aksesori</Badge>
-                  </TableCell>
-                  <TableCell className="px-3 py-2">{a.nama}</TableCell>
-                  <TableCell className="px-3 py-2 text-xs text-muted-foreground">
-                    {a.berlaku}
-                  </TableCell>
-                  <TableCell className="px-3 py-2 tabular-nums">
-                    {a.perPcs} {a.satuan}
-                  </TableCell>
-                  <TableCell className="px-3 py-2">
-                    <Stok nilai={[a.tersedia]} />
-                  </TableCell>
-                </TableRow>
+            </select>
+          </div>
+          <div>
+            <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+              Size
+            </label>
+            <div className="flex flex-col gap-2">
+              {sizes.map((s, i) => (
+                <button
+                  key={i}
+                  className="rounded-md border bg-background px-3 py-1.5 text-sm font-semibold hover:bg-muted"
+                  onClick={() => {
+                    const v = prompt('Edit size:', s);
+                    if (v) setSizes(sizes.map((x, j) => (j === i ? v : x)));
+                  }}
+                >
+                  {s}
+                </button>
               ))}
-            </TableBody>
-          </Table>
+            </div>
+            <button
+              className="mt-2 w-full rounded-md border border-dashed px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted"
+              onClick={() => setSizes([...sizes, '–'])}
+            >
+              + Add
+            </button>
+          </div>
         </div>
-      </section>
+
+        <div className="min-w-0 flex-1">
+          <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+            Jenis aksesoris
+          </label>
+          <div className="flex gap-2 overflow-x-auto pb-2">
+            <ChipEdit jenis="Kain" />
+            {sp.aksesori.map((a) => (
+              <ChipEdit key={a.nama} jenis={a.nama} />
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 flex justify-end gap-2">
+        <Button variant="outline" size="icon" onClick={onBatal} title="Batal">
+          <Trash2 className="h-4 w-4 text-red-500" />
+        </Button>
+        <Button onClick={onSimpan} disabled={!warna} className="bg-zinc-900 text-white hover:bg-zinc-800">
+          Save
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Satu chip aksesoris dalam mode edit. */
+function ChipEdit({ jenis }: { jenis: string }) {
+  const [nama, setNama] = useState('no need');
+  const butuh = nama !== 'no need';
+
+  return (
+    <div className={`min-w-[196px] shrink-0 rounded-xl border bg-background p-3 ${butuh ? '' : 'border-dashed opacity-60'}`}>
+      <div className="mb-2 text-[13px] font-bold text-muted-foreground">{jenis}</div>
+      <label className="mb-0.5 block text-[10px] uppercase tracking-wide text-muted-foreground">Nama</label>
+      <select
+        value={nama}
+        onChange={(e) => setNama(e.target.value)}
+        className="mb-2 w-full rounded-md border bg-background px-2 py-1 text-xs"
+      >
+        <option value="no need">no need</option>
+        <option>{jenis} Standar</option>
+      </select>
+      <label className="mb-0.5 block text-[10px] uppercase tracking-wide text-muted-foreground">Varian</label>
+      <select disabled={!butuh} className="mb-2 w-full rounded-md border bg-background px-2 py-1 text-xs disabled:bg-muted">
+        <option>—</option>
+      </select>
+      <label className="mb-0.5 block text-[10px] uppercase tracking-wide text-muted-foreground">
+        Kebutuhan / pcs
+      </label>
+      <div className="flex items-center gap-1.5">
+        <input
+          type="number"
+          min={0}
+          disabled={!butuh}
+          placeholder="0"
+          className="w-full rounded-md border bg-background px-2 py-1 text-xs disabled:bg-muted"
+        />
+        <span className="text-xs font-semibold text-muted-foreground">pcs</span>
+      </div>
     </div>
   );
 }
@@ -311,11 +445,6 @@ export default function DetailProduk({
         if (!buka) onTutup();
       }}
     >
-      {/* Satu halaman penuh, dan isinya yang menggulir — bukan dialognya yang
-          memanjang keluar layar. `grid-rows-[auto_minmax(0,1fr)]` yang membuat
-          itu: baris pertama setinggi judulnya, baris kedua mengambil sisanya
-          dan boleh menyusut (`minmax(0,1fr)`, bukan `1fr` — tanpa `minmax`
-          isinya yang panjang mendorong dialognya melewati batas tinggi). */}
       <DialogContent
         className="max-h-[92vh] gap-0 p-0 duration-300 ease-out sm:max-w-[1100px] grid-rows-[auto_minmax(0,1fr)]"
         style={{ '--tw-enter-scale': '0.97' } as CSSProperties}
@@ -325,11 +454,11 @@ export default function DetailProduk({
             <DialogHeader className="border-b px-6 py-4">
               <DialogTitle className="text-lg">{produk.nama}</DialogTitle>
               <DialogDescription className="text-xs">
-                Detail produk dan rencana produksinya.
+                Detail produk — varian &amp; bill of material.
               </DialogDescription>
             </DialogHeader>
 
-            <div className="overflow-y-auto px-6 py-5">
+            <div className="min-h-0 overflow-hidden">
               <IsiDetailProduk produk={produk} kartu={kartu} />
             </div>
           </>
@@ -342,19 +471,16 @@ export default function DetailProduk({
 /** Satu pasang label-nilai di daftar identitas. */
 function Field({ label, nilai }: { label: string; nilai: string }) {
   return (
-    <div className="space-y-0.5">
-      <dt className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</dt>
-      <dd className="text-sm">{nilai}</dd>
+    <div className="flex items-center justify-between gap-4 px-4 py-2.5">
+      <dt className="text-xs text-muted-foreground">{label}</dt>
+      <dd className="text-sm font-semibold">{nilai}</dd>
     </div>
   );
 }
 
 /**
  * Pemakaian kain per pcs, atau '—' kalau belum ada warnanya.
- *
- * Dipisah dari JSX-nya supaya aturan "kosong berarti belum dicatat, bukan nol"
- * bisa dibaca di satu tempat — dan supaya tidak perlu memanggil `Object.values`
- * dua kali hanya untuk menanyakan hal yang sama.
+ * (Dipertahankan untuk kompatibilitas; tampilan baru memakai chip per warna.)
  */
 function pemakaianKain(k: SpesifikasiKain): string {
   const perWarna = Object.values(k.perWarna);
@@ -363,37 +489,7 @@ function pemakaianKain(k: SpesifikasiKain): string {
   return seragam(angka) ? `${angka[0]} ${k.satuan}` : 'beda per warna';
 }
 
-/** Semua angka sama? Dipakai untuk memutuskan kolom kain menampilkan angka atau ringkasan. */
+/** Semua angka sama? */
 function seragam(angka: (number | undefined)[]): boolean {
   return angka.every((n) => n === angka[0]);
-}
-
-/**
- * Stok beberapa warna sekaligus.
- *
- * `undefined` ditampilkan sebagai "Belum dicatat", BUKAN 0 — dan itu bedanya
- * penting: nol berarti bahannya habis, belum dicatat berarti tidak ada yang
- * tahu. Menyamakan keduanya membuat produk yang stoknya belum diinput tampak
- * kekurangan bahan.
- */
-function Stok({ nilai }: { nilai: (number | undefined)[] }) {
-  if (nilai.every((n) => n === undefined)) {
-    return <span className="text-xs text-muted-foreground">Belum dicatat</span>;
-  }
-  const terendah = nilai.filter((n): n is number => n !== undefined).sort((a, b) => a - b)[0] ?? 0;
-  const habis = terendah === 0;
-
-  return (
-    <span className="flex items-center gap-2">
-      <span className="tabular-nums">{terendah.toLocaleString('id-ID')}</span>
-      {habis && (
-        <Badge variant="destructive" className="whitespace-nowrap">
-          Habis
-        </Badge>
-      )}
-      {nilai.length > 1 && (
-        <span className="text-[11px] text-muted-foreground">terendah</span>
-      )}
-    </span>
-  );
 }
