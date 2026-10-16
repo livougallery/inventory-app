@@ -1,5 +1,5 @@
 import { useState, type CSSProperties } from 'react';
-import { Plus, ImagePlus, Trash2 } from 'lucide-react';
+import { Plus, ImagePlus, Trash2, Pencil } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import {
@@ -17,6 +17,7 @@ import {
 import { NAMA_PASAR, PLATFORM, type StatusPasar } from '@/lib/produk';
 import type { KartuRegister, ProdukRegister } from '@/lib/produk';
 import type { SpesifikasiKain } from '@/pages/production-fulfillment/data-kanban';
+import type { BarisWarna } from '@/pages/production-fulfillment/data-kanban';
 import PopupBuktiPasar from './PopupBuktiPasar';
 
 // ===== Detail produk — layout resizable 30/70 =====
@@ -29,8 +30,31 @@ import PopupBuktiPasar from './PopupBuktiPasar';
 // nama produk, daftar field Identitas yang rapi, dan daftar Platform.
 // Panel kanan: satu kartu per warna dengan chip material horizontal.
 //
+// State warna dikelola lokal di PanelKanan (bukan mutasi props langsung):
+// tambah/edit/hapus warna memicu onSimpan dengan data baru, dan induk
+// yang memutuskan persistensi ke backend.
+//
 // ANIMASI dialog tetap 300ms ease-out scale-from-0.97 (lihat catatan di
 // bawah, dipertahankan dari desain sebelumnya).
+
+/** Unit otomatis per jenis aksesoris — tampil di sebelah input kebutuhan/pcs. */
+const UNIT_AKSESORIS: Record<string, string> = {
+  'kain': 'm',
+  'benang jahit': 'roll',
+  'benang obras': 'roll',
+  'label brand': 'pcs',
+  'resleting': 'pcs',
+  'kancing': 'pcs',
+  'renda': 'm',
+  'hak kait': 'set',
+  'karet': 'm',
+  'kain pelapis': 'm',
+};
+
+function unitUntuk(jenis: string): string {
+  const kunci = jenis.toLowerCase();
+  return UNIT_AKSESORIS[kunci] ?? 'pcs';
+}
 
 export function IsiDetailProduk({
   produk,
@@ -71,6 +95,20 @@ function PanelKiri({
 }) {
   const sp = produk.spesifikasi;
   const [buktiTerbuka, setBuktiTerbuka] = useState<StatusPasar | null>(null);
+  // Status platform lokal — upload screenshot mengisi fotoBukti + tandai terdaftar.
+  const [pasar, setPasar] = useState<StatusPasar[]>(kartu?.pasar ?? []);
+
+  function simpanBukti(fotoDataUrl: string) {
+    if (!buktiTerbuka) return;
+    setPasar(
+      pasar.map((s) =>
+        s.platform === buktiTerbuka.platform
+          ? { ...s, terdaftar: true, fotoBukti: fotoDataUrl }
+          : s
+      )
+    );
+    setBuktiTerbuka(null);
+  }
 
   return (
     <div className="h-full space-y-5 overflow-y-auto p-5">
@@ -113,7 +151,7 @@ function PanelKiri({
           </h4>
           <div className="space-y-2">
             {PLATFORM.map((p) => {
-              const st = kartu.pasar.find((s) => s.platform === p);
+              const st = pasar.find((s) => s.platform === p);
               if (!st) return null;
               return (
                 <BarisPlatform
@@ -132,6 +170,7 @@ function PanelKiri({
         produk={produk.nama}
         status={buktiTerbuka}
         onTutup={() => setBuktiTerbuka(null)}
+        onSimpan={simpanBukti}
       />
     </div>
   );
@@ -185,7 +224,25 @@ function PanelKanan({
   kartu?: KartuRegister | null;
 }) {
   const sp = produk.spesifikasi;
+  // State lokal daftar warna — diinisialisasi dari props, dimutasi lewat
+  // tambah/edit/hapus. Induk memutuskan persistensi via onSimpan.
+  const [daftarWarna, setDaftarWarna] = useState<BarisWarna[]>(sp.warna);
   const [modeTambah, setModeTambah] = useState(false);
+
+  function tambahWarna(warnaBaru: BarisWarna) {
+    setDaftarWarna([...daftarWarna, warnaBaru]);
+    setModeTambah(false);
+  }
+
+  function ubahWarna(kodeLama: string, warnaBaru: BarisWarna) {
+    setDaftarWarna(daftarWarna.map((w) => (w.kode === kodeLama ? warnaBaru : w)));
+  }
+
+  function hapusWarna(kode: string) {
+    if (window.confirm(`Hapus warna ${kode} dari produk ini?`)) {
+      setDaftarWarna(daftarWarna.filter((w) => w.kode !== kode));
+    }
+  }
 
   return (
     <div className="h-full space-y-4 overflow-y-auto p-5">
@@ -199,12 +256,23 @@ function PanelKanan({
         </Button>
       </div>
 
-      {sp.warna.map((w) => (
-        <KartuWarna key={w.kode} produk={produk} warnaKode={w.kode} warnaNama={w.nama} />
+      {daftarWarna.map((w) => (
+        <KartuWarna
+          key={w.kode}
+          produk={produk}
+          warna={w}
+          onUbah={(wb) => ubahWarna(w.kode, wb)}
+          onHapus={() => hapusWarna(w.kode)}
+        />
       ))}
 
       {modeTambah && (
-        <KartuWarnaBaru produk={produk} onBatal={() => setModeTambah(false)} onSimpan={() => setModeTambah(false)} />
+        <KartuWarnaBaru
+          produk={produk}
+          warnaTerpakai={daftarWarna.map((w) => w.kode)}
+          onBatal={() => setModeTambah(false)}
+          onSimpan={tambahWarna}
+        />
       )}
     </div>
   );
@@ -213,39 +281,76 @@ function PanelKanan({
 /** Satu kartu warna: nama + size di kiri, chip material horizontal di kanan. */
 function KartuWarna({
   produk,
-  warnaKode,
-  warnaNama,
+  warna,
+  onUbah,
+  onHapus,
 }: {
   produk: ProdukRegister;
-  warnaKode: string;
-  warnaNama: string;
+  warna: BarisWarna;
+  onUbah: (w: BarisWarna) => void;
+  onHapus: () => void;
 }) {
   const sp = produk.spesifikasi;
-  const warna = sp.warna.find((w) => w.kode === warnaKode);
   const [modeEdit, setModeEdit] = useState(false);
-
-  if (!warna) return null;
+  const [menuBuka, setMenuBuka] = useState(false);
 
   if (modeEdit) {
     return (
       <KartuWarnaEdit
         produk={produk}
-        warnaKode={warnaKode}
+        warnaAwal={warna}
         onBatal={() => setModeEdit(false)}
-        onSimpan={() => setModeEdit(false)}
+        onSimpan={(wb) => {
+          onUbah(wb);
+          setModeEdit(false);
+        }}
       />
     );
   }
 
   // Kain untuk warna ini + semua aksesori produk
-  const kainWarna = sp.kain.filter((k) => k.perWarna[warnaKode]);
+  const kainWarna = sp.kain.filter((k) => k.perWarna[warna.kode]);
 
   return (
     <div className="relative rounded-2xl border-2 p-4">
+      {/* Menu ⋮ — Edit / Delete */}
+      <div className="absolute right-2 top-2">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => setMenuBuka(!menuBuka)}
+        >
+          ⋮
+        </Button>
+        {menuBuka && (
+          <div className="absolute right-0 top-8 z-10 w-28 rounded-md border bg-background py-1 shadow-lg">
+            <button
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-muted"
+              onClick={() => {
+                setMenuBuka(false);
+                setModeEdit(true);
+              }}
+            >
+              <Pencil className="h-3.5 w-3.5" /> Edit
+            </button>
+            <button
+              className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-red-600 hover:bg-muted"
+              onClick={() => {
+                setMenuBuka(false);
+                onHapus();
+              }}
+            >
+              <Trash2 className="h-3.5 w-3.5" /> Delete
+            </button>
+          </div>
+        )}
+      </div>
+
       <div className="flex gap-4">
         {/* Kiri: nama warna + size */}
         <div className="min-w-[110px] space-y-2">
-          <div className="font-bold">{warnaNama}</div>
+          <div className="font-bold">{warna.nama}</div>
           <div className="flex flex-col gap-1.5">
             {warna.pcs.map((p) => (
               <span key={p.ukuran} className="rounded-md border px-3 py-1 text-center text-sm">
@@ -258,12 +363,12 @@ function KartuWarna({
         {/* Kanan: chip material — satu baris horizontal, flex-grow mengisi */}
         <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto">
           {kainWarna.map((k) => {
-            const pakai = k.perWarna[warnaKode];
+            const pakai = k.perWarna[warna.kode];
             return (
               <div key={k.nama} className="min-w-[168px] flex-1 rounded-xl border p-4">
                 <div className="text-[15px] font-bold">Kain</div>
                 <div className="mt-1 text-sm text-muted-foreground">
-                  {k.nama} {warnaNama} · {pakai.perPcs} {k.satuan}
+                  {k.nama} {warna.nama} · {pakai.perPcs} {k.satuan}
                 </div>
               </div>
             );
@@ -285,38 +390,84 @@ function KartuWarna({
 /** Kartu tambah varian baru (mode edit penuh). */
 function KartuWarnaBaru({
   produk,
+  warnaTerpakai,
   onBatal,
   onSimpan,
 }: {
   produk: ProdukRegister;
+  warnaTerpakai: string[];
   onBatal: () => void;
-  onSimpan: () => void;
+  onSimpan: (w: BarisWarna) => void;
 }) {
   return (
-    <KartuWarnaEdit produk={produk} warnaKode="" onBatal={onBatal} onSimpan={onSimpan} baru />
+    <KartuWarnaEdit
+      produk={produk}
+      warnaAwal={null}
+      warnaTerpakai={warnaTerpakai}
+      onBatal={onBatal}
+      onSimpan={onSimpan}
+      baru
+    />
   );
 }
 
-/** Kartu warna dalam mode edit: dropdown warna, size editable, 10 chip aksesoris. */
+/** Kartu warna dalam mode edit: dropdown warna, size editable inline, chip aksesoris. */
 function KartuWarnaEdit({
   produk,
-  warnaKode,
+  warnaAwal,
+  warnaTerpakai = [],
   onBatal,
   onSimpan,
   baru = false,
 }: {
   produk: ProdukRegister;
-  warnaKode: string;
+  /** null = tambah baru; BarisWarna = edit yang sudah ada (pre-filled). */
+  warnaAwal: BarisWarna | null;
+  warnaTerpakai?: string[];
   onBatal: () => void;
-  onSimpan: () => void;
+  onSimpan: (w: BarisWarna) => void;
   baru?: boolean;
 }) {
   const sp = produk.spesifikasi;
-  const [warna, setWarna] = useState(warnaKode);
-  const [sizes, setSizes] = useState<string[]>(() => {
-    const w = sp.warna.find((x) => x.kode === warnaKode);
-    return w ? w.pcs.map((p) => p.ukuran) : ['S'];
-  });
+  const [warna, setWarna] = useState(warnaAwal?.kode ?? '');
+  const [sizes, setSizes] = useState<string[]>(
+    warnaAwal ? warnaAwal.pcs.map((p) => p.ukuran) : ['S']
+  );
+  // Index size yang sedang di-edit inline (null = tidak ada)
+  const [editIdx, setEditIdx] = useState<number | null>(null);
+  const [editVal, setEditVal] = useState('');
+
+  function simpan() {
+    const w = sp.warna.find((x) => x.kode === warna);
+    const namaWarna = w?.nama ?? warna;
+    if (!warna) return;
+    // Bangun BarisWarna dari state
+    const hasil: BarisWarna = {
+      nama: namaWarna,
+      kode: warna,
+      pcs: sizes.filter((s) => s.trim() !== '').map((s) => ({ ukuran: s.trim(), qty: 0 })),
+    };
+    onSimpan(hasil);
+  }
+
+  function mulaiEditSize(i: number) {
+    setEditIdx(i);
+    setEditVal(sizes[i]);
+  }
+
+  function selesaiEditSize() {
+    if (editIdx !== null) {
+      const v = editVal.trim();
+      if (v) {
+        setSizes(sizes.map((s, j) => (j === editIdx ? v : s)));
+      } else {
+        // Kosong = hapus size itu
+        setSizes(sizes.filter((_, j) => j !== editIdx));
+      }
+    }
+    setEditIdx(null);
+    setEditVal('');
+  }
 
   return (
     <div className="rounded-2xl border-2 border-dashed bg-muted/30 p-4">
@@ -332,32 +483,55 @@ function KartuWarnaEdit({
               className="w-full rounded-md border bg-background px-2 py-1.5 text-sm"
             >
               <option value="">Pilih warna…</option>
-              {sp.warna.map((w) => (
-                <option key={w.kode} value={w.kode}>{w.nama}</option>
-              ))}
+              {sp.warna
+                .filter((w) => !warnaTerpakai.includes(w.kode) || w.kode === warnaAwal?.kode)
+                .map((w) => (
+                  <option key={w.kode} value={w.kode}>{w.nama}</option>
+                ))}
             </select>
           </div>
           <div>
             <label className="mb-1 block text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
               Size
             </label>
+            {/* Size menumpuk ke BAWAH; klik untuk edit inline */}
             <div className="flex flex-col gap-2">
               {sizes.map((s, i) => (
-                <button
-                  key={i}
-                  className="rounded-md border bg-background px-3 py-1.5 text-sm font-semibold hover:bg-muted"
-                  onClick={() => {
-                    const v = prompt('Edit size:', s);
-                    if (v) setSizes(sizes.map((x, j) => (j === i ? v : x)));
-                  }}
-                >
-                  {s}
-                </button>
+                editIdx === i ? (
+                  <input
+                    key={i}
+                    autoFocus
+                    value={editVal}
+                    onChange={(e) => setEditVal(e.target.value)}
+                    onBlur={selesaiEditSize}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') selesaiEditSize();
+                      if (e.key === 'Escape') {
+                        setEditIdx(null);
+                        setEditVal('');
+                      }
+                    }}
+                    className="rounded-md border bg-background px-3 py-1.5 text-center text-sm font-semibold outline-none ring-2 ring-primary"
+                  />
+                ) : (
+                  <button
+                    key={i}
+                    className="rounded-md border bg-background px-3 py-1.5 text-sm font-semibold hover:bg-muted"
+                    onClick={() => mulaiEditSize(i)}
+                    title="Klik untuk edit"
+                  >
+                    {s}
+                  </button>
+                )
               ))}
             </div>
             <button
               className="mt-2 w-full rounded-md border border-dashed px-3 py-1.5 text-sm text-muted-foreground hover:bg-muted"
-              onClick={() => setSizes([...sizes, '–'])}
+              onClick={() => {
+                setSizes([...sizes, '']);
+                setEditIdx(sizes.length);
+                setEditVal('');
+              }}
             >
               + Add
             </button>
@@ -369,7 +543,7 @@ function KartuWarnaEdit({
             Jenis aksesoris
           </label>
           <div className="flex gap-2 overflow-x-auto pb-2">
-            <ChipEdit jenis="Kain" />
+            <ChipEdit jenis="kain" />
             {sp.aksesori.map((a) => (
               <ChipEdit key={a.nama} jenis={a.nama} />
             ))}
@@ -381,7 +555,7 @@ function KartuWarnaEdit({
         <Button variant="outline" size="icon" onClick={onBatal} title="Batal">
           <Trash2 className="h-4 w-4 text-red-500" />
         </Button>
-        <Button onClick={onSimpan} disabled={!warna} className="bg-zinc-900 text-white hover:bg-zinc-800">
+        <Button onClick={simpan} disabled={!warna} className="bg-zinc-900 text-white hover:bg-zinc-800">
           Save
         </Button>
       </div>
@@ -391,24 +565,39 @@ function KartuWarnaEdit({
 
 /** Satu chip aksesoris dalam mode edit. */
 function ChipEdit({ jenis }: { jenis: string }) {
-  const [nama, setNama] = useState('no need');
-  const butuh = nama !== 'no need';
+  // Blank default (bukan "no need" otomatis) — "no need" hanya bila dipilih eksplisit.
+  const [nama, setNama] = useState('');
+  const [varian, setVarian] = useState('');
+  const [qty, setQty] = useState('');
+  const butuh = nama !== '' && nama !== 'no need';
+  const unit = unitUntuk(jenis);
 
   return (
-    <div className={`min-w-[196px] shrink-0 rounded-xl border bg-background p-3 ${butuh ? '' : 'border-dashed opacity-60'}`}>
-      <div className="mb-2 text-[13px] font-bold text-muted-foreground">{jenis}</div>
+    <div className={`min-w-[196px] shrink-0 rounded-xl border bg-background p-3 ${nama === '' ? 'border-dashed opacity-60' : ''}`}>
+      <div className="mb-2 text-[13px] font-bold capitalize text-muted-foreground">{jenis}</div>
       <label className="mb-0.5 block text-[10px] uppercase tracking-wide text-muted-foreground">Nama</label>
       <select
         value={nama}
-        onChange={(e) => setNama(e.target.value)}
+        onChange={(e) => {
+          setNama(e.target.value);
+          setVarian('');
+          setQty('');
+        }}
         className="mb-2 w-full rounded-md border bg-background px-2 py-1 text-xs"
       >
+        <option value="">—</option>
         <option value="no need">no need</option>
         <option>{jenis} Standar</option>
       </select>
       <label className="mb-0.5 block text-[10px] uppercase tracking-wide text-muted-foreground">Varian</label>
-      <select disabled={!butuh} className="mb-2 w-full rounded-md border bg-background px-2 py-1 text-xs disabled:bg-muted">
-        <option>—</option>
+      <select
+        value={varian}
+        disabled={!butuh}
+        onChange={(e) => setVarian(e.target.value)}
+        className="mb-2 w-full rounded-md border bg-background px-2 py-1 text-xs disabled:bg-muted"
+      >
+        <option value="">—</option>
+        <option>Standar</option>
       </select>
       <label className="mb-0.5 block text-[10px] uppercase tracking-wide text-muted-foreground">
         Kebutuhan / pcs
@@ -417,11 +606,14 @@ function ChipEdit({ jenis }: { jenis: string }) {
         <input
           type="number"
           min={0}
+          value={qty}
           disabled={!butuh}
+          onChange={(e) => setQty(e.target.value)}
           placeholder="0"
           className="w-full rounded-md border bg-background px-2 py-1 text-xs disabled:bg-muted"
         />
-        <span className="text-xs font-semibold text-muted-foreground">pcs</span>
+        {/* Unit otomatis per jenis aksesoris */}
+        <span className="text-xs font-semibold text-muted-foreground">{unit}</span>
       </div>
     </div>
   );

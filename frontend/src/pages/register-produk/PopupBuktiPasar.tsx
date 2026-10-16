@@ -1,5 +1,5 @@
-import { ImageOff } from 'lucide-react';
-import type { CSSProperties } from 'react';
+import { ImageOff, Upload } from 'lucide-react';
+import { useState, type CSSProperties } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -7,6 +7,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { NAMA_PASAR, type StatusPasar } from '@/lib/produk';
 
 // ===== Popup bukti pendaftaran marketplace =====
@@ -32,17 +33,33 @@ import { NAMA_PASAR, type StatusPasar } from '@/lib/produk';
 export function IsiBuktiPasar({
   produk,
   status,
+  onSimpan,
 }: {
   produk: string;
   status: StatusPasar;
+  /** Dipanggil dengan data-URL gambar saat user menyimpan upload. */
+  onSimpan?: (fotoDataUrl: string) => void;
 }) {
   const platform = NAMA_PASAR[status.platform];
+  const [pratinjau, setPratinjau] = useState<string | null>(null);
+
+  function pilihFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => setPratinjau(reader.result as string);
+    reader.readAsDataURL(f);
+  }
+
+  // Sudah ada foto bukti (dari data) atau baru diupload — tampilkan gambarnya.
+  // Isi popup SENGAJA cuma gambar (lihat catatan di atas).
+  const tampil = pratinjau ?? status.fotoBukti;
 
   return (
     <div className="space-y-4">
-      {status.fotoBukti ? (
+      {tampil ? (
         <img
-          src={status.fotoBukti}
+          src={tampil}
           alt={`Bukti pendaftaran ${produk} di ${platform}`}
           className="max-h-[70vh] w-full rounded-md border object-contain"
         />
@@ -59,6 +76,26 @@ export function IsiBuktiPasar({
           </p>
         </div>
       )}
+
+      {/* Upload — hanya bila belum ada foto. Setelah upload, tombol Simpan aktif. */}
+      {!status.fotoBukti && onSimpan && (
+        <div className="space-y-3">
+          <label className="flex cursor-pointer items-center justify-center gap-2 rounded-md border border-dashed px-4 py-3 text-sm text-muted-foreground transition-colors hover:bg-muted">
+            <Upload className="h-4 w-4" />
+            {pratinjau ? 'Ganti foto' : 'Pilih foto screenshot'}
+            <input type="file" accept="image/*" className="hidden" onChange={pilihFile} />
+          </label>
+          <div className="flex justify-end gap-2">
+            <Button
+              disabled={!pratinjau}
+              onClick={() => pratinjau && onSimpan(pratinjau)}
+              className="bg-zinc-900 text-white hover:bg-zinc-800"
+            >
+              Simpan
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -68,6 +105,7 @@ export default function PopupBuktiPasar({
   produk,
   status,
   onTutup,
+  onSimpan,
 }: {
   terbuka: boolean;
   /** Nama produk — dipakai di judul dan di alt gambar. */
@@ -75,6 +113,8 @@ export default function PopupBuktiPasar({
   /** Status platform yang dibuka. `null` = tidak ada yang dibuka. */
   status: StatusPasar | null;
   onTutup: () => void;
+  /** Dipanggil saat user menyimpan foto upload (data-URL). Induk yang persist. */
+  onSimpan?: (fotoDataUrl: string) => void;
 }) {
   // Tidak dirender sama sekali saat tertutup. Bukan sekadar optimasi: tanpa ini
   // judulnya membaca `status.platform` pada nilai null.
@@ -97,7 +137,7 @@ export default function PopupBuktiPasar({
             {produk} · {status.terdaftar ? 'Terdaftar' : 'Belum terdaftar'}
           </DialogDescription>
         </DialogHeader>
-        <IsiBuktiPasar produk={produk} status={status} />
+        <IsiBuktiPasar produk={produk} status={status} onSimpan={onSimpan} />
       </DialogContent>
     </Dialog>
   );
