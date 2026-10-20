@@ -1,44 +1,25 @@
-// ===== Master warna (data contoh) =====
+// ===== Master warna =====
 //
-// Halaman REGISTER > Colour menampilkan daftar warna beserta kodenya. Daftar itu
-// DITURUNKAN dari katalog produk, bukan ditulis ulang di sini.
+// Halaman REGISTER > Colour menampilkan daftar warna beserta kodenya. Sejak
+// 16 Oktober 2026 daftar itu datang dari TABEL `warna` di database, lewat
+// `GET /api/register-produk/warna` — bukan lagi diturunkan dari katalog contoh.
 //
-// Alasannya sama persis dengan `KODE_WARNA` di `FormProdukBaru.tsx`: kode warna
-// masuk ke `kodeVarian` (mis. `LVU-TOP-11-HTP-M`). Kalau halaman Colour punya
-// daftarnya sendiri, menambah warna di katalog akan menghasilkan varian yang
-// kodenya tidak cocok dengan yang terdaftar di halaman ini — dan bedanya baru
-// ketahuan saat ada yang membandingkan dua layar.
+// Kode warna masuk ke `kodeVarian` (mis. `LVU-TOP-11-HTP-M`) dan ke kolom
+// `product_variants.warna_kode`, yang punya foreign key ke `warna(kode)`.
+// Artinya warna yang tidak ada di tabel ini TIDAK BISA dipakai produk: menyimpan
+// varian dengan kode yang belum terdaftar akan ditolak database. Karena itu
+// form Tambah Produk memilih warnanya dari daftar ini, bukan dari daftar
+// ketikan sendiri.
 //
-// BELUM TERHUBUNG DATABASE. Sama seperti katalog produknya — lihat
-// BannerPratinjau di halamannya.
-
-import { PRODUK_REGISTER } from './produk';
+// File ini sekarang cuma menyimpan BENTUK-nya (`WarnaMaster`) dan aturan
+// perapian kodenya. Pemetaan dari JSON API ada di `lib/registerProduk.ts`,
+// supaya tidak ada dua tempat yang membaca bentuk balikan server.
 
 export interface WarnaMaster {
   /** Kode pendek warna, mis. HTP. Unik — dipakai sebagai id baris. */
   kode: string;
   /** Nama tampilan warna, mis. Hitam. */
   nama: string;
-}
-
-/**
- * Seluruh warna yang dipakai katalog, satu baris per kode.
- *
- * Dikelompokkan per KODE, bukan per nama: dua produk yang sama-sama "Hitam"
- * memakai kode HTP yang sama, dan keduanya harus jadi SATU baris di halaman ini
- * — bukan dua baris yang terlihat seperti warna berbeda.
- *
- * Urutannya mengikuti kemunculan pertama di katalog, supaya halaman ini tidak
- * mengacak sendiri urutan yang sudah dipakai halaman lain.
- */
-export function daftarWarna(): WarnaMaster[] {
-  const peta = new Map<string, WarnaMaster>();
-  for (const p of PRODUK_REGISTER) {
-    for (const w of p.spesifikasi.warna) {
-      if (!peta.has(w.kode)) peta.set(w.kode, { kode: w.kode, nama: w.nama });
-    }
-  }
-  return [...peta.values()];
 }
 
 /**
@@ -54,6 +35,11 @@ export function daftarWarna(): WarnaMaster[] {
  * diserahkan ke kebiasaan pengetiknya — dan bukan pula ditampilkan
  * huruf-besar-kan saat dirender, karena yang tersimpan tetap harus sama dengan
  * yang terlihat.
+ *
+ * Server merapikan ulang dengan aturan yang sama (`routes.js`, POST /warna).
+ * Itu bukan duplikasi yang berbahaya: yang di klien menentukan apa yang
+ * TERLIHAT saat diketik, yang di server menentukan apa yang TERSIMPAN kalau
+ * ada yang memanggil API-nya langsung.
  */
 export function normalisasiKode(kode: string): string {
   return kode.trim().toUpperCase();

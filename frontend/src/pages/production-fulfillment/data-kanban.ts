@@ -29,6 +29,8 @@ export interface BarisUkuran {
    * dirakit: bentuk simpanannya tidak punya tempat untuk menampungnya.
    */
   kode?: string;
+  /** Stable database identity for Register Produk variant edits. */
+  variantId?: number;
 }
 
 /** Satu warna bisa punya jumlah ukuran berbeda dari warna lain — itu wajar. */
@@ -59,6 +61,15 @@ export interface SpesifikasiAksesori {
   satuan: string;
   /** Boleh kosong — stok yang belum dicatat, bukan stok nol. Lihat `push()`. */
   tersedia?: number;
+  /**
+   * Jenis material di master (`label`, `kancing`, `resleting`, …).
+   *
+   * Dipakai dialog Register Produk, yang menyusun satu baris per jenis supaya
+   * kelengkapan BOM bisa dinilai: baris yang `nama`-nya masih kosong berarti
+   * jenis itu belum diputuskan. Di papan produksi field ini tidak dibaca —
+   * di sana hanya baris yang sudah terisi yang muncul.
+   */
+  jenis?: string;
 }
 
 export interface DetailKartu {

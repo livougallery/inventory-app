@@ -75,23 +75,21 @@ const MUTASI = [
     harusGagal: ['menu papan'],
   },
   {
-    nama: 'section Progress dihapus, papannya dilebur ke Master Data',
+    nama: 'section Progress dihapus, papannya dilebur ke section lain',
     berkas: path.join(frontend, 'src/components/Shell.tsx'),
-    // Pola ini dulu menyalin seluruh blok `navSectionsVideo` (empat baris),
-    // dan itu rapuh: begitu ada section baru di antaranya — mis. 'Register' —
-    // polanya tidak ketemu lagi dan harness melaporkan LEWAT, padahal yang
-    // rusak cuma pola di harness-nya, bukan pemeriksaannya. Sekarang yang
-    // diambil cuma baris `items` milik section Progress, yang unik karena
-    // 'Progress' muncul dua kali di berkas ini (mode video dan mode normal)
-    // tapi hanya yang ini memakai `papanProgress` di dalam `navSectionsVideo`.
+    // MODE_VIDEO=false, jadi navSectionsVideo (dan seluruh menu Register di
+    // sana) tidak ikut dirender. Sasar section Progress yang benar-benar dipakai
+    // pada navSections normal, menjaga spasi dua barisnya sebagai anchor.
     dari: `    title: 'Progress',
     items: papanProgress,
   },
-];`,
-    ke: `    title: 'Master Data',
-    items: [...modulBaru, ...papanProgress],
+  {
+    title: 'Report',`,
+    ke: `    title: 'Produksi',
+    items: papanProgress,
   },
-];`,
+  {
+    title: 'Report',`,
     harusGagal: ['section Progress'],
   },
 
@@ -160,13 +158,65 @@ const MUTASI = [
   {
     nama: 'janji "tabel bawah" ditulis tanpa syarat (bug asli)',
     berkas: path.join(frontend, 'src/pages/production-fulfillment/PopupKartu.tsx'),
-    dari: `        keterangan={
-          adaTabelBahan
-            ? 'Satu baris mewakili satu kombinasi warna dan ukuran. Kesiapan bahan diperiksa di tabel bawah.'
-            : 'Satu baris mewakili satu kombinasi warna dan ukuran.'
-        }`,
-    ke: `        keterangan="Satu baris mewakili satu kombinasi warna dan ukuran. Kesiapan bahan diperiksa di tabel bawah."`,
+    dari: `            : adaTabelBahan
+              ? 'Satu baris mewakili satu kombinasi warna dan ukuran. Kesiapan bahan diperiksa di tabel bawah.'
+              : 'Satu baris mewakili satu kombinasi warna dan ukuran.'`,
+    ke: `            : 'Satu baris mewakili satu kombinasi warna dan ukuran. Kesiapan bahan diperiksa di tabel bawah.'`,
     harusGagal: ['janji tabel bawah'],
+  },
+
+  // ===== Register Produk setelah tersambung database (16 Okt 2026) =====
+  //
+  // Tiga check di smoke-kanban membaca halaman ini, dan sejak halaman itu
+  // mengambil datanya lewat `useEffect`, render lewat RUTE cuma sampai keadaan
+  // "Memuat produk…" — nol kartu. Check-nya dipindah ke render kedua
+  // (`halRegisterTerisi`, lewat seam `produkAwal`), dan mutasi di bawah ini
+  // yang membuktikan render itu benar-benar dibaca, bukan cuma ada.
+  {
+    nama: 'produkAwal tidak lagi ikut ke katalog (seam render-berisi putus)',
+    berkas: path.join(frontend, 'src/pages/RegisterProduk.tsx'),
+    dari: '    () => [...produk, ...produkAwal],',
+    ke: '    () => [...produk],',
+    // Katalognya jadi kosong di render berisi, jadi halaman jatuh ke cabang
+    // "Belum ada produk yang terdaftar": nol kartu, dan DUA check ikut merah.
+    // 'bentuk halaman Register' ikut karena ia menuntut ada kartu — memang
+    // harus, halaman tanpa kartu bukan halaman yang berbentuk benar.
+    harusGagal: ['halaman Register', 'kaki kartu', 'baris warna di kartu', 'bentuk halaman Register'],
+  },
+  {
+    nama: 'kaki kartu berhenti menyebut jumlah varian',
+    berkas: path.join(frontend, 'src/pages/RegisterProduk.tsx'),
+    dari: '{kartu.jumlahVarian} varian',
+    ke: '{kartu.jumlahVarian}',
+    // Hanya kalimat "N warna · M varian" yang hilang; kartunya tetap ter-render
+    // lengkap. Jadi hanya kaki kartu yang boleh merah — kalau check lain ikut
+    // gagal, yang diuji bukan yang diklaim.
+    harusGagal: ['kaki kartu'],
+    tidakBolehGagal: ['halaman Register', 'bentuk halaman Register'],
+  },
+  {
+    nama: 'kartu produk tidak lagi dirender di tab Products',
+    berkas: path.join(frontend, 'src/pages/RegisterProduk.tsx'),
+    dari: `              {kartu.map((k) => (
+                <KartuProduk`,
+    ke: `              {[].map((k) => (
+                <KartuProduk`,
+    // Kebalikan dari mutasi seam di atas, dan itu memang disengaja: yang satu
+    // memutus DATANYA, yang satu memutus RENDER-nya. Check yang cuma mencari
+    // string bisa hijau untuk salah satunya.
+    harusGagal: ['halaman Register', 'bentuk halaman Register', 'kaki kartu'],
+  },
+  {
+    nama: 'tab Colour ikut ter-render bersama tab Products (tabel bocor)',
+    berkas: path.join(frontend, 'src/pages/RegisterProduk.tsx'),
+    dari: '        <TabsContent value="colour" className="mt-4">',
+    ke: '        <TabsContent value="colour" forceMount className="mt-4">',
+    // Radix hanya merender tab yang aktif, jadi `<table` dari Data Grid warna
+    // TIDAK ada di render tab Products. `forceMount` memaksa keduanya ikut —
+    // persis yang dijaga check "bukan tabel". Hanya check itu yang boleh merah:
+    // kartunya sendiri masih ter-render.
+    harusGagal: ['bentuk halaman Register'],
+    tidakBolehGagal: ['halaman Register', 'kaki kartu'],
   },
 ];
 
@@ -286,8 +336,12 @@ for (const m of MUTASI) {
     continue;
   }
 
-  const ketemu = m.harusGagal.filter((h) => gagal.some((g) => g.includes(h)));
-  const bocor = (m.tidakBolehGagal ?? []).filter((h) => gagal.some((g) => g.includes(h)));
+  // Cocokkan label PERSIS. Substring menghasilkan false positive saat label
+  // satu kata pendek ada di label check lain — mis. "halaman Register" ikut
+  // cocok dengan "bentuk halaman Register", sehingga mutasi bisa tampak
+  // tertangkap oleh check yang salah.
+  const ketemu = m.harusGagal.filter((h) => gagal.includes(h));
+  const bocor = (m.tidakBolehGagal ?? []).filter((h) => gagal.includes(h));
   const lengkap = ketemu.length === m.harusGagal.length && bocor.length === 0;
   if (!lengkap) semuaTertangkap = false;
   console.log(`${lengkap ? 'KETANGKAP' : 'SEBAGIAN'}  ${m.nama}`);

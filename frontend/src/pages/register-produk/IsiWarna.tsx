@@ -29,23 +29,26 @@ import { type WarnaMaster } from '@/lib/warna';
 // SEDANG AKTIF saat render di server. Kalau tabel ini cuma hidup di dalam
 // tabnya, satu-satunya cara memeriksanya adalah membuka tabnya dulu.
 //
-// Datanya DITURUNKAN dari katalog produk lalu ditambah warna yang diketik di
-// form — lihat catatan di `lib/warna.ts`. Belum terhubung database.
+// Datanya dari database: tabel `warna` di Supabase, dibaca lewat
+// /api/register-produk/warna. Sejak 16 Okt 2026 halaman ini tidak lagi
+// menurunkan daftarnya dari katalog contoh — `warna.kode` unik di sana, dan
+// `product_variants.warna_kode` menunjuk ke tabel itu lewat foreign key, jadi
+// daftar yang dirakit sendiri di klien tidak bisa dipakai untuk menyimpan apa
+// pun.
 
 export function IsiWarna({
   warna,
   onTambahWarna,
 }: {
   /**
-   * Seluruh warna yang dikenal halaman ini: turunan katalog + yang baru
-   * ditambahkan lewat form.
+   * Baris tabel warna, dibaca dari `warna` di database.
    *
-   * Diterima sebagai prop, bukan diambil sendiri lewat `daftarWarna()` di
-   * dalam sini, karena daftarnya HARUS bertahan saat tab ditutup. Radix Tabs
-   * melepas panel yang tidak aktif, jadi state yang hidup di dalam komponen
-   * ini akan hilang begitu pemilik menengok tab Products lalu kembali — warna
-   * yang baru saja ditambahkan lenyap tanpa pesan apa pun. Pemiliknya
-   * (`RegisterProduk`) yang menyimpan, sama seperti produk baru.
+   * Diterima sebagai prop, bukan diambil sendiri lewat fetch di dalam sini,
+   * karena daftarnya HARUS bertahan saat tab ditutup. Radix Tabs melepas panel
+   * yang tidak aktif, jadi state yang hidup di dalam komponen ini akan hilang
+   * begitu pemilik menengok tab Products lalu kembali — dan pemuatan ulang
+   * yang tidak perlu itu membuat tabel berkedip kosong setiap kali tabnya
+   * dibuka. Pemiliknya (`RegisterProduk`) yang menyimpan.
    */
   warna: WarnaMaster[];
   onTambahWarna: () => void;

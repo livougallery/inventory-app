@@ -439,11 +439,12 @@ async function bootstrapSchema(schemaName) {
     CREATE TABLE IF NOT EXISTS ${t('product_bom')} (
       id SERIAL PRIMARY KEY,
       variant_id INTEGER NOT NULL REFERENCES ${t('product_variants')}(id) ON DELETE CASCADE,
-      raw_material_id INTEGER NOT NULL REFERENCES ${t('raw_materials')}(id),
+      raw_material_id INTEGER REFERENCES ${t('raw_materials')}(id),
       qty_per_pcs REAL NOT NULL DEFAULT 0,
       catatan TEXT DEFAULT '',
       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      no_need INTEGER DEFAULT NULL
     );
 
     CREATE INDEX IF NOT EXISTS idx_product_photos_product ON ${t('product_photos')}(product_id);
@@ -611,6 +612,119 @@ async function bootstrapSchema(schemaName) {
         (tipe = 'aksesoris' AND jenis IN ('hak kait','kancing','resleting','karet','label','renda','kain pelapis'))
       );
   `);
+
+  // BOM juga perlu menyimpan keputusan eksplisit bahwa satu jenis bahan memang
+  // tidak digunakan. Baris itu tidak punya material, jadi FK harus nullable.
+  // Idempoten untuk skema yang sudah ada sebelum kolom ini.
+  //
+  // `jenis` ikut disimpan di barisnya sendiri, bukan dibaca dari
+  // `raw_materials` lewat join seperti baris material lain. Baris "no need"
+  // memang tidak menunjuk material apa pun, jadi join-nya selalu kosong dan
+  // jenisnya hilang — keputusannya tersimpan tapi tidak bisa dibaca kembali,
+  // dan barisnya lalu dibuang di layar seolah tidak pernah disimpan.
+  //
+  // Idempoten. Baris LAMA yang `jenis`-nya masih NULL tetap terbaca lewat
+  // `COALESCE(pb.jenis, rm.jenis)` di API selama ia menunjuk material. Baris
+  // no-need lama TIDAK bisa dipulihkan: jenisnya memang tidak pernah
+  // tersimpan, dan menebaknya dari id atau urutan baris berarti mengarang
+  // data. Baris seperti itu cukup diputuskan ulang sekali di layar, lalu
+  // tersimpan lengkap.
+  await db.exec(`
+    ALTER TABLE ${t('product_bom')} ALTER COLUMN raw_material_id DROP NOT NULL;
+    ALTER TABLE ${t('product_bom')} ADD COLUMN IF NOT EXISTS no_need INTEGER DEFAULT NULL;
+    ALTER TABLE ${t('product_bom')} ADD COLUMN IF NOT EXISTS jenis TEXT;
+  `);
+
+  // ===== Register Produk (16 Oktober 2026) =====
+  // Kolom/tabel untuk koneksi database Register Produk → mengganti data contoh
+  // PRODUK_REGISTER dengan query API nyata.
+  //
+  // design_code + brand di products, tabel warna master + FK ke variants,
+  // tabel product_marketplaces untuk 3 platform per produk.
+  await db.exec(`
+    ALTER TABLE ${t('products')} ADD COLUMN IF NOT EXISTS design_code TEXT;
+    ALTER TABLE ${t('products')} ADD COLUMN IF NOT EXISTS brand TEXT DEFAULT '';
+
+    CREATE TABLE IF NOT EXISTS ${t('warna')} (
+      id SERIAL PRIMARY KEY,
+      kode TEXT NOT NULL UNIQUE,
+      nama TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_warna_kode ON ${t('warna')}(LOWER(kode));
+
+    ALTER TABLE ${t('product_variants')} ADD COLUMN IF NOT EXISTS warna_kode TEXT
+      REFERENCES ${t('warna')}(kode) ON DELETE SET NULL;
+
+    CREATE TABLE IF NOT EXISTS ${t('product_marketplaces')} (
+      id SERIAL PRIMARY KEY,
+      product_id INTEGER NOT NULL REFERENCES ${t('products')}(id) ON DELETE CASCADE,
+      platform TEXT NOT NULL CHECK (platform IN ('shopee','tiktok','shopify')),
+      terdaftar BOOLEAN NOT NULL DEFAULT FALSE,
+      foto_bukti TEXT DEFAULT NULL,
+      created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    );
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_pm_product_platform
+      ON ${t('product_marketplaces')}(product_id, platform);
+  `);
+
+  // Seed warna master (idempotent via manual check + upsert per kode)
+  const WARNA_SEED = [
+    ['BLK', 'Black'],
+    ['SEO', 'Smoked Espresso'],
+    ['BRN', 'Brown'],
+    ['CHC', 'Chocolate'],
+    ['OAT', 'Oat'],
+    ['GRY', 'Grey'],
+    ['IVY', 'Ivory'],
+  ];
+
+  for (const [kode, nama] of WARNA_SEED) {
+    const existing = await db.one(
+      `SELECT id FROM ${t('warna')} WHERE kode = $1`,
+      [kode]
+    );
+    if (existing) {
+      await db.query(
+        `UPDATE ${t('warna')} SET nama = $1 WHERE kode = $2`,
+        [nama, kode]
+      );
+    } else {
+      await db.query(
+        `INSERT INTO ${t('warna')} (kode, nama) VALUES ($1, $2)`,
+        [kode, nama]
+      );
+    }
+  }
+
+  // Backfill warna_kode di product_variants (idempotent: cuma WHERE NULL)
+  for (const [kode, nama] of WARNA_SEED) {
+    await db.query(
+      `UPDATE ${t('product_variants')} SET warna_kode = $1 WHERE warna = $2 AND warna_kode IS NULL`,
+      [kode, nama]
+    );
+  }
+
+  // Seed product_marketplaces untuk semua produk yang belum punya rows
+  const allProducts = (await db.query(
+    `SELECT id FROM ${t('products')}`
+  )).rows;
+
+  for (const p of allProducts) {
+    for (const plat of ['shopee', 'tiktok', 'shopify']) {
+      const existing = await db.one(
+        `SELECT id FROM ${t('product_marketplaces')} WHERE product_id = $1 AND platform = $2`,
+        [p.id, plat]
+      );
+      if (!existing) {
+        await db.query(
+          `INSERT INTO ${t('product_marketplaces')} (product_id, platform, terdaftar) VALUES ($1, $2, FALSE)`,
+          [p.id, plat]
+        );
+      }
+    }
+  }
 }
 
 const db = new Db();

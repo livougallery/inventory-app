@@ -1,150 +1,83 @@
-import { useMemo, useState, type CSSProperties, type ReactNode } from 'react';
-import { RotateCcw, Trash2, TriangleAlert, X } from 'lucide-react';
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from '@/components/ui/dialog';
+import { useEffect, useMemo, useState, type CSSProperties, type ReactNode } from 'react';
+import { TriangleAlert, X } from 'lucide-react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableFooter,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { KATEGORI_VENDOR, SIZE, WARNA } from '@/lib/opsi';
-import { PRODUK_REGISTER, type ProdukRegister } from '@/lib/produk';
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import type { ProdukRegister } from '@/lib/produk';
+import { BRAND_PRODUK, KATEGORI_PRODUK } from '@/lib/opsi';
 
 // ===== Form registrasi produk baru =====
 //
 // Dipanggil dari tombol "Tambah Produk" di Register Produk. Berbeda dari
-// `DetailProduk` (yang MEMBUKA produk yang sudah ada) dan `FormPoBaru` (yang
-// membuat PO): yang ini membuat produk beserta varian warnanya, dan hasilnya
-// langsung muncul sebagai kartu di daftar Register.
+// `DetailProduk` (yang MEMBUKA produk yang sudah ada): yang ini mendaftarkan
+// produknya, lalu sisanya diisi belakangan di halaman detail.
+//
+// ENAM FIELD, bukan empat belas (permintaan pemilik, 19 Oktober 2026).
+//
+// Dulu form ini juga meminta harga, batch, kategori vendor, vendor/CMT, warna,
+// ukuran, dan tabel kode varian — satu halaman penuh sebelum satu produk pun
+// terdaftar. Yang diminta sekarang persis yang sudah diketahui orang di depan
+// barangnya: nama, brand, foto, kategori, kode SKU, tanggal. Sisanya memang
+// belum diketahui saat mendaftar — harganya belum diputuskan, warnanya baru
+// menyusul, kode varian bahkan belum dibuat. Memaksanya di sini berarti
+// mengarang jawaban, dan yang paling sering terjadi: form ditinggalkan di
+// tengah jalan.
+//
+// Varian TIDAK dibuat di sini lagi. Produk lahir tanpa varian, dan variannya
+// ditambahkan di halaman detail produk — di sana warnanya sudah terpampang
+// bersama kain, aksesoris, dan stoknya, jadi keputusannya diambil di tempat
+// yang memang membicarakannya. Ini juga menghapus satu jalur pembentukan
+// varian: dulu form ini merakit `spesifikasi.warna` sendiri, dan bentuk
+// rakitannya harus persis sama dengan bentuk kiriman API supaya form "Tambah
+// Produksi" bisa membacanya. Sekarang jalur itu cuma satu.
+//
+// Fotonya diunggah SETELAH produknya tersimpan, bukan ikut di dalam POST-nya:
+// endpoint unggah butuh id produk, dan id itu baru ada setelah produknya
+// dibuat. Kalau unggahannya gagal, produknya tetap terdaftar — pesannya
+// muncul di halaman, bukan di form ini, karena yang gagal bukan pendaftarannya.
 //
 // Bentuk field-nya diambil dari `ProdukRegister`/`SpesifikasiProduksi` di
 // `lib/produk.ts`, bukan dikarang. Kalau bentuknya menyimpang sedikit saja,
 // produk yang dibuat di sini tidak akan bisa ikut dipakai form "Tambah
 // Produksi" yang pengisian otomatisnya membaca spesifikasi itu — dan itu baru
 // ketahuan jauh nanti, saat form produksi gagal terisi sendiri.
-//
-// CATATAN BATASAN: halaman ini masih pratinjau, belum terhubung database.
-// Kartu hasil form ini hidup di memori saja — hilang saat halaman di-refresh.
-// Ditulis terang-terangan di kaki form supaya tidak disalahartikan sebagai
-// data yang sudah tersimpan.
 
 /**
- * Kode warna, DIBACA DARI KATALOG — bukan ditulis ulang di sini.
+ * Brand bawaan yang dicoba dipakai lebih dulu kalau ia ada di daftar.
  *
- * Kode warna masuk ke `kodeVarian` (mis. `LVU-TOP-11-HTP-M`), jadi kode yang
- * dikarang di form akan menghasilkan varian yang tidak cocok dengan
- * katalog untuk warna yang sama. Menyalin pemetaannya jadi daftar konstanta
- * di file ini berarti dua tempat yang harus dijaga bareng — dan diam-diam
- * berbeda begitu katalog ditambah warnanya.
+ * LIVOU adalah merek utama grup ini, dan itu sebabnya mockup pemilik
+ * menampilkannya terisi. Tetap harus dicek ke daftarnya: nilai bawaan yang
+ * tidak ada di pilihan akan tampil sebagai kotak KOSONG — bukan "LIVOU" —
+ * karena pilihan kotaknya memang cuma berisi brand yang terdaftar.
  */
-const KODE_WARNA: Record<string, string> = (() => {
-  const peta: Record<string, string> = {};
-  for (const p of PRODUK_REGISTER) {
-    for (const w of p.spesifikasi.warna) peta[w.nama] = w.kode;
-  }
-  return peta;
-})();
+const BRAND_UTAMA = BRAND_PRODUK[0];
 
 /**
- * Kategori produk.
+ * Berapa produk yang boleh dibuat dalam satu sesi.
  *
- * Ditulis eksplisit, bukan diambil dari katalog, karena daftar filter di
- * halaman Register dibangun dari kartu yang sedang tampil: kalau kategorinya
- * ikut berubah sendiri setiap ada produk baru, pilihan di menu Filter ikut
- * berubah juga — dan filter yang bergeser sendiri saat tidak ada yang
- * menyentuhnya membuat orang ragu pada filternya sendiri.
- */
-const KATEGORI_PRODUK = [
-  { value: 'T-Shirt', label: 'T-Shirt' },
-  { value: 'Pants', label: 'Pants' },
-  { value: 'Dress', label: 'Dress' },
-  { value: 'Blouse', label: 'Blouse' },
-  { value: 'Outer', label: 'Outer' },
-  { value: 'Set', label: 'Set' },
-];
-
-/**
- * Berapa produk yang boleh dibuat dalam satu sesi pratinjau.
- *
- * Tanpa batas, satu klik yang salah menumpuk kartu yang tak bisa dihapus dari
- * mana pun — dan halaman ini tidak punya tempat untuk menghapus, jadi
- * semuanya cuma jadi-Noisy. Batas inilah yang harus diubah kalau owner butuh
- * lebih, bukan dibiarkan menumpuk diam-diam.
+ * Tanpa batas, satu klik yang salah menumpuk baris di database yang tidak bisa
+ * dihapus dari mana pun — halaman ini tidak punya tempat untuk menghapus, jadi
+ * semuanya cuma jadi sampah yang harus dibersihkan manual. Batas inilah yang
+ * harus diubah kalau owner butuh lebih, bukan dibiarkan menumpuk diam-diam.
  */
 export const MAKS_PRODUK_BARU = 3;
 
 /** Yang dikirim ke halaman. `id` dan `registerDate` diisi pemanggil. */
 export type DataProdukBaru = Omit<ProdukRegister, 'id' | 'registerDate'>;
 
-const KOSONG = {
-  nama: '',
-  brand: 'Livou',
-  kategori: '',
-  designCode: '',
-  batch: '',
-  harga: '',
-  kategoriVendor: 'inhouse',
-  namaVendor: 'Livou',
-} satisfies Record<string, string>;
-
-/** Satu pasangan warna + ukuran, beserta kode yang diketik orang. */
-interface Varian {
-  /** Kunci untuk React: "warna|ukuran". */
-  key: string;
-  warna: string;
-  size: string;
-  /**
-   * Kode varian. Tanpa nilai = pakai kode bawaan; string kosong = pengguna
-   * sengaja mengosongkannya, dan itu tetap tersimpan sebagai kosong.
-   */
-  kode?: string;
-}
-
-/**
- * Buang penanda "dihapus" milik nilai atribut yang baru saja dihapus.
- *
- * Tanpa ini, begitu warna "Hitam" dihapus lalu ditambahkan lagi, varian
- * Hitam akan langsung tampil dalam keadaan dicoret -- padahal tidak ada yang
- * menyentuhnya -- dan tombol "Pulihkan semua" akan ikut memulihkan yang tidak
- * ada hubungannya dengan aksi baru-barusan.
- *
- * Cukup membuang kunci yang menyebut nilai itu. Kunci lain tidak mungkin
- * menunjuk warna atau ukuran yang sudah tidak ada: satu-satunya jalan
- * menyusutkan `warnaDipilih`/`ukuranDipilih` adalah handler yang memanggil
- * fungsi ini juga, jadi tidak ada penanda yang bisa jadi yatim.
- *
- * Murni, di luar komponen: tidak menyentuh state apa pun, jadi bisa dipakai
- * langsung dari penangan peristiwa.
- *
- * Diekspor hanya supaya smoke test bisa memanggil implementasi yang sama
- * persis dengan yang dipakai form -- polanya sama dengan IsiFormProdukBaru di
- * bawah. Fungsi ini tidak pernah muncul di markup hasil render, jadi tanpa
- * exports ini tidak ada satu pun check yang menyentuhnya.
- */
-export function buangPenanda(
-  penanda: Set<string>,
-  nilai: string,
-  sisi: 'warna' | 'ukuran'
-): Set<string> {
-  const hasil = new Set(penanda);
-  for (const key of hasil) {
-    const [w, s] = key.split('|');
-    if (sisi === 'warna' ? w === nilai : s === nilai) hasil.delete(key);
-  }
-  return hasil;
+/** Tanggal hari ini sebagai `YYYY-MM-DD`, bentuk yang sama dengan `registerDate`. */
+function tanggalHariIni(): string {
+  // Dipotong dari ISO, bukan dirakit dari getDate()/getMonth(): perakitan
+  // manual gampang salah di angka bulan (Januari = 0) dan di nol di depan.
+  return new Date().toISOString().slice(0, 10);
 }
 
 /**
@@ -155,416 +88,298 @@ export function buangPenanda(
  * merendernya hanya akan melihat `<div></div>` dan semua pemeriksaan isinya
  * akan lulus karena tidak menemukan apa pun. Pola yang sama dipakai
  * `IsiFormPoBaru` dan `IsiDetailProduk`.
+ *
+ * `brands` dan `onSimpan` sengaja WAJIB, bukan opsional dengan bawaan kosong:
+ * form yang tidak menerima daftar brand akan menampilkan kotak brand yang
+ * kosong, dan itu bentuk paling halus dari form yang tidak bisa dipakai.
  */
 export function IsiFormProdukBaru({
+  brands,
   onSimpan,
   onTutup,
   sudahAda,
+  galat,
+  menyimpan = false,
 }: {
-  onSimpan: (data: DataProdukBaru) => void;
+  /**
+   * Brand yang sudah dipakai produk lain, dari halaman.
+   *
+   * Boleh KOSONG — dan itu keadaan nyata, bukan cuma kasus uji: database yang
+   * belum punya satu produk pun tidak punya brand untuk ditawarkan. Kotaknya
+   * karena itu jatuh ke isian bebas saat daftarnya kosong; lihat `pakaiPilihan`.
+   */
+  brands: string[];
+  /**
+   * `berkas` dipisah dari `data` karena keduanya menempuh jalan yang berbeda:
+   * `data` dikirim sebagai JSON, `berkas` sebagai multipart setelah produknya
+   * punya id. Menggabungkannya jadi satu parameter berarti salah satu bentuk
+   * harus dipaksa masuk ke bentuk yang lain.
+   */
+  onSimpan: (data: DataProdukBaru, berkas: File | null) => void;
   onTutup: () => void;
   /** Berapa produk baru yang sudah dibuat di sesi ini. */
   sudahAda: number;
+  /** Galat dari server saat menyimpan. Ditampilkan di dalam formnya. */
+  galat?: string | null;
+  /** Sedang mengirim ke server: tombolnya mati supaya tidak terkirim dua kali. */
+  menyimpan?: boolean;
 }) {
-  const [nama, setNama] = useState(KOSONG.nama);
-  const [brand, setBrand] = useState(KOSONG.brand);
-  const [kategori, setKategori] = useState(KOSONG.kategori);
-  const [designCode, setDesignCode] = useState(KOSONG.designCode);
-  const [batch, setBatch] = useState(KOSONG.batch);
-  const [harga, setHarga] = useState(KOSONG.harga);
-  const [kategoriVendor, setKategoriVendor] = useState(KOSONG.kategoriVendor);
-  const [namaVendor, setNamaVendor] = useState(KOSONG.namaVendor);
+  const [nama, setNama] = useState('');
+  const [kategori, setKategori] = useState('');
+  const [designCode, setDesignCode] = useState('');
+  const [berkas, setBerkas] = useState<File | null>(null);
 
-  /* Atribut dulu, baru detail. Warna dan ukuran dipilih sebagai nilai yang
-     bisa ditambah/dihapus; semua pasangan keduanya muncul sendiri di tabel
-     di bawahnya -- persis seperti di TikTok Shop/Shopee. */
-  const [warnaDipilih, setWarnaDipilih] = useState<string[]>([WARNA[0]]);
-  const [ukuranDipilih, setUkuranDipilih] = useState<string[]>([SIZE[0]]);
-  /* Kode yang diketik orang, per pasangan "warna|ukuran". Satu-satunya
-     bagian varian yang tidak bisa diturunkan dari atribut. */
-  const [koreksiKode, setKoreksiKode] = useState<Record<string, string>>({});
-  /* Varian yang dicoret. Tidak memotong daftar -- menghapus satu baris tidak
-     boleh ikut menghapus sebuah warna, karena warnanya masih dipilih di baris
-     "Colour" di atas. Varian yang dicoret bisa dipulihkan. */
-  const [dihapus, setDihapus] = useState<Set<string>>(new Set());
+  /* Pilihan brand: yang sudah dipakai produk lain, dirapikan dari duplikat dan
+     dari yang kosong. Brand kosong BUKAN pilihan — ia catatan lama yang belum
+     pernah diisi, dan menawarkannya sebagai pilihan berarti menawarkan
+     "kosong" sebagai sebuah merek. */
+  const pilihanBrand = useMemo(
+    () => Array.from(new Set(brands.filter(Boolean))).sort((a, b) => a.localeCompare(b)),
+    [brands]
+  );
+
+  /* Tanpa satu pun brand yang diketahui, kotak pilihannya tidak punya isi dan
+     formnya jadi buntu tanpa penjelasan — persis kegagalan yang dulu terjadi
+     pada master warna. Karena itu kotaknya jatuh ke isian bebas; lihat
+     pemakaian `pakaiPilihan` di bawah. */
+  const pakaiPilihan = pilihanBrand.length > 0;
+
+  const [brand, setBrand] = useState(() => {
+    if (pilihanBrand.length === 0) return BRAND_UTAMA;
+    return pilihanBrand.includes(BRAND_UTAMA) ? BRAND_UTAMA : pilihanBrand[0];
+  });
+
+  /* Tanggal pendaftaran: dihitung SEKALI saat formnya dibuka, bukan tiap
+     render. Form yang dibiarkan terbuka melewati tengah malam tidak boleh
+     berubah tanggal di depan matanya — angka yang bergerak sendiri membuat
+     orang ragu apakah isiannya ikut berubah. */
+  const [tanggal] = useState(tanggalHariIni);
+
+  /* Pratinjau foto. Object URL-nya dibuat di penangan perubahan, BUKAN saat
+     render: render bisa dijalankan berkali-kali, dan setiap object URL yang
+     dibuat di sana menahan berkasnya di memori tanpa pernah dilepas. */
+  const [pratinjau, setPratinjau] = useState<string | null>(null);
+
+  useEffect(() => {
+    // Yang dilepas cuma URL terakhir. URL sebelumnya sudah dilepas oleh
+    // `gantiBerkas` saat digantikan — melepasnya lagi di sini tidak
+    // berpengaruh (revoke pada URL yang sudah dilepas tidak error), tapi
+    // daftar URL lama tidak disimpan karena tidak ada yang membutuhkannya.
+    return () => {
+      if (pratinjau) URL.revokeObjectURL(pratinjau);
+    };
+  }, [pratinjau]);
+
+  function gantiBerkas(f: File | null) {
+    setPratinjau((lama) => {
+      if (lama) URL.revokeObjectURL(lama);
+      return f ? URL.createObjectURL(f) : null;
+    });
+    setBerkas(f);
+  }
 
   const batasTercapai = sudahAda >= MAKS_PRODUK_BARU;
-
-  /* ==== Turunan ==== */
-
-  /* Daftar varian TIDAK disimpan. Ia persis hasil kali silang warna x
-     ukuran, jadi menyimpannya berarti ada dua sumber kebenaran yang harus
-     dijaga bareng: begitu warna dihapus, salinan yang tersimpan masih punya
-     baris untuk warna itu, dan tabel menampilkan varian yang sudah tidak ada.
-
-     Yang benar-benar tidak bisa diturunkan hanya kode yang diketik orang --
-     jadi itu satu-satunya yang disimpan, sebagai peta "kunci -> kode". */
-  const varianSemua = useMemo<Varian[]>(
-    () =>
-      warnaDipilih.flatMap((w) =>
-        ukuranDipilih.map((s) => ({ key: `${w}|${s}`, warna: w, size: s }))
-      ),
-    [warnaDipilih, ukuranDipilih]
-  );
-
-  const varianTampil = useMemo(
-    () =>
-      varianSemua
-        .filter((v) => !dihapus.has(v.key))
-        .map((v) => (koreksiKode[v.key] !== undefined ? { ...v, kode: koreksiKode[v.key] } : v)),
-    [varianSemua, dihapus, koreksiKode]
-  );
-
-  function kodeBawaan(v: { warna: string; size: string }): string {
-    return `${KODE_WARNA[v.warna] ?? v.warna.slice(0, 3).toUpperCase()}-${v.size}`;
-  }
-
-  function kodeFinal(v: Varian): string {
-    return (v.kode ?? kodeBawaan(v)).trim();
-  }
-
-  /* Kode yang diketik user menang; tanpa koreksi, kode diturunkan seperti
-     produk lama. Panjang !== 1 berarti ada duplikat: kode kembar membuat dua
-     varian berbeda tidak bisa dibedakan. */
-  const masalahVarian = useMemo(() => {
-    const hitung = new Map<string, number>();
-    for (const v of varianTampil) {
-      const k = kodeFinal(v);
-      if (!k) continue;
-      hitung.set(k, (hitung.get(k) ?? 0) + 1);
-    }
-    const ganda = [...hitung].filter(([, n]) => n > 1).map(([k]) => k);
-    const kosong = varianTampil.filter((v) => !kodeFinal(v)).length;
-    const hasil: string[] = [];
-    if (kosong > 0) hasil.push(`${kosong} varian belum punya kode.`);
-    if (ganda.length > 0) hasil.push(`Kode dipakai lebih dari sekali: ${ganda.join(', ')}.`);
-    return hasil;
-  }, [varianTampil]);
-
-  function ubahKode(key: string, nilai: string) {
-    /* String kosong DISIMPAN, bukan dihapus. Mengosongkan kotak adalah koreksi
-       yang disengaja: kalau dihapus, isinya balik ke kode bawaan dan user
-       tidak pernah bisa membiarkan variannya tanpa kode. */
-    setKoreksiKode((lama) => ({ ...lama, [key]: nilai }));
-  }
 
   /**
    * Kenapa form ini belum bisa disimpan.
    *
-   * Nama, kategori, dan design code wajib karena tiga hal: nama yang dipakai
-   * form produksi untuk mencari produk, kategori untuk filter di kartu, dan
-   * design code yang jadi bagian `kodeVarian`. Sisanya boleh kosong — produk
-   * yang baru didaftarkan memang belum punya stok.
+   * Nama, kategori, dan design code tetap wajib karena tiga hal: nama yang
+   * dipakai form produksi untuk mencari produk, kategori untuk filter di
+   * kartu, dan design code yang jadi bagian kode varian. Brand tidak masuk
+   * daftar ini karena kotaknya sudah selalu terisi — pilihan maupun isian
+   * bebasnya berangkat dari nilai bawaan. Foto juga tidak wajib: produk bisa
+   * difoto belakangan.
    *
-   * Varian TIDAK wajib sudah terisi stok. Kolom rencana dihapus atas permintaan
-   * pemilik: angkanya butuh stok riil, jadi memaksanya di sini berarti
-   * mengarang data. Varian yang baru dibuat sengaja berstok nol sampai
-   * barangnya benar-benar masuk.
+   * Yang WAJIB-ISI tidak lagi menghasilkan pesan. Kotak kuningnya dulu muncul
+   * begitu form dibuka — tiga baris teguran untuk form yang belum sempat
+   * disentuh — dan itu terbaca sebagai kesalahan padahal cuma keadaan awal
+   * (permintaan pemilik, 19 Oktober 2026). Tanda bintang di label sudah
+   * mengatakan mana yang wajib, dan tombol Simpan yang mati sudah mengatakan
+   * bahwa formnya belum lengkap; pesannya cuma mengulang keduanya.
    *
-   * Yang tetap dicegat: kode varian kosong atau kembar. Kode yang tidak bisa
-   * membedakan dua varian membuat kartu dan pencarian tidak bisa tahu mana
-   * yang mana — jauh lebih sulit diperbaiki belakangan daripada dicegat di sini.
+   * Batas per sesi BUKAN bagian dari daftar wajib-isi, dan itu satu-satunya
+   * yang pesannya tetap ditampilkan. Tombol yang mati karena batas tidak bisa
+   * dijelaskan oleh tanda bintang mana pun, dan form yang tombolnya mati tanpa
+   * alasan persis kegagalan "buntu tanpa penjelasan" yang halaman ini sudah
+   * pernah alami.
    */
   const masalah: string[] = [];
-  if (batasTercapai) masalah.push(`Batas ${MAKS_PRODUK_BARU} produk per sesi sudah tercapai`);
-  if (!nama.trim()) masalah.push('Nama produk wajib diisi');
-  if (!kategori) masalah.push('Kategori wajib dipilih');
-  if (!designCode.trim()) masalah.push('Design code wajib diisi');
-  if (warnaDipilih.length === 0) masalah.push('Tambahkan minimal satu warna');
-  if (ukuranDipilih.length === 0) masalah.push('Tambahkan minimal satu ukuran');
-  masalah.push(...masalahVarian);
+  if (batasTercapai) {
+    masalah.push(
+      `Batas ${MAKS_PRODUK_BARU} produk per sesi sudah tercapai. Muat ulang halaman untuk mulai dari awal.`
+    );
+  }
+
+  const belumLengkap = !nama.trim() || !kategori || !designCode.trim();
 
   function simpan() {
-    if (masalah.length > 0) return;
-    // Hanya digit yang diambil: "Rp 149.000" dan "149000" berarti hal yang
-    // sama, dan `Number("149.000")` bernilai NaN sehingga diam-diam jadi 0 —
-    // harga yang hilang tanpa pesan error.
-    const angka = Number(harga.replace(/\D/g, ''));
+    if (masalah.length > 0 || belumLengkap) return;
 
-    // Dikelompokkan balik ke bentuk `SpesifikasiProduksi`: warna di luar,
-    // ukuran di dalam. Varian sengaja datar, tapi yang disimpan tidak boleh
-    // -- bentuk simpanannya sudah dipakai form "Tambah Produksi" untuk mengisi
-    // dirinya sendiri, dan bentuk berbeda di sini akan menggagalkannya.
-    //
-    // Yang disimpan HANYA varian yang masih tampil. Varian yang dicoret
-    // tidak ikut -- kalau ikut, produk dapat baris yang tidak pernah dilihat
-    // pemiliknya saat mengisi form.
-    const perWarna = warnaDipilih
-      .map((w) => ({
-        nama: w,
-        kode: KODE_WARNA[w] ?? w.slice(0, 3).toUpperCase(),
-        pcs: ukuranDipilih.flatMap((s) => {
-          const v = varianTampil.find((x) => x.key === `${w}|${s}`);
-          if (!v) return [];
-          return [
-            {
-              ukuran: s,
-              // Stok baru yang didaftarkan memang nol, bukan belum diisi.
-              // `pcs: 0` yang nanti FormProduksi baca sebagai "sudah ada
-              // kebutuhan 0" -- sama dengan tidak ada, dan jujur soal
-              // kenyataannya: belum ada barang.
-              qty: 0,
-              // Kode koreksi user ikut dibawa. Tanpa ini, hasil ketikan di
-              // kolom kode hilang begitu produk disimpan.
-              kode: v.kode,
-            },
-          ];
-        }),
-      }))
-      .filter((w) => w.pcs.length > 0);
-
-    onSimpan({
-      nama: nama.trim(),
-      brand: brand.trim() || KOSONG.brand,
-      kategori,
-      harga: angka,
-      foto: null,
-      spesifikasi: {
-        designCode: designCode.trim(),
+    onSimpan(
+      {
+        nama: nama.trim(),
+        // Brand kosong jatuh ke bawaan: kolomnya `NOT NULL DEFAULT ''` di
+        // database, dan merek yang kosong membuat penyaringan per brand di
+        // halaman ini tidak pernah cocok dengan apa pun.
+        brand: brand.trim() || BRAND_UTAMA,
         kategori,
-        batch: batch.trim(),
-        kategoriVendor,
-        namaVendor: namaVendor.trim(),
-        warna: perWarna,
-        // BOM dan aksesori sengaja kosong. Produk yang baru didaftarkan belum
-        // punya kebutuhan bahan yang disetujui — mengisinya di sini berarti
-        // mengarang angka konsumsi yang nanti dipakai menghitung HPP.
-        kain: [],
-        aksesori: [],
+        // Harga 0 = belum ditetapkan, bukan gratis. Halaman ini tidak
+        // menampilkan harga di mana pun sejak 15 Oktober 2026 (pindah ke
+        // dialog detail), jadi angka 0 di sini tidak pernah terbaca sebagai
+        // "harganya nol" — yang butuh harga akan mengisinya saat produknya
+        // dibuka.
+        harga: 0,
+        // Fotonya BELUM ada saat baris ini dibuat. Yang mengisinya adalah
+        // pengunggahan sesudah produknya tersimpan, dan hasilnya baru
+        // terbaca setelah daftarnya dimuat ulang dari server.
+        foto: null,
+        spesifikasi: {
+          designCode: designCode.trim(),
+          kategori,
+          // Batch, vendor, dan warna sengaja kosong: ketiganya belum diketahui
+          // saat produk didaftarkan, dan variannya dibuat di halaman detail.
+          // Mengisinya di sini berarti mengarang jawaban.
+          batch: '',
+          kategoriVendor: '',
+          namaVendor: '',
+          warna: [],
+          // BOM dan aksesori juga kosong. Produk yang baru didaftarkan belum
+          // punya kebutuhan bahan yang disetujui — mengisinya di sini berarti
+          // mengarang angka konsumsi yang nanti dipakai menghitung HPP.
+          kain: [],
+          aksesori: [],
+        },
       },
-    });
+      berkas
+    );
   }
 
   return (
     <div className="space-y-5">
-      {/* ── Identitas ─────────────────────────────────────────────── */}
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold">Identitas produk</h3>
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Nama Produk" wajib>
-            <Input
-              value={nama}
-              onChange={(e) => setNama(e.target.value)}
-              placeholder="mis. Oversized Hoodie Kereta"
-            />
-          </Field>
-          <Field label="Brand">
+      {/* Enam isian, satu kolom — persis urutan di mockup. Sengaja tidak
+          dibagi jadi beberapa bagian berjudul: dengan enam isian, judul
+          bagiannya cuma menambah baris tanpa menambah keterangan. */}
+      <div className="space-y-3">
+        <Field label="Nama Produk" wajib>
+          <Input
+            value={nama}
+            onChange={(e) => setNama(e.target.value)}
+            placeholder="mis. Oversized Hoodie Kereta"
+            aria-label="Nama Produk"
+          />
+        </Field>
+
+        <Field label="Brand">
+          {pakaiPilihan ? (
+            /* Pilihan, bukan ketikan bebas. Brand yang diketik tangan
+               bercabang jadi banyak ejaan untuk satu merek yang sama
+               ("Livou", "livou", "Livou "), dan itu merembet ke mana-mana:
+               penyaringan dan pengelompokan per brand jadi tidak pernah
+               cocok. Isinya diambil dari brand produk yang sudah ada, jadi
+               pilihannya bertambah sendiri begitu ada produk dengan brand
+               baru.
+
+               Tanpa `value` yang cocok dengan salah satu item, Base UI
+               mencetak nilai apa adanya — jadi nilai bawaannya WAJIB berasal
+               dari daftarnya sendiri (lihat `useState` di atas). */
+            <Select value={brand} onValueChange={(v) => setBrand(v ?? '')}>
+              <SelectTrigger className="w-full" aria-label="Brand">
+                <SelectValue placeholder="Pilih brand">{(v) => v || null}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {pilihanBrand.map((namaBrand) => (
+                  <SelectItem key={namaBrand} value={namaBrand}>
+                    {namaBrand}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            /* Belum ada satu produk pun, jadi belum ada brand yang bisa
+               ditawarkan. Isian bebas di sini bukan kemunduran: brand pertama
+               yang diketik orang inilah yang mengisi daftar pilihannya untuk
+               produk-produk berikutnya. */
             <Input
               value={brand}
               onChange={(e) => setBrand(e.target.value)}
-              placeholder={KOSONG.brand}
+              placeholder={BRAND_UTAMA}
+              aria-label="Brand"
             />
-          </Field>
-          <Field label="Kategori" wajib>
-            <Select value={kategori} onValueChange={(v) => v !== null && setKategori(v)}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Pilih kategori" />
-              </SelectTrigger>
-              <SelectContent>
-                {KATEGORI_PRODUK.map((k) => (
-                  <SelectItem key={k.value} value={k.value}>
-                    {k.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-          <Field label="Harga Jual (Rp)">
-            <Input
-              value={harga}
-              onChange={(e) => setHarga(e.target.value)}
-              inputMode="numeric"
-              placeholder="mis. 149000"
-            />
-          </Field>
-        </div>
-      </section>
+          )}
+        </Field>
 
-      {/* ── Produksi ──────────────────────────────────────────────── */}
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold">Keterangan produksi</h3>
-        <div className="grid gap-3 sm:grid-cols-3">
-          <Field label="Design Code" wajib>
-            <Input
-              value={designCode}
-              onChange={(e) => setDesignCode(e.target.value)}
-              placeholder="mis. LVU-TOP-11"
-            />
-          </Field>
-          <Field label="Batch">
-            <Input
-              value={batch}
-              onChange={(e) => setBatch(e.target.value)}
-              placeholder="mis. B-05"
-            />
-          </Field>
-          <Field label="Kategori Vendor">
-            <Select
-              value={kategoriVendor}
-              onValueChange={(v) => v !== null && setKategoriVendor(v)}
-            >
-              <SelectTrigger className="w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {KATEGORI_VENDOR.production.map((k) => (
-                  <SelectItem key={k.value} value={k.value}>
-                    {k.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </Field>
-        </div>
-        <div className="sm:max-w-xs">
-          <Field label="Vendor / CMT">
-            <Input
-              value={namaVendor}
-              onChange={(e) => setNamaVendor(e.target.value)}
-              placeholder={KOSONG.namaVendor}
-            />
-          </Field>
-        </div>
-      </section>
-
-      {/* ── Product attributes ────────────────────────────────────── */}
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold">Product attributes</h3>
-        <p className="text-xs text-muted-foreground">
-          Warna dan ukuran sebagai nilai yang bisa ditambah — satu langkah sebelum isi
-          detailnya.
-        </p>
-
-        <div className="rounded-lg border">
-          <BarisAtribut
-            label="Colour"
-            nilai={warnaDipilih}
-            pilihan={WARNA}
-            onTambah={(v) => setWarnaDipilih((lama) => [...lama, v])}
-            onHapus={(v) => {
-              setWarnaDipilih((lama) => lama.filter((x) => x !== v));
-              // Penanda "dihapus" ikut dibuang untuk warna ini. Kalau tidak,
-              // begitu warna yang sama ditambahkan lagi, variannya langsung
-              // tampil dalam keadaan dicoret -- padahal tidak ada yang
-              // menyentuhnya.
-              setDihapus((lama) => buangPenanda(lama, v, 'warna'));
-            }}
-          />
-          <BarisAtribut
-            label="Size"
-            nilai={ukuranDipilih}
-            pilihan={SIZE}
-            onTambah={(v) => setUkuranDipilih((lama) => [...lama, v])}
-            onHapus={(v) => {
-              setUkuranDipilih((lama) => lama.filter((x) => x !== v));
-              setDihapus((lama) => buangPenanda(lama, v, 'ukuran'));
-            }}
-            batasBawah
-          />
-        </div>
-      </section>
-
-      {/* ── Detail varian ─────────────────────────────────────────── */}
-      <section className="space-y-3">
-        <h3 className="text-sm font-semibold">Detail varian</h3>
-
-        {varianSemua.length === 0 ? (
-          <p className="rounded-lg border border-dashed px-4 py-6 text-center text-sm text-muted-foreground">
-            Pilih warna dan ukuran dulu di atas.
-          </p>
-        ) : varianTampil.length === 0 ? (
+        <Field label="Foto">
           <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">
-              Semua {varianSemua.length} varian sudah dihapus.
-            </p>
-            <Button variant="outline" size="sm" onClick={() => setDihapus(new Set())}>
-              Pulihkan semua varian
-            </Button>
-          </div>
-        ) : (
-          <>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="text-xs text-muted-foreground">
-                {varianTampil.length} varian · {warnaDipilih.length} warna ×{' '}
-                {ukuranDipilih.length} ukuran
-              </p>
-            </div>
-
-            <div className="rounded-lg border">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Varian</TableHead>
-                    <TableHead className="w-[210px]">Kode varian</TableHead>
-                    <TableHead className="w-14" />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {varianTampil.map((v) => (
-                    <TableRow key={v.key}>
-                      <TableCell>
-                        <span className="flex flex-wrap items-center gap-x-1.5">
-                          <span className="text-accent-foreground font-semibold">Colour:</span>
-                          <span>{v.warna}</span>
-                          <span className="text-accent-foreground font-semibold">Size:</span>
-                          <span>{v.size}</span>
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        <Input
-                          value={v.kode ?? kodeBawaan(v)}
-                          onChange={(e) => ubahKode(v.key, e.target.value)}
-                          aria-label={`Kode varian ${v.warna} ukuran ${v.size}`}
-                          placeholder="kode varian"
-                          className="font-mono text-xs uppercase"
-                        />
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => setDihapus((lama) => new Set(lama).add(v.key))}
-                          aria-label={`Hapus varian ${v.warna} ukuran ${v.size}`}
-                          className="text-muted-foreground hover:text-destructive"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-                {dihapus.size > 0 && (
-                  <TableFooter>
-                    <TableRow>
-                      <TableCell colSpan={3} className="pt-3">
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => setDihapus(new Set())}
-                        >
-                          <RotateCcw className="mr-1.5 h-3.5 w-3.5" />
-                          Pulihkan {dihapus.size} varian yang dihapus
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                  </TableFooter>
-                )}
-              </Table>
-            </div>
-
-            {masalahVarian.length > 0 && (
-              <div className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
-                <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                <span>{masalahVarian.join(' ')}</span>
+            {/* `file:` pada kelas Input sudah ada di komponennya (lihat
+                components/ui/input.tsx), jadi tombol "Choose File"-nya ikut
+                gaya yang sama tanpa disetel ulang di sini. */}
+            <Input
+              type="file"
+              accept="image/*"
+              aria-label="Foto"
+              onChange={(e) => gantiBerkas(e.target.files?.[0] ?? null)}
+            />
+            {pratinjau && (
+              <div className="flex items-center gap-3">
+                {/* Foto produk dipotret potret (4:5) — pratinjaunya memakai
+                    proporsi yang sama supaya yang terlihat di sini sama
+                    dengan yang nanti tampil di kartu. */}
+                <div className="aspect-[4/5] w-20 shrink-0 overflow-hidden rounded-lg border bg-muted/40">
+                  <img src={pratinjau} alt="" className="h-full w-full object-cover" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-xs">{berkas?.name}</p>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => gantiBerkas(null)}
+                    className="mt-1 h-6 px-2 text-xs text-muted-foreground hover:text-destructive"
+                  >
+                    <X className="mr-1 h-3 w-3" />
+                    Batalkan foto ini
+                  </Button>
+                </div>
               </div>
             )}
+          </div>
+        </Field>
 
-            <p className="text-[11px] text-muted-foreground">
-              Stok tiap varian diisi terpisah, saat barang benar-benar ada.
-            </p>
-          </>
-        )}
-      </section>
+        <Field label="Kategori" wajib>
+          <Select value={kategori} onValueChange={(v) => v !== null && setKategori(v)}>
+            <SelectTrigger className="w-full" aria-label="Kategori">
+              <SelectValue placeholder="Pilih kategori" />
+            </SelectTrigger>
+            <SelectContent>
+              {KATEGORI_PRODUK.map((k) => (
+                <SelectItem key={k.value} value={k.value}>
+                  {k.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+
+        <Field label="Kode SKU / Design Code" wajib>
+          <Input
+            value={designCode}
+            onChange={(e) => setDesignCode(e.target.value)}
+            placeholder="mis. LVU-TOP-11"
+            aria-label="Kode SKU / Design Code"
+          />
+        </Field>
+
+        <Field label="Date Registered">
+          {/* Tanggalnya dari server, bukan dari sini: `created_at` diisi
+              database saat barisnya dibuat, dan itulah tanggal yang tampil di
+              kartu. Kolom ini menampilkan tanggal itu apa adanya supaya orang
+              tahu produk ini akan tercatat tanggal berapa — ia TIDAK dikirim
+              ke server. `readOnly` + `disabled`, bukan salah satu saja:
+              keduanya menutup jalan yang berbeda (mengetik vs. memfokuskan
+              dan mengubah nilainya). */}
+          <Input value={tanggal} readOnly disabled aria-label="Date Registered" />
+        </Field>
+      </div>
 
       {/* ── Kaki ──────────────────────────────────────────────────── */}
       {masalah.length > 0 && (
@@ -578,22 +393,44 @@ export function IsiFormProdukBaru({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t pt-4">
-        <p className="text-[11px] text-muted-foreground">
-          {batasTercapai
-            ? 'Muat ulang halaman untuk mulai dari awal.'
-            : `Bisa menambah ${MAKS_PRODUK_BARU - sudahAda} produk lagi di sesi ini. Data ini belum tersimpan ke database.`}
-        </p>
+      {/* Galat dari server, di ATAS tombolnya.
+          Ditaruh di dalam form, bukan di badan halaman: dialog ini menutupi
+          halamannya, jadi pesan yang muncul di belakangnya tidak akan terbaca
+          oleh orang yang sedang menatap form -- dan isian yang sudah diketik
+          ikut hilang kalau dialognya keburu ditutup. */}
+      {galat && (
+        <div
+          className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive"
+          role="alert"
+        >
+          <TriangleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <span>{galat}</span>
+        </div>
+      )}
+
+      {/* Kaki form: tombol saja.
+
+          Dulu ada baris hitungan di sebelah kiri ("Bisa menambah 3 produk lagi
+          di sesi ini. Varian dan bahan diisi setelahnya..."). Ia dibuang 19
+          Oktober 2026 atas permintaan pemilik: yang dibutuhkan orang di layar
+          ini cuma tombolnya, dan penjelasan sisa pekerjaan justru terbaca
+          seolah ada langkah tambahan yang harus diselesaikan sekarang.
+          Yang tetap tampil hanya peringatan batas, karena ia menjelaskan
+          tombol yang mati; lihat `masalah` di atas. */}
+      <div className="flex flex-wrap items-center justify-end gap-3 border-t pt-4">
         <div className="flex gap-2">
           {/* Batal hanya menutup. Dulu `onClick={onSimpan}` di sini — satu
               kata yang salah, dan tombol yang paling sering dipakai untuk
               membatalkan justru menjadi cara tercepat membuat produk setengah
               jadi. */}
-          <Button variant="outline" onClick={onTutup}>
+          <Button variant="outline" onClick={onTutup} disabled={menyimpan}>
             Batal
           </Button>
-          <Button onClick={simpan} disabled={masalah.length > 0}>
-            Simpan Produk
+          {/* Mati selama pengiriman. Tanpa itu, dua klik cepat mengirim dua
+              POST dan mendaftarkan produk yang sama dua kali — dan tidak ada
+              yang bisa menghapusnya dari halaman ini. */}
+          <Button onClick={simpan} disabled={batasTercapai || belumLengkap || menyimpan}>
+            {menyimpan ? 'Menyimpan…' : 'Simpan Produk'}
           </Button>
         </div>
       </div>
@@ -622,98 +459,26 @@ function Field({
   );
 }
 
-/**
- * Satu baris atribut: nama di kiri, nilai terpilih sebagai chip yang bisa
- * dilepas, dan dropdown untuk menambah nilai baru.
- *
- * Nama atribut sengaja berupa teks mati, bukan input: yang diedit adalah
- * nilai, bukan nama atributnya. Kalau nama ikut bisa diedit, atribut baru
- * berarti kode warna dan ukuran baru juga — dan itu bukan bagian form ini.
- */
-function BarisAtribut({
-  label,
-  nilai,
-  pilihan,
-  onTambah,
-  onHapus,
-  batasBawah,
-}: {
-  label: string;
-  nilai: string[];
-  /** Kandidat nilai yang belum dipakai. */
-  pilihan: readonly string[];
-  onTambah: (v: string) => void;
-  onHapus: (v: string) => void;
-  /** Pemisah baris terakhir, supaya kotak tidak punya garis bawah menggantung. */
-  batasBawah?: boolean;
-}) {
-  const belumDipakai = pilihan.filter((p) => !nilai.includes(p));
-
-  return (
-    <div
-      className={
-        'flex flex-wrap items-start gap-3 px-3 py-2.5' +
-        (batasBawah ? '' : ' border-b')
-      }
-    >
-      <div className="w-40 shrink-0">
-        <span className="block rounded-md bg-muted px-2 py-1.5 text-xs text-muted-foreground">
-          {label}
-        </span>
-      </div>
-
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
-        {nilai.map((v) => (
-          <span
-            key={v}
-            className="inline-flex items-center gap-1.5 rounded border bg-muted px-2 py-1 text-xs"
-          >
-            {v}
-            <button
-              type="button"
-              onClick={() => onHapus(v)}
-              aria-label={`Hapus nilai ${label} ${v}`}
-              className="text-muted-foreground hover:text-destructive"
-            >
-              <X className="h-3 w-3" />
-            </button>
-          </span>
-        ))}
-
-        {belumDipakai.length > 0 && (
-          <Select value={null} onValueChange={(v) => v !== null && onTambah(v)}>
-            <SelectTrigger
-              size="sm"
-              className="w-auto min-w-36 border-dashed text-xs"
-              aria-label={`Tambah nilai ${label}`}
-            >
-              <SelectValue placeholder="+ Tambah nilai..." />
-            </SelectTrigger>
-            <SelectContent>
-              {belumDipakai.map((p) => (
-                <SelectItem key={p} value={p}>
-                  {p}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        )}
-      </div>
-    </div>
-  );
-}
-
 export default function FormProdukBaru({
   terbuka,
+  brands,
   onTutup,
   onSimpan,
   sudahAda,
+  galat,
+  menyimpan,
 }: {
   terbuka: boolean;
+  /** Brand yang sudah dipakai produk lain — isi pilihan kotak Brand. */
+  brands: string[];
   onTutup: () => void;
-  onSimpan: (data: DataProdukBaru) => void;
+  onSimpan: (data: DataProdukBaru, berkas: File | null) => void;
   /** Berapa produk baru yang sudah dibuat di sesi ini. */
   sudahAda: number;
+  /** Galat dari server saat menyimpan. */
+  galat?: string | null;
+  /** Sedang mengirim ke server. */
+  menyimpan?: boolean;
 }) {
   return (
     <Dialog
@@ -729,17 +494,27 @@ export default function FormProdukBaru({
           juga sama, supaya kedua dialog di halaman ini terasa satu keluarga
           dan bukan ditempel. */}
       <DialogContent
-        className="max-h-[92vh] gap-0 p-0 duration-300 ease-out sm:max-w-[900px] grid-rows-[auto_minmax(0,1fr)]"
+        className="max-h-[92vh] gap-0 p-0 duration-300 ease-out sm:max-w-[520px] grid-rows-[auto_minmax(0,1fr)]"
         style={{ '--tw-enter-scale': '0.97' } as CSSProperties}
       >
         <DialogHeader className="border-b px-6 py-4">
           <DialogTitle className="text-lg">Tambah Produk</DialogTitle>
-          <DialogDescription className="text-xs">
-            Daftarkan produk baru beserta varian warna dan ukurannya.
-          </DialogDescription>
         </DialogHeader>
         <div className="overflow-y-auto px-6 py-5">
-          <IsiFormProdukBaru onSimpan={onSimpan} onTutup={onTutup} sudahAda={sudahAda} />
+          {/* `key` dari daftar brand: begitu produk pertama selesai dimuat
+              (atau daftarnya berubah), isi formnya dibangun ulang dari nol.
+              Tanpa itu, form yang dibuka SEBELUM brand-nya tiba akan
+              menyimpan nilai bawaan dari keadaan lamanya -- brand yang tidak
+              ada di pilihan mana pun. */}
+          <IsiFormProdukBaru
+            key={brands.join(',')}
+            brands={brands}
+            onSimpan={onSimpan}
+            onTutup={onTutup}
+            sudahAda={sudahAda}
+            galat={galat}
+            menyimpan={menyimpan}
+          />
         </div>
       </DialogContent>
     </Dialog>

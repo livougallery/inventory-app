@@ -97,6 +97,7 @@ function createApp(options = {}) {
   app.use('/api/vendors', require('./features/vendor/backend/routes'));
   app.use('/api/purchase-orders', require('./features/purchase-order/backend/routes'));
   app.use('/api/currencies', require('./features/currency/backend/routes'));
+  app.use('/api/register-produk', require('./features/register-produk/backend/routes'));
   app.use('/api', require('./routes/api'));
 
   // Authentication routes (handles login/register/logout)

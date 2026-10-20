@@ -131,23 +131,116 @@ async function evaluasi(expr) {
   return r.result.value;
 }
 
-// Login dulu kalau perlu — halaman dilindungi.
+// Login dulu. Halaman dilindungi, jadi tanpa ini SEMUA pengambilan data
+// di bawah balas 401 dan setiap check jadi merah karena satu sebab yang sama.
 //
 // Dijalankan lewat fetch dari dalam halaman, bukan mengisi form login: yang
 // diuji di sini tabnya, bukan login, dan mengisi form menambah satu langkah
 // rapuh yang bisa gagal karena sebab yang tidak ada hubungannya.
-await evaluasi(`
+//
+// TIGA jebakan yang sudah pernah menjatuhkan blok ini, semuanya senyap:
+//
+// 1. TIDAK ADA gerbang "kalau di halaman login". Versi sebelumnya berbunyi
+//    `if (!location.pathname.startsWith('/login')) return 'sudah-masuk'`, dan
+//    itu selalu benar: Chrome dibuka LANGSUNG di URL_HALAMAN (lihat argumen
+//    peluncuran di atas), jadi pathname-nya tidak pernah /login. Gerbangnya
+//    mengembalikan 'sudah-masuk' sebelum satu permintaan pun dikirim, dan yang
+//    terlihat di ujung cuma "Unauthorized" di sebelah belasan check merah.
+//    Login di sini idempoten untuk keperluan test — tidak perlu dijaga.
+//
+// 2. Password-nya `admin123`, BUKAN `admin`. Diverifikasi lewat
+//    bcrypt.compare terhadap hash di tabel `users`, bukan ditebak dari
+//    dokumentasi. Password salah dijawab 401 dengan pesan yang terlihat
+//    seperti kegagalan otorisasi biasa.
+//
+// 3. Token CSRF harus dikirim DUA kali: sebagai header `x-csrf-token` DAN
+//    sebagai cookie `csrf-token`. `validateCSRF` di routes/api.js:116-126
+//    membandingkan keduanya (pola double-submit), jadi header saja dijawab
+//    403 "Invalid CSRF token". Login.tsx:59 melakukan hal yang sama —
+//    `setCookie('csrf-token', csrfToken, 1)` tepat sebelum POST — dan itulah
+//    satu-satunya alasan halaman login asli bisa berhasil.
+//
+// Token diambil dari /api/csrf, BUKAN dari `<input name="_csrf">` di halaman
+// login seperti sebelum migrasi: /login kini dilayani SPA React, formnya tidak
+// lagi memuat field tersembunyi itu, dan `querySelector` mengembalikan null.
+// Server merotasi token tiap login berhasil, jadi pengambilan ulang di sini
+// bukan opsional.
+//
+// Tunggu Origins-nya dulu. `cariEndpoint` selesai begitu Chrome MEMBUKA porta
+// debugging, dan itu terjadi sebelum tabnya selesai memuat URL_HALAMAN — saat
+// itu `location` masih about:blank dan `fetch('/api/csrf')` gagal dengan
+// "Failed to parse URL from /api/csrf": URL relatif tidak punya basis. Gejalanya
+// menyesatkan (seperti kegagalan jaringan), padahal cuma kurang tunggu.
+let asal = '';
+for (let i = 0; i < 40 && asal !== 'http://localhost:3000'; i++) {
+  asal = await evaluasi('location.origin');
+  if (asal !== 'http://localhost:3000') await tidur(250);
+}
+if (asal !== 'http://localhost:3000') {
+  console.error(`\nGAGAL halaman tidak termuat — origin: ${asal}`);
+  ws.close();
+  chrome.kill();
+  process.exit(1);
+}
+
+// Tunggu halaman selesai memuat SENDIRI sebelum login.
+//
+// Ini bukan kehati-hatian berlebihan, dan bukan pula sekadar menunggu origin
+// siap (lihat di bawah): halaman ini, saat dibuka tanpa sesi, menembakkan
+// beberapa permintaan yang MASING-MASING membuat sesi baru di server dan
+// mengirim Set-Cookie `connect.sid` — `/api/csrf` di antaranya, karena
+// `generateToken` (middleware/csrf.js) MENULIS `req.session.csrfToken`, dan
+// tulisan itu membatalkan `saveUninitialized: false`.
+//
+// Akibatnya: kalau login dikirim SELAGI permintaan-permintaan itu masih
+// berjalan, Set-Cookie milik sesi ANONIM bisa tiba SETELAH Set-Cookie milik
+// login dan menimpa cookie di browser. Yang terjadi sesudahnya persis seperti
+// "login tidak berhasil": server menjawab 200, tapi setiap permintaan
+// berikutnya balas 401 Unauthorized.
+//
+// Sudah diukur, bukan disangka: pada jalan yang gagal, Chrome menerima TIGA
+// Set-Cookie connect.sid dalam ~10ms (satu dari login, dua dari pemuatan
+// halaman), dan yang terakhir bukan milik login. Pada jalan yang berhasil,
+// hanya SATU yang terbit. Jalan yang login-nya keburu cepat (~270ms, sebelum
+// halamannya selesai memuat) yang gagal; yang menunggu (~550ms) selalu lolos.
+//
+// Menunggu sampai permintaannya sepi membuat urutannya pasti, tanpa menutupi
+// apa pun: yang diuji di berkas ini tab dan tabelnya, bukan loginnya.
+let tenang = 0;
+for (let i = 0; i < 60 && tenang < 3; i++) {
+  await tidur(250);
+  const sedangJalan = await evaluasi(`
+    (() => performance.getEntriesByType('resource')
+      .filter(e => e.name.includes('/api/') && e.responseEnd === 0).length)()
+  `);
+  tenang = sedangJalan === 0 ? tenang + 1 : 0;
+}
+
+const hasilLogin = await evaluasi(`
   (async () => {
-    if (!location.pathname.startsWith('/login')) return 'sudah-masuk';
-    const csrf = document.querySelector('input[name="_csrf"]')?.value ?? '';
+    const c = await fetch('/api/csrf');
+    const { csrfToken } = await c.json();
+    document.cookie = 'csrf-token=' + csrfToken + '; path=/';
     const r = await fetch('/api/login', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username: 'admin', password: 'admin', _csrf: csrf }),
+      headers: { 'Content-Type': 'application/json', 'x-csrf-token': csrfToken },
+      body: JSON.stringify({ username: 'admin', password: 'admin123' }),
     });
-    return 'login ' + r.status;
+    const teks = await r.text();
+    return r.status + ' ' + teks.slice(0, 120);
   })()
 `);
+
+// Hasilnya diperiksa, tidak dibuang. Kalau login gagal, puluhan check di bawah
+// ikut merah dan penyebabnya tenggelam di antaranya — persis yang terjadi
+// sebelum ini. Lebih baik berhenti di sini dengan sebab yang jelas.
+if (!hasilLogin || !hasilLogin.startsWith('200 ')) {
+  console.error(`\nGAGAL login — ${hasilLogin}`);
+  console.error('Seluruh check di bawah tidak akan ada artinya; dihentikan di sini.');
+  ws.close();
+  chrome.kill();
+  process.exit(1);
+}
 
 // Pastikan kita benar-benar di halaman Register Produk, bukan halaman login.
 await kirim('Page.navigate', { url: URL_HALAMAN });
@@ -414,7 +507,7 @@ const disaring = await evaluasi(`
     const setter = Object.getOwnPropertyDescriptor(
       window.HTMLInputElement.prototype, 'value'
     ).set;
-    setter.call(input, 'hitam');
+    setter.call(input, 'black');
     input.dispatchEvent(new Event('input', { bubbles: true }));
 
     return true;
@@ -435,14 +528,14 @@ if (!disaring) {
   `);
 
   sesudahCari && sesudahCari.length > 0 && sesudahCari.length < setelahKlik.baris.length
-    ? ok(`mencari "hitam" menyaring tabel (${setelahKlik.baris.length} -> ${sesudahCari.length} baris)`)
+    ? ok(`mencari "black" menyaring tabel (${setelahKlik.baris.length} -> ${sesudahCari.length} baris)`)
     : salah(
         'penyaringan tabel warna',
         `sebelum: ${setelahKlik.baris.length} baris, sesudah: ${sesudahCari ? sesudahCari.length : 'null'}`
       );
 
-  sesudahCari && sesudahCari.length > 0 && sesudahCari.every(([, kode]) => kode === 'HTP')
-    ? ok('baris yang tersisa memang yang cocok ("hitam" -> HTP)')
+  sesudahCari && sesudahCari.length > 0 && sesudahCari.every(([, kode]) => kode === 'BLK')
+    ? ok('baris yang tersisa memang yang cocok ("black" -> BLK)')
     : salah('isi hasil saring', JSON.stringify(sesudahCari));
 
   // Kotak cari dibersihkan lagi supaya sisa check membaca tabel yang utuh.
@@ -554,6 +647,26 @@ if (tombolTambah) {
   if (popup && popup.jumlahInput === 2) {
     // Isi formnya. Kode sengaja diketik huruf KECIL: yang tersimpan harus
     // huruf besar, karena kode dipakai apa adanya saat mencocokkan varian.
+    //
+    // Sejak halaman ini tersambung database (16 Okt 2026), Simpan di sini
+    // benar-benar MENULIS baris ke tabel `warna` di Supabase — bukan lagi ke
+    // state di memori. Karena itu nama dan kodenya diberi penanda "TEST -" /
+    // "T-": `tmp/bersihkan-data-test.js` menghapus baris berpenanda itu, dan
+    // tanpa penanda satu-satunya cara membedakan data uji dari data asli adalah
+    // mengingat-ingat.
+    //
+    // Akhiran acak per-jalan, bukan kode tetap. Dengan kode tetap, jalan KEDUA
+    // bertabrakan dengan sisa jalan pertama: `galatKode` menolaknya di klien,
+    // Simpan tidak jadi menulis apa pun, dan yang terjadi justru yang paling
+    // berbahaya — check "warna baru benar-benar masuk ke tabel" LULUS karena ia
+    // menemukan baris SISA itu, sementara "jumlah warna bertambah satu" dan
+    // "popup menutup setelah Simpan" merah. Testnya jadi hijau karena data
+    // kotor, bukan karena fiturnya bekerja. Itu sudah pernah terjadi di sini.
+    const akhiran = String(Date.now() % 100000).padStart(5, '0');
+    const namaUji = `TEST - Maroon ${akhiran}`;
+    const kodeUji = `t-mrn-${akhiran}`;
+    const kodeUjiBesar = kodeUji.toUpperCase();
+
     await evaluasi(`
       (() => {
         const dialog = document.querySelector('[data-slot="dialog-content"]');
@@ -565,8 +678,8 @@ if (tombolTambah) {
           setter.call(el, nilai);
           el.dispatchEvent(new Event('input', { bubbles: true }));
         };
-        isi('warna-nama', 'Maroon');
-        isi('warna-kode', 'mrn');
+        isi('warna-nama', ${JSON.stringify(namaUji)});
+        isi('warna-kode', ${JSON.stringify(kodeUji)});
       })()
     `);
     await tidur(200);
@@ -578,7 +691,7 @@ if (tombolTambah) {
       })()
     `);
 
-    setelahIsi === 'MRN'
+    setelahIsi === kodeUjiBesar
       ? ok('kode yang diketik huruf kecil langsung jadi huruf besar di kotaknya')
       : salah('huruf besar saat diketik', `isinya: ${JSON.stringify(setelahIsi)}`);
 
@@ -595,7 +708,37 @@ if (tombolTambah) {
     if (simpan) await klikDi(simpan);
     await tidur(400);
 
-    const sesudahSimpan = await evaluasi(`
+    // Baris barunya dicari, bukan diasumsikan ada di halaman pertama tabel.
+    //
+    // Tabelnya berpagINASI 10 baris (TabelPratinjau → `pageSize: 10`), dan
+    // /api/warna mengurutkan berdasarkan KODE. Kode uji kita selalu diawali
+    // "T-" sehingga jatuh SETELAH "SEO" — begitu tabelnya melewati 10 baris,
+    // baris yang baru disimpan mendarat di halaman kedua dan pembacaan
+    // halaman pertama melaporkan "warna baru tidak masuk tabel" padahal ia
+    // tersimpan. Itu sudah terjadi: tiga sisa data uji dari jalan sebelumnya
+    // cukup untuk menggesernya keluar.
+    //
+    // Kotak cari tabel dipakai untuk membawanya ke halaman pertama — cara yang
+    // sama dipakai pemilik halaman ini, dan sudah terbukti bekerja di check
+    // penyaringan di atas.
+    const isiCari = async (teks) => {
+      await evaluasi(`
+        (() => {
+          const input = Array.from(document.querySelectorAll('input'))
+            .find(i => (i.getAttribute('placeholder') || '').includes('Cari nama atau kode warna'));
+          if (!input) return false;
+          const setter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype, 'value'
+          ).set;
+          setter.call(input, ${JSON.stringify(teks)});
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          return true;
+        })()
+      `);
+      await tidur(400);
+    };
+
+    const bacaTabel = async () => evaluasi(`
       (() => {
         const tabel = document.querySelector('table');
         ${BARIS_ISI}
@@ -606,21 +749,17 @@ if (tombolTambah) {
       })()
     `);
 
-    const warnaBaru = sesudahSimpan.baris.find(([, kode]) => kode === 'MRN');
+    await isiCari(kodeUjiBesar);
+    const sesudahSimpan = await bacaTabel();
+
+    const warnaBaru = sesudahSimpan.baris.find(([, kode]) => kode === kodeUjiBesar);
     warnaBaru
-      ? ok('warna baru benar-benar masuk ke tabel (kode MRN)')
+      ? ok(`warna baru benar-benar masuk ke tabel (kode ${kodeUjiBesar})`)
       : salah('warna baru di tabel', JSON.stringify(sesudahSimpan.baris));
 
-    warnaBaru && warnaBaru[0] === 'Maroon'
-      ? ok('nama warna baru tersimpan apa adanya ("Maroon")')
+    warnaBaru && warnaBaru[0] === namaUji
+      ? ok(`nama warna baru tersimpan apa adanya ("${namaUji}")`)
       : salah('nama warna baru', JSON.stringify(warnaBaru));
-
-    sesudahSimpan.baris.length === setelahKlik.baris.length + 1
-      ? ok(`jumlah warna bertambah satu (${setelahKlik.baris.length} -> ${sesudahSimpan.baris.length})`)
-      : salah(
-          'jumlah warna',
-          `sebelum ${setelahKlik.baris.length}, sesudah ${sesudahSimpan.baris.length}`
-        );
 
     // Popup-nya harus menutup setelah Simpan. Kalau tidak, ia menutupi tabel
     // yang baru saja diisi — dan yang tampak seperti "warnanya tidak masuk"
@@ -629,9 +768,38 @@ if (tombolTambah) {
       ? ok('popup "Tambah Warna" menutup sendiri setelah Simpan')
       : salah('popup setelah simpan', `judul yang masih terbuka: ${JSON.stringify(sesudahSimpan.judul)}`);
 
-    // Kode kembar harus ditolak — HTP sudah dipakai "Hitam" dari katalog.
-    // Tanpa ini, satu kode bisa dipakai dua warna dan `kodeVarian` kehilangan
-    // artinya sebagai pencocok.
+    // Jumlahnya dibandingkan TANPA saringan: yang dihitung harus seluruh tabel,
+    // bukan hasil pencarian kode uji yang memang cuma satu baris.
+    await isiCari('');
+    const sesudahSimpanSemua = await bacaTabel();
+
+    // Tabel menampilkan 10 baris per halaman, jadi pertambahan hanya terlihat
+    // selama jumlah totalnya masih di bawah satu halaman penuh. Setelah itu
+    // yang bertambah ada di halaman berikutnya, dan "jumlahnya tidak berubah"
+    // bukan tanda ada yang salah.
+    const muatSatuHalaman = sesudahSimpanSemua.baris.length < 10;
+    if (!muatSatuHalaman) {
+      ok(
+        `jumlah warna tidak diperiksa — tabel sudah lebih dari satu halaman (${sesudahSimpanSemua.baris.length} baris), baris baru ada di halaman berikutnya`
+      );
+    } else {
+      sesudahSimpanSemua.baris.length === setelahKlik.baris.length + 1
+        ? ok(`jumlah warna bertambah satu (${setelahKlik.baris.length} -> ${sesudahSimpanSemua.baris.length})`)
+        : salah(
+            'jumlah warna',
+            `sebelum ${setelahKlik.baris.length}, sesudah ${sesudahSimpanSemua.baris.length}`
+          );
+    }
+
+    // Kode kembar harus ditolak. Yang dipakai kode dari master warna asli
+    // (BLK — "Black"), bukan dari katalog contoh: sejak halaman ini membaca
+    // tabel `warna` di database, katalog contoh sudah tidak ikut tampil, dan
+    // memakai kodenya di sini akan menguji pertengkaran yang tidak terjadi.
+    //
+    // Penolakannya terjadi di KLIEN (form menolak sebelum kirim). Server juga
+    // menolaknya dengan 409, tapi jalur itu tidak terpakai di sini — dan itu
+    // memang benar: pemeriksaan di klien ada supaya salah ketik tidak perlu
+    // satu perjalanan ke server.
     const tombolTambah2 = await evaluasi(`
       (() => {
         const b = Array.from(document.querySelectorAll('button'))
@@ -654,8 +822,8 @@ if (tombolTambah) {
           setter.call(el, nilai);
           el.dispatchEvent(new Event('input', { bubbles: true }));
         };
-        isi('warna-nama', 'Hitam Pekat');
-        isi('warna-kode', 'HTP');
+        isi('warna-nama', 'TEST - Black Lagi');
+        isi('warna-kode', 'blk');
       })()
     `);
     await tidur(200);
@@ -686,7 +854,7 @@ if (tombolTambah) {
       })()
     `);
 
-    setelahBentrok.galat && setelahBentrok.galat.includes('HTP')
+    setelahBentrok.galat && setelahBentrok.galat.includes('BLK')
       ? ok('kode kembar ditolak dengan pesan yang menyebut kodenya')
       : salah('kode kembar', JSON.stringify(setelahBentrok));
 
@@ -813,15 +981,42 @@ if (tombolBukti) {
   // Platform dan produk harus terbaca dari popupnya — platform di JUDUL,
   // produk di DESKRIPSI. Keduanya diperiksa terpisah karena di situlah
   // masing-masing berada: judulnya "Bukti Pendaftaran — Shopee", deskripsinya
-  // "Rowe Tee · Terdaftar". Satu popup yang cuma menulis "Bukti Pendaftaran"
+  // menyebut nama produknya. Satu popup yang cuma menulis "Bukti Pendaftaran"
   // tidak menjawab pertanyaan "buktinya untuk platform mana".
+  //
+  // Nama produknya TIDAK ditulis di sini. Halaman ini membaca produk dari
+  // database (`ORDER BY id DESC`), jadi kartu pertamanya berganti setiap kali
+  // ada yang menambah produk — check yang mengunci satu nama akan merah karena
+  // data berubah, bukan karena kodenya rusak. Yang diuji: deskripsinya benar-
+  // benar menyebut salah satu produk yang SEDANG tampil di halaman.
   judulBukti && judulBukti.includes('Shopee')
     ? ok('judul popup menyebut platformnya (Shopee)')
     : salah('platform di judul popup', JSON.stringify(judulBukti));
 
-  sesudahBukti.deskripsi && sesudahBukti.deskripsi.includes('Rowe Tee')
+  // Namanya dibaca lewat `[data-slot="kartu-nama"]`, bukan `h3`. Judul kartunya
+  // memang bukan heading — ia `div` di dalam lapisan gradasi di atas gambarnya
+  // (RegisterProduk.tsx), dan versi sebelumnya yang mencari `h3` selalu
+  // menemukan daftar kosong. Akibatnya bukan cuma satu check merah: pesannya
+  // berbunyi "nama produk di halaman=[]", yang terbaca seperti halamannya tidak
+  // menampilkan produk sama sekali, padahal ketiga kartunya ada. Hook
+  // `data-slot` itu ditambahkan supaya pencariannya tidak bergantung pada tag
+  // yang dipilih untuk gaya.
+  const namaProdukDiHalaman = await evaluasi(`
+    (() => Array.from(document.querySelectorAll('[data-slot="kartu-nama"]'))
+      .map(e => e.textContent.trim())
+      .filter(Boolean))()
+  `);
+
+  const deskripsiSebutProduk =
+    !!sesudahBukti.deskripsi &&
+    namaProdukDiHalaman.some((n) => sesudahBukti.deskripsi.includes(n));
+
+  deskripsiSebutProduk
     ? ok(`deskripsi popup menyebut produknya ("${sesudahBukti.deskripsi}")`)
-    : salah('deskripsi popup bukti', JSON.stringify(sesudahBukti.deskripsi));
+    : salah(
+        'deskripsi popup bukti',
+        `deskripsi=${JSON.stringify(sesudahBukti.deskripsi)}; nama produk di halaman=${JSON.stringify(namaProdukDiHalaman)}`
+      );
 
   await tutupDialog();
   await tidur(300);

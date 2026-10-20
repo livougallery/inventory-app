@@ -45,9 +45,9 @@ function galatKode(kode: string, terpakai: WarnaMaster[]): string | null {
  * Nama warna juga tidak boleh kembar — dengan kode BERBEDA.
  *
  * Dua baris "Hitam" dengan kode HTP dan BLK bukan dua warna, itu satu warna
- * yang salah ketik. Katalog sendiri sudah memperlakukan nama yang sama sebagai
- * satu warna (lihat `daftarWarna`), jadi membiarkannya masuk akan membuat
- * halaman ini menghitung satu warna sebagai dua.
+ * yang salah ketik. Tab Colour memperlakukan nama yang sama sebagai satu warna,
+ * jadi membiarkannya masuk akan membuat halaman ini menghitung satu warna
+ * sebagai dua.
  */
 function galatNama(nama: string, terpakai: WarnaMaster[]): string | null {
   const bentrok = terpakai.find((w) => w.nama.toLowerCase() === nama.toLowerCase());
@@ -60,40 +60,53 @@ export function IsiFormWarnaBaru({
   kodeTerpakai,
   onSimpan,
   onTutup,
+  galat: galatServer = null,
+  menyimpan = false,
 }: {
   /** Warna yang sudah ada, untuk menolak kode/nama kembar. */
   kodeTerpakai: WarnaMaster[];
   onSimpan: (data: WarnaMaster) => void;
   onTutup: () => void;
+  /** Galat dari server, mis. kode yang sudah ada di database. */
+  galat?: string | null;
+  /** Sedang mengirim ke server. */
+  menyimpan?: boolean;
 }) {
   const [nama, setNama] = useState('');
   const [kode, setKode] = useState('');
-  const [galat, setGalat] = useState<string | null>(null);
+  const [galatLokal, setGalatLokal] = useState<string | null>(null);
+
+  // Galat server dan galat lokal dibedakan asalnya, tapi ditampilkan di satu
+  // tempat. Yang server menang: ia muncul dari percobaan simpan yang PALING
+  // AKHIR, jadi pesannya yang paling relevan — dan galat lokal lama yang masih
+  // terpampang di atasnya membuat orang memperbaiki hal yang sudah beres.
+  const galat = galatServer ?? galatLokal;
 
   function simpan() {
     const namaRapi = nama.trim();
     const kodeRapi = normalisasiKode(kode);
 
     if (!namaRapi) {
-      setGalat('Nama warna wajib diisi.');
+      setGalatLokal('Nama warna wajib diisi.');
       return;
     }
     if (!kodeRapi) {
-      setGalat('Kode warna wajib diisi.');
+      setGalatLokal('Kode warna wajib diisi.');
       return;
     }
 
     const gKode = galatKode(kodeRapi, kodeTerpakai);
     if (gKode) {
-      setGalat(gKode);
+      setGalatLokal(gKode);
       return;
     }
     const gNama = galatNama(namaRapi, kodeTerpakai);
     if (gNama) {
-      setGalat(gNama);
+      setGalatLokal(gNama);
       return;
     }
 
+    setGalatLokal(null);
     onSimpan({ kode: kodeRapi, nama: namaRapi });
   }
 
@@ -116,7 +129,7 @@ export function IsiFormWarnaBaru({
             // menggantung sampai tombol Simpan ditekan lagi: pesan yang masih
             // terpampang padahal masalahnya sudah dibereskan membuat orang
             // menekan Simpan dua kali untuk hal yang sama.
-            setGalat(null);
+            setGalatLokal(null);
           }}
           placeholder="mis. Hitam"
           autoFocus
@@ -136,7 +149,7 @@ export function IsiFormWarnaBaru({
           value={kode}
           onChange={(e) => {
             setKode(normalisasiKode(e.target.value));
-            setGalat(null);
+            setGalatLokal(null);
           }}
           placeholder="mis. HTP"
           className="font-mono uppercase"
@@ -155,10 +168,15 @@ export function IsiFormWarnaBaru({
       )}
 
       <DialogFooter>
-        <Button type="button" variant="outline" onClick={onTutup}>
+        <Button type="button" variant="outline" onClick={onTutup} disabled={menyimpan}>
           Batal
         </Button>
-        <Button type="submit">Simpan</Button>
+        {/* Mati selama pengiriman: tanpa itu, dua klik cepat mengirim dua POST
+            dan kode warnanya ditolak yang kedua sebagai kembar — padahal yang
+            pertama berhasil, jadi yang terbaca justru "kode sudah ada". */}
+        <Button type="submit" disabled={menyimpan}>
+          {menyimpan ? 'Menyimpan…' : 'Simpan'}
+        </Button>
       </DialogFooter>
     </form>
   );
@@ -169,11 +187,17 @@ export default function FormWarnaBaru({
   kodeTerpakai,
   onTutup,
   onSimpan,
+  galat,
+  menyimpan,
 }: {
   terbuka: boolean;
   kodeTerpakai: WarnaMaster[];
   onTutup: () => void;
   onSimpan: (data: WarnaMaster) => void;
+  /** Galat dari server saat menyimpan. */
+  galat?: string | null;
+  /** Sedang mengirim ke server. */
+  menyimpan?: boolean;
 }) {
   return (
     <Dialog
@@ -200,6 +224,8 @@ export default function FormWarnaBaru({
           kodeTerpakai={kodeTerpakai}
           onSimpan={onSimpan}
           onTutup={onTutup}
+          galat={galat}
+          menyimpan={menyimpan}
         />
       </DialogContent>
     </Dialog>

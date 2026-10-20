@@ -140,7 +140,7 @@ const modulBaru: NavItem[] = [
 const menuRegister: NavItem[] = [
   {
     path: '/modul/register-produk',
-    label: 'Register Produk',
+    label: 'Register',
     icon: ClipboardList,
     section: 'Register',
   },

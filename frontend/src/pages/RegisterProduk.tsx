@@ -1,6 +1,5 @@
-import { useMemo, useState } from 'react';
-import { Image as ImageIcon, ListFilter, Plus, Search, SlidersHorizontal } from 'lucide-react';
-import BannerPratinjau from '@/components/BannerPratinjau';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Image as ImageIcon, ListFilter, LoaderCircle, Plus, Search, SlidersHorizontal, TriangleAlert } from 'lucide-react';
 import { Badge as BadgeReui } from '@/components/reui/badge';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -20,17 +19,26 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Input } from '@/components/ui/input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { apiJson, unggahFoto, withCsrf } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import { LogoPlatform } from '@/components/LogoPlatform';
+import { BRAND_PRODUK } from '@/lib/opsi';
 import {
   kartuRegister,
   NAMA_PASAR,
-  PRODUK_REGISTER,
   type KartuRegister,
-  type Platform,
+  type KelengkapanBom,
   type ProdukRegister,
   type StatusPasar,
 } from '@/lib/produk';
-import { daftarWarna, type WarnaMaster } from '@/lib/warna';
+import {
+  daftarProdukDariApi,
+  bodyDariProdukBaru,
+  type ProdukApi,
+} from '@/lib/registerProduk';
+import { type WarnaMaster } from '@/lib/warna';
+import type { MaterialApi } from '@/lib/registerProduk';
+import type { KeputusanBom } from './register-produk/DetailProduk';
 import DetailProduk from './register-produk/DetailProduk';
 import FormProdukBaru, { type DataProdukBaru } from './register-produk/FormProdukBaru';
 import FormWarnaBaru from './register-produk/FormWarnaBaru';
@@ -63,7 +71,10 @@ import PopupBuktiPasar from './register-produk/PopupBuktiPasar';
 // masih menunggu tidak hilang dari perhitungan — ia tetap dihitung di Total
 // Stock (lihat catatan di lib/produk.ts), supaya angka gudang tetap benar.
 //
-// Data contoh, belum terhubung database — lihat BannerPratinjau.
+// Datanya dari `/api/register-produk/products/register` (produk, varian, stok,
+// status marketplace) dan `/api/register-produk/warna` (master warna). Produk
+// yang dibuat lewat form Tambah Produk ikut tersimpan ke database, bukan cuma
+// hidup di memori sampai halaman dimuat ulang.
 
 /**
  * Tab di atas daftar: daftar produk, dan master warna.
@@ -153,35 +164,86 @@ export default function RegisterProduk({
   // bukan dua, supaya keduanya tidak mungkin menunjuk kombinasi yang berbeda.
   const [bukti, setBukti] = useState<{ produk: string; status: StatusPasar } | null>(null);
 
-  // Produk hasil form "Tambah Produk". Terpisah dari `PRODUK_REGISTER` (konstanta
-  // contoh) dan AWALNYA KOSONG — jadi data contoh utuh, dan yang dibuat user
-  // tinggal di memori sampai halaman dimuat ulang (keputusan owner 28 Sep 2026:
-  // "UI dulu", belum menyentuh database).
-  const [baru, setBaru] = useState<ProdukRegister[]>(produkAwal);
+  // Produk dari database, dan master warna dari database. Dua state terpisah
+  // karena keduanya dimuat dari endpoint berbeda dan salah satunya bisa gagal
+  // tanpa yang lain ikut kosong.
+  const [produk, setProduk] = useState<ProdukRegister[]>([]);
+  const [warna, setWarna] = useState<WarnaMaster[]>([]);
+  const [materials, setMaterials] = useState<MaterialApi[]>([]);
+  const [memuat, setMemuat] = useState(true);
+  const [galat, setGalat] = useState<string | null>(null);
 
-  // Warna tambahan dari form "Tambah Warna", TERPISAH dari warna turunan
-  // katalog — dua sumber dengan aturan berbeda: yang turunan tidak bisa
-  // dihapus, yang diketik bisa. Menyatukannya jadi satu array akan membuat
-  // "warna dari katalog" dan "warna yang baru dibuat" tidak bisa dibedakan lagi.
-  //
-  // Disimpan di SINI, bukan di dalam `IsiWarna`: Radix Tabs melepas panel yang
-  // tidak aktif, jadi state yang hidup di dalam tabnya akan hilang begitu
-  // pemilik menengok tab Products lalu kembali.
-  const [warnaBaru, setWarnaBaru] = useState<WarnaMaster[]>([]);
+  // Berapa produk yang dibuat lewat form DI SESI INI. Bukan `produk.length`:
+  // isi database bukan batas sesi, dan menghitungnya begitu membuat halaman
+  // berhenti menerima produk baru hanya karena gudangnya sudah banyak isinya.
+  const [dibuatSesiIni, setDibuatSesiIni] = useState(0);
 
-  const warna = useMemo<WarnaMaster[]>(() => {
-    const peta = new Map<string, WarnaMaster>();
-    for (const w of [...daftarWarna(), ...warnaBaru]) {
-      if (!peta.has(w.kode)) peta.set(w.kode, w);
+  // Galat simpan dipisah per form, bukan satu `galat` bersama. `galat` di atas
+  // untuk PEMUATAN, dan pesannya muncul di badan halaman — kalau simpan yang
+  // gagal ikut menulis ke situ, pesannya muncul di belakang dialog yang masih
+  // terbuka, di tempat yang tidak sedang dilihat orangnya.
+  const [menyimpanProduk, setMenyimpanProduk] = useState(false);
+  const [galatProduk, setGalatProduk] = useState<string | null>(null);
+  const [menyimpanWarna, setMenyimpanWarna] = useState(false);
+  const [galatWarna, setGalatWarna] = useState<string | null>(null);
+
+  const muatProduk = useCallback(async () => {
+    const json = await apiJson<{ data: ProdukApi[] }>(
+      '/api/register-produk/products/register'
+    );
+    setProduk(daftarProdukDariApi(json.data));
+  }, []);
+
+  const muatWarna = useCallback(async () => {
+    const json = await apiJson<{ data: WarnaMaster[] }>('/api/register-produk/warna');
+    setWarna(json.data);
+  }, []);
+
+  const muatMaterials = useCallback(async () => {
+    const json = await apiJson<{ data: MaterialApi[] }>('/api/materials');
+    setMaterials(json.data);
+  }, []);
+
+  /**
+   * Muat ulang keduanya, dengan indikator dan pesan galat.
+   *
+   * Dipakai untuk pemuatan PERTAMA saja. Setelah menyimpan sesuatu, yang
+   * dipanggil cukup `muatProduk`/`muatWarna` — menyalakan pemuat penuh di situ
+   * membuat seluruh daftar berkedip "Memuat…" padahal isinya sudah ada di
+   * layar, dan yang barusan disimpan justru terlihat seperti hilang lalu
+   * muncul lagi.
+   *
+   * Keduanya dimuat BERSAMAAN, bukan berurutan: masing-masing satu perjalanan
+   * ke server, dan tidak ada satu pun yang butuh hasil yang lain.
+   */
+  const muatSemua = useCallback(async () => {
+    setMemuat(true);
+    setGalat(null);
+    try {
+      await Promise.all([muatProduk(), muatWarna(), muatMaterials()]);
+    } catch (e) {
+      setGalat(e instanceof Error ? e.message : 'Gagal memuat data');
+    } finally {
+      setMemuat(false);
     }
-    return [...peta.values()];
-  }, [warnaBaru]);
+  }, [muatProduk, muatWarna, muatMaterials]);
+
+  useEffect(() => {
+    muatSemua();
+  }, [muatSemua]);
 
   // Kartu dibangun ulang dari katalog gabungan, bukan disalin per kartu. Kalau
   // kartu hasil form dirakit sendiri di sini, ringkasan per warna dan totalnya
   // dihitung untuk kedua kali — dan dua hitungan itu bisa berbeda tanpa ada
   // yang salah, karena yang kedua tidak pernah diuji.
-  const katalog = useMemo<ProdukRegister[]>(() => [...PRODUK_REGISTER, ...baru], [baru]);
+  //
+  // `produkAwal` ikut di sini, bukan menggantikan `produk`: di aplikasi ia
+  // selalu kosong (tidak ada pemanggil yang mengisinya), dan gunanya cuma
+  // memberi smoke test jalan masuk yang sama dengan yang dipakai data server.
+  const katalog = useMemo<ProdukRegister[]>(
+    () => [...produk, ...produkAwal],
+    [produk, produkAwal]
+  );
   const semua = useMemo(() => kartuRegister(katalog), [katalog]);
   const kolom = useMemo(() => kolomFilter(semua), [semua]);
 
@@ -258,33 +320,102 @@ export default function RegisterProduk({
   /**
    * Simpan produk dari form.
    *
-   * Id-nya dari penghitung modul-level, bukan `Date.now()`: dua produk yang
-   * dibuat dalam milidetik yang sama akan mendapat id kembar, dan id kembar
-   * membuat `kartuTerbuka` membuka dua kartu berbeda sekaligus — atau
-   * salah satunya. Sama seperti `MaterialFulfillment.tsx`.
+   * Kartu barunya TIDAK dirakit di sini. Yang dikirim cuma body-nya, lalu
+   * daftarnya dimuat ulang dari server — jadi bentuk kartu yang muncul setelah
+   * menyimpan persis sama dengan bentuk kartu setelah halaman dimuat ulang.
+   * Kalau kartunya dirakit lokal, ada dua jalur pembentukan untuk hal yang
+   * sama, dan yang satu cuma terpakai sesaat sehingga selisihnya jarang
+   * ketahuan.
    *
-   * Tanggal daftar memakai hari ini, dibaca dari jam lokal mesin — bukan
-   * `toISOString()`, yang mengembalikan UTC. Aturan GMT+7 antara pukul 00.00
-   * dan 07.00 sudah "besok" menurut UTC, jadi produk yang didaftarkan pagi
-   * bisa terbaca mundur satu hari.
+   * Dialog TIDAK ditutup kalau gagal. Menutupnya berarti menyembunyikan
+   * kegagalan di balik form yang hilang, bersama seluruh isian yang sudah
+   * diketik — dan orangnya tinggal mengulang dari nol tanpa tahu apa yang
+   * salah.
+   *
+   * `dibuatSesiIni` naik HANYA setelah server menerima. Kalau naik sebelum
+   * itu, satu kegagalan tetap memakan jatah batas per sesi.
    */
-  function simpanProduk(data: DataProdukBaru) {
-    const hariIni = new Date();
-    const tgl = [
-      hariIni.getFullYear(),
-      String(hariIni.getMonth() + 1).padStart(2, '0'),
-      String(hariIni.getDate()).padStart(2, '0'),
-    ].join('-');
+  async function simpanProduk(data: DataProdukBaru, berkas: File | null) {
+    setMenyimpanProduk(true);
+    setGalatProduk(null);
+    try {
+      // Dibaca di luar blok try di bawahnya: nilainya dipakai lagi setelah
+      // pengunggahan, dan `const` yang dideklarasikan di dalam `try` tidak
+      // bisa dilihat dari luar.
+      let dibuat: { id: number } | null = null;
+      try {
+        const init = await withCsrf({
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(
+            bodyDariProdukBaru({
+              nama: data.nama,
+              kategori: data.kategori,
+              designCode: data.spesifikasi.designCode,
+              brand: data.brand,
+              harga: data.harga,
+              warna: data.spesifikasi.warna,
+            })
+          ),
+        });
+        const dibuatJson = await apiJson<{ data: { id: number } }>(
+          '/api/register-produk/products/register',
+          init
+        );
+        dibuat = dibuatJson.data;
+      } catch (e) {
+        setGalatProduk(e instanceof Error ? e.message : 'Gagal menyimpan produk');
+        return;
+      }
 
-    setBaru((lama) => [
-      ...lama,
-      {
-        ...data,
-        id: `PRD-BARU-${lama.length + 1}`,
-        registerDate: tgl,
-      },
-    ]);
-    setFormTerbuka(false);
+      /* Unggahan foto berjalan SETELAH produknya ada, karena endpoint unggah
+         membutuhkan id produk dan id itu baru ada setelah POST di atas selesai.
+
+         Kegagalannya DITANGKAP, produknya tidak dibatalkan. Produk yang sudah
+         terdaftar tanpa foto masih berguna — foto bisa ditambahkan kapan saja
+         dari halaman detail produknya. Membatalkan berarti membuang satu-satunya
+         catatan produk ini hanya karena lampirannya gagal, dan itu jauh lebih
+         merugikan daripada kartu yang tampil tanpa foto. */
+      let fotoGagal: string | null = null;
+      if (berkas && dibuat) {
+        try {
+          await unggahFoto(`/api/register-produk/products/register/${dibuat.id}/foto`, berkas);
+        } catch (e) {
+          fotoGagal = e instanceof Error ? e.message : 'tidak diketahui';
+        }
+      }
+
+      setDibuatSesiIni((n) => n + 1);
+      setFormTerbuka(false);
+      // Dimuat ulang TANPA indikator pemuatan penuh: kembali ke "Memuat…" setelah
+      // menyimpan membuat produk yang barusan dibuat terlihat seperti hilang.
+      try {
+        await muatProduk();
+      } catch (e) {
+        setGalat(e instanceof Error ? e.message : 'Gagal memuat ulang daftar produk');
+      }
+
+      // Ditaruh SETELAH pemuatan ulang: produknya sendiri sudah tampil di daftar,
+      // jadi pesan ini terbaca sebagai keterangan tentang kartu yang barusan
+      // muncul, bukan sebagai kegagalan menyimpan.
+      //
+      // Sejak 19 Okt 2026 pesannya MENUNJUK jalan keluarnya (klik foto di
+      // dialog detail -> Ganti Foto). Sebelumnya tidak, karena jalan itu memang
+      // belum ada: endpoint fotonya cuma dipanggil dari form ini, dan menyuruh
+      // orang menekan tombol yang tidak ada lebih buruk daripada diam.
+      if (fotoGagal) {
+        setGalat(
+          `Produk tersimpan, tapi fotonya gagal diunggah (${fotoGagal}). Buka produknya lalu klik kotak fotonya untuk mencoba lagi.`
+        );
+      }
+    } finally {
+      /* SELALU hidup lagi, di jalan mana pun keluar dari fungsi ini — termasuk
+         `return` di dalam `catch` di atas, dan termasuk kalau pengunggahan
+         fotonya yang gagal. Tanpa ini, satu kegagalan menyimpan meninggalkan
+         tombolnya berbunyi "Menyimpan…" dan mati selamanya, dengan form yang
+         masih terbuka berisi isian yang tidak bisa dikirim ulang. */
+      setMenyimpanProduk(false);
+    }
   }
 
   /**
@@ -293,19 +424,71 @@ export default function RegisterProduk({
    * Kodenya sudah dirapikan jadi huruf besar oleh formnya (lihat
    * `normalisasiKode`), jadi di sini tidak dirapikan lagi — satu tempat
    * merapikan, bukan dua yang bisa berbeda aturannya.
+   *
+   * Kembaran kode TIDAK diperiksa di sini lagi: `warna.kode` unik di database,
+   * jadi server yang memutuskan, dan balasannya 409 dengan kalimat yang
+   * menyebut sebabnya. Pemeriksaan di klien tetap ada di formnya untuk
+   * menangkap salah ketik sebelum perjalanan ke server — bukan sebagai
+   * pengganti penjagaan di sana.
    */
-  function simpanWarna(data: WarnaMaster) {
-    setWarnaBaru((lama) => [...lama, data]);
+  async function simpanBom(productId: number, warnaKode: string, keputusan: KeputusanBom[]) {
+    const init = await withCsrf({
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ warna_kode: warnaKode, keputusan }),
+    });
+    await apiJson(`/api/register-produk/products/register/${productId}/bom`, init);
+    await muatProduk();
+  }
+
+  async function simpanVarian(
+    productId: number,
+    warnaKode: string,
+    variants: { id?: number; size: string }[],
+    warnaKodeBaru?: string,
+    hapusSemua = false,
+  ) {
+    const init = await withCsrf({
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        warna_kode: warnaKode,
+        ...(warnaKodeBaru ? { warna_kode_baru: warnaKodeBaru } : {}),
+        variants,
+        ...(hapusSemua ? { hapus_semua: true } : {}),
+      }),
+    });
+    await apiJson(`/api/register-produk/products/register/${productId}/variants`, init);
+    await muatProduk();
+  }
+
+  async function simpanWarna(data: WarnaMaster) {
+    setMenyimpanWarna(true);
+    setGalatWarna(null);
+    try {
+      const init = await withCsrf({
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kode: data.kode, nama: data.nama }),
+      });
+      await apiJson('/api/register-produk/warna', init);
+    } catch (e) {
+      setGalatWarna(e instanceof Error ? e.message : 'Gagal menyimpan warna');
+      return;
+    } finally {
+      setMenyimpanWarna(false);
+    }
+
     setFormWarnaTerbuka(false);
+    try {
+      await muatWarna();
+    } catch (e) {
+      setGalat(e instanceof Error ? e.message : 'Gagal memuat ulang daftar warna');
+    }
   }
 
   return (
     <div className="space-y-4">
-      {/* Bentuknya kartu, bukan tabel — jadi banner ikut menyesuaikan kalimatnya,
-          supaya yang terbaca bukan "tabel 13 kolom" di halaman yang memang
-          tidak punya tabel. */}
-      <BannerPratinjau modul="Register Produk" bentuk="kartu" />
-
       {/* Judul halaman saja. Tombol "Tambah Produk" TIDAK lagi di baris ini:
           pemilik memintanya ditukar dengan hitungan jumlah produk, dan
           bagian kirinya dipertahankan utuh — judul di atas, subjudul di
@@ -319,11 +502,23 @@ export default function RegisterProduk({
           halaman, yang paling sering dibaca. Yang statis ke atas, yang berubah
           ke bawah. */}
       <div className="mb-4">
-        <h1 className="text-2xl font-bold tracking-tight">Register Produk</h1>
-        <p className="text-sm text-muted-foreground">
-          Stok per varian dan harga jual — yang bergerak setiap hari
-        </p>
+        <h1 className="text-2xl font-bold tracking-tight">Register</h1>
       </div>
+
+      {/* Gagal memuat ULANG, padahal isinya sudah ada di layar. Ditaruh di sini
+          dan hanya dalam keadaan itu: kegagalan pemuatan PERTAMA ditangani di
+          dalam tab, karena di situ yang kosong memang perlu dijelaskan beserta
+          jalan keluarnya. Dua pesan untuk satu kegagalan membuat halaman
+          terlihat rusak dua kali. */}
+      {galat && (produk.length > 0 || warna.length > 0) && (
+        <p
+          className="flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm text-destructive"
+          role="alert"
+        >
+          <TriangleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+          Gagal memuat ulang: {galat} — menampilkan data terakhir yang berhasil dibaca.
+        </p>
+      )}
 
       {/* Tab Products / Colour, bentuk garis bawah — contoh ReUI `c-tabs-2`.
           Dipasang lewat `components/ui/tabs.tsx`, yang varian `line`-nya
@@ -361,7 +556,8 @@ export default function RegisterProduk({
             warna menjanjikan pencarian yang tidak dilakukannya. Yang tidak
             menyaring apa pun lebih baik tidak terlihat. */}
         <TabsContent value="products" className="mt-4 space-y-4">
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-3">
 
             {/* Pencarian + filter, urutan yang sama dengan Master Data Product: ketik
                 dulu, baru persempit. owner sudah terbiasa dengan pasangan ini, dan
@@ -447,41 +643,67 @@ export default function RegisterProduk({
                 )}
               </DropdownMenuContent>
             </DropdownMenu>
+            </div>
+
+            <div className="ml-auto flex items-center gap-3">
+              <p className="text-xs text-muted-foreground tabular-nums">
+                {tersembunyi > 0
+                  ? `Menampilkan ${kartu.length} dari ${semua.length} produk`
+                  : `${semua.length} produk`}
+              </p>
+              <Button onClick={() => setFormTerbuka(true)}>
+                <Plus className="mr-2 h-4 w-4" />
+                Tambah Produk
+              </Button>
+            </div>
           </div>
 
-          {/* Hitungan hasil + tombol "Tambah Produk", satu baris — pertukaran yang
-              diminta pemilik: yang tadinya tertulis "4 produk" sekarang berdiri
-              berdampingan dengan tombol, dan tombol yang tadinya ada di baris
-              judul turun ke baris ini.
+          {/* Tiga keadaan berurutan, dan urutannya penting.
 
-              Hitungan tidak hilang, hanya pindah baris. Dia tetap ada karena tanpa
-              dia cara satu-satunya untuk tahu filter sedang bekerja adalah menghitung
-              kartu sendiri — dan kalau kebetulan jumlahnya sama seperti biasanya,
-              orang menyimpulkan filternya tidak jalan.
+              Yang diperiksa lebih dulu adalah APA YANG SEDANG TERJADI, bukan
+              apa isinya: halaman yang sedang memuat pertama kali punya
+              `semua.length === 0` juga, jadi kalau daftar kosong diperiksa
+              duluan, pemuatan yang belum selesai akan berbunyi "Tidak ada
+              produk yang cocok dengan pencarian dan filter ini" — pesan yang
+              menyalahkan filter padahal filternya belum sempat dipakai.
 
-              Tombolnya di kanan karena itu tempat yang selalu dijangkau ibu jari
-              kanan, dan "tambah" adalah aksi yang paling sering diulang di halaman
-              ini — bukan "cari", yang sudah punya kotak dan jadi urusan keyboard. */}
-          <div className="flex items-center justify-between gap-3">
-            <p className="text-xs text-muted-foreground tabular-nums">
-              {tersembunyi > 0
-                ? `Menampilkan ${kartu.length} dari ${semua.length} produk`
-                : `${semua.length} produk`}
-            </p>
-            <Button onClick={() => setFormTerbuka(true)}>
-              <Plus className="mr-2 h-4 w-4" />
-              Tambah Produk
-            </Button>
-          </div>
-
-          {kartu.length === 0 ? (
+              Keadaan memuat hanya berlaku saat daftarnya MASIH kosong. Kalau
+              ia menimpa daftar yang sudah terisi, menyimpan produk akan
+              mengosongkan layar sekejap lalu mengisinya lagi. */}
+          {memuat && semua.length === 0 ? (
+            <div className="flex items-center justify-center gap-2 rounded-lg border border-dashed px-4 py-10 text-sm text-muted-foreground">
+              <LoaderCircle className="h-4 w-4 animate-spin" />
+              Memuat produk…
+            </div>
+          ) : galat && semua.length === 0 ? (
+            <div className="rounded-lg border border-dashed px-4 py-10 text-center">
+              <p className="mb-3 flex items-center justify-center gap-2 text-sm text-destructive">
+                <TriangleAlert className="h-4 w-4" />
+                {galat}
+              </p>
+              <Button variant="outline" size="sm" onClick={muatSemua}>
+                Coba lagi
+              </Button>
+            </div>
+          ) : kartu.length === 0 ? (
             <p className="rounded-lg border border-dashed px-4 py-10 text-center text-sm text-muted-foreground">
+              {/* Daftar yang memang kosong dibedakan dari daftar yang tersaring
+                  habis. Kalimatnya sama bentuknya, tapi yang pertama
+                  menyebutkan tindakannya (tombol Tambah Produk), karena
+                  menyarankan "ubah pencarian" di gudang yang belum pernah
+                  diisi membuat orang mencari yang tidak ada. */}
               {jumlahFilterAktif > 0
                 ? 'Tidak ada produk yang cocok dengan pencarian dan filter ini.'
-                : `Tidak ada produk yang cocok dengan "${cari}".`}
+                : cari.trim()
+                  ? `Tidak ada produk yang cocok dengan "${cari}".`
+                  : 'Belum ada produk yang terdaftar. Tambahkan yang pertama lewat tombol Tambah Produk.'}
             </p>
           ) : (
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+              {/* Lima kolom di layar lebar (permintaan pemilik, 16 Okt 2026):
+                  kartunya jadi lebih ramping, dan satu baris memuat lebih banyak
+                  produk sekaligus — halaman ini dipakai membandingkan status
+                  pendaftaran antar produk, bukan membaca satu produk dalam. */}
               {kartu.map((k) => (
                 <KartuProduk
                   key={k.id}
@@ -503,23 +725,80 @@ export default function RegisterProduk({
       <DetailProduk
         produk={produkTerbuka}
         kartu={kartuTerbuka}
+        warnaMaster={warna}
+        materials={materials}
+        // Brand: dua sumber, disatukan di sini — brand baku (`BRAND_PRODUK`)
+        // dan brand yang sudah dipakai produk lain. Disatukan DI SINI, bukan di
+        // dalam panelnya, karena `IsiDetailProduk` meneruskan prop ini apa
+        // adanya; kalau penggabungannya dilakukan di bawah, nama propnya
+        // ("brand yang sudah dipakai produk lain") tidak lagi cocok dengan
+        // isinya, dan pembaca berikutnya salah menyimpulkan dari mana asalnya.
+        //
+        // Dua sumber itu memang dua-duanya perlu: tanpa brand baku, semua
+        // produk yang brandnya masih kosong menghasilkan dropdown KOSONG —
+        // persis keluhan pemilik 19 Oktober. Tanpa brand dari produk, sebuah
+        // brand lama yang tidak ada di daftar baku tidak bisa dipilih lagi.
+        brands={Array.from(new Set([...BRAND_PRODUK, ...produk.map((p) => p.brand)].filter(Boolean)))}
+        onSimpanBom={simpanBom}
+        onSimpanVarian={simpanVarian}
+        onSimpanIdentitas={async (productId, identity) => {
+          const init = await withCsrf({
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(identity),
+          });
+          await apiJson(`/api/register-produk/products/register/${productId}`, init);
+          await muatProduk();
+        }}
+        // Jalur unggah yang SAMA dengan form "Tambah Produk" — endpointnya satu
+        // (`POST .../register/:id/foto`), jadi tidak ada aturan kedua tentang
+        // ukuran/format berkas yang harus dijaga sinkron.
+        //
+        // Dipanggil dari dialog detail, tempat inilah satu-satunya jalan produk
+        // yang terlanjur tersimpan tanpa foto bisa mendapat fotonya.
+        onGantiFoto={async (productId, berkas) => {
+          await unggahFoto(`/api/register-produk/products/register/${productId}/foto`, berkas);
+          await muatProduk();
+        }}
         onTutup={() => setDetailId(null)}
       />
 
       <FormProdukBaru
         terbuka={formTerbuka}
-        sudahAda={baru.length}
-        onTutup={() => setFormTerbuka(false)}
+        // Brand: sumber yang SAMA dengan dropdown Brand di dialog detail —
+        // brand baku plus brand yang sudah dipakai produk lain. Daftar
+        // terpisah untuk brand akan jadi tempat kedua yang harus dijaga
+        // sinkron dengan yang pertama.
+        //
+        // Tanpa `BRAND_PRODUK` di sini, form ini menawarkan dropdown kosong
+        // selama belum ada satu pun produk ber-brand — dan begitulah keadaan
+        // database saat keluhannya masuk: ketiga produknya ber-brand kosong.
+        brands={Array.from(new Set([...BRAND_PRODUK, ...produk.map((p) => p.brand)].filter(Boolean)))}
+        // Hitungan SESI INI, bukan `produk.length` — lihat catatan di
+        // `dibuatSesiIni`. Isi database bukan batas sesi.
+        sudahAda={dibuatSesiIni}
+        galat={galatProduk}
+        menyimpan={menyimpanProduk}
+        onTutup={() => {
+          setFormTerbuka(false);
+          // Pesan galat lama dibuang saat formnya ditutup. Kalau tidak, form
+          // yang dibuka lagi menampilkan kegagalan percobaan sebelumnya di
+          // atas isian yang masih kosong — pesan yang menuduh sesuatu yang
+          // belum dilakukan.
+          setGalatProduk(null);
+        }}
         onSimpan={simpanProduk}
       />
 
       <FormWarnaBaru
         terbuka={formWarnaTerbuka}
-        // Seluruh warna yang sudah ada, termasuk yang baru dibuat di sesi ini —
-        // kalau cuma warna katalog yang dikirim, kode yang baru saja dipakai
-        // bisa dimasukkan dua kali.
         kodeTerpakai={warna}
-        onTutup={() => setFormWarnaTerbuka(false)}
+        galat={galatWarna}
+        menyimpan={menyimpanWarna}
+        onTutup={() => {
+          setFormWarnaTerbuka(false);
+          setGalatWarna(null);
+        }}
         onSimpan={simpanWarna}
       />
 
@@ -610,14 +889,27 @@ function KartuProduk({
           </div>
         )}
 
+        <LencanaKelengkapan kelengkapan={kartu.kelengkapan} />
+
         <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 via-black/50 to-transparent px-2.5 pb-2 pt-8">
           <div className="flex items-end justify-between gap-2">
             <div className="min-w-0">
               {/* Dua baris, bukan satu: "Oversized Hoodie Kereta" tidak muat
                   satu baris di kartu selebar ini, dan `truncate` akan
                   memotongnya jadi "Oversized Hoodie…" — lebih buruk daripada
-                  terbaca dua baris. */}
-              <div className="line-clamp-2 text-sm font-semibold leading-tight text-white">
+                  terbaca dua baris.
+
+                  `data-slot` ada untuk pengujian, bukan gaya. Nama produk
+                  dulu bisa ditemukan lewat `h3`, dan itu berhenti benar begitu
+                  namanya pindah ke `div` bergradasi ini — smoke test lalu
+                  melaporkan "tidak ada kartu" padahal kartunya ada, dan
+                  kegagalan yang sebenarnya (deskripsi popup tidak menyebut
+                  produk) tenggelam di belakangnya. Hook yang eksplisit tidak
+                  ikut berubah saat markupnya dirapikan lagi. */}
+              <div
+                data-slot="kartu-nama"
+                className="line-clamp-2 text-sm font-semibold leading-tight text-white"
+              >
                 {kartu.nama}
               </div>
               <div className="mt-0.5 truncate text-[10px] text-white/70">
@@ -655,22 +947,54 @@ function KartuProduk({
 }
 
 /**
- * Lencana platform: huruf awal di kotak berwarna khas platformnya.
+ * Lencana status kelengkapan BOM di pojok kanan atas foto.
  *
- * Warnanya SENGAJA hardcoded, bukan token tema — oranye Shopee dan hijau
- * Shopify adalah warna merek, dan lencana yang ikut berubah warna saat tema
- * berganti berhenti jadi pengenal. Karena itu teksnya tetap putih dan kotaknya
- * diberi `aria-hidden`: yang membacakan nama platform untuk pembaca layar
- * adalah teks di sebelahnya, bukan huruf di lencana ini.
+ * DRAFT sampai seluruh jenis aksesoris punya keputusan — dipakai, atau
+ * sengaja tidak dipakai ("no need"). Aturannya ada di
+ * `fungsiKelengkapanBom` (`lib/produk.ts`), bukan di sini: yang tampil di
+ * sini cuma akibatnya, dan halaman ini tidak boleh punya definisi sendiri
+ * soal kapan sebuah produk disebut lengkap.
+ *
+ * Warnanya ditulis eksplisit (`bg-amber-…`), bukan lewat varian badge reui.
+ * Sama alasannya dengan pill marketplace di `BarisPasar`: tema project ini
+ * tidak punya token `--warning`/`--success`, jadi varian `warning-light`
+ * dirender abu-abu tanpa error — lencana yang justru gunanya membedakan
+ * keadaan akan terlihat sama saja dengan keadaan lainnya.
+ *
+ * DRAFT sengaja memakai nada peringatan yang sama dengan banner pratinjau di
+ * atas halaman (amber), bukan merah: ini keadaan yang belum selesai, bukan
+ * kesalahan. Merah akan membuat seluruh isi database yang BOM-nya belum
+ * sempat diisi terlihat rusak.
  */
-const LENCANA_PASAR: Record<Platform, { huruf: string; kelas: string }> = {
-  shopee: { huruf: 'S', kelas: 'bg-[#EE4D2D]' },
-  tiktok: { huruf: 'T', kelas: 'bg-black' },
-  shopify: { huruf: 'S', kelas: 'bg-[#5E8E3E]' },
-};
+function LencanaKelengkapan({ kelengkapan }: { kelengkapan: KelengkapanBom }) {
+  return (
+    <BadgeReui
+      variant="outline"
+      size="sm"
+      radius="full"
+      className={cn(
+        'absolute right-2 top-2 gap-1 border-transparent shadow-sm backdrop-blur-sm',
+        kelengkapan.lengkap
+          ? 'bg-green-100/95 text-green-800 dark:bg-green-950/90 dark:text-green-300'
+          : 'bg-amber-100/95 text-amber-900 dark:bg-amber-950/90 dark:text-amber-200'
+      )}
+    >
+      {/* Titik status, sama seperti pill marketplace: pada ukuran 10px ikon
+          apa pun berubah jadi noda. */}
+      <span
+        aria-hidden
+        className={cn(
+          'h-1.5 w-1.5 rounded-full',
+          kelengkapan.lengkap ? 'bg-green-600 dark:bg-green-400' : 'bg-amber-500'
+        )}
+      />
+      {kelengkapan.lengkap ? 'COMPLETED' : 'DRAFT'}
+    </BadgeReui>
+  );
+}
 
 /**
- * Satu baris marketplace: lencana, nama, pill status, dan tombol bukti.
+ * Satu baris marketplace: logo, nama, pill status, dan tombol bukti.
  *
  * Tombol buktinya SELALU ada, juga saat "Not registered". Bukan kelalaian:
  * foto bukti dan status pendaftaran itu dua hal terpisah — bukti bisa sudah
@@ -688,23 +1012,12 @@ function BarisPasar({
   status: StatusPasar;
   onBukti: () => void;
 }) {
-  const lencana = LENCANA_PASAR[status.platform];
-
   return (
     <div className="flex items-center gap-2">
-      <span
-        aria-hidden
-        className={cn(
-          'inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-[9px] font-bold text-white',
-          lencana.kelas
-        )}
-      >
-        {lencana.huruf}
-      </span>
+      <LogoPlatform platform={status.platform} className="h-4 w-4 shrink-0" />
       <span className="min-w-0 flex-1 truncate text-xs">
         {NAMA_PASAR[status.platform]}
       </span>
-
       {/* Pill status memakai badge reui, tapi warnanya ditulis eksplisit —
           bukan varian `success-outline` bawaannya.
 

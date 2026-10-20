@@ -26,6 +26,7 @@ import type {
   SpesifikasiAksesori,
   SpesifikasiKain,
 } from '@/pages/production-fulfillment/data-kanban';
+import { JENIS_AKSESORI_BOM } from './opsi';
 
 /**
  * Spesifikasi produksi satu produk — persis bentuk yang dibutuhkan form
@@ -241,6 +242,41 @@ export interface KartuRegister {
   totalStok: number;
   /** Nilai sisa: total stok × harga jual. */
   nilaiSisa: number;
+  /**
+   * Selesai atau belumnya BOM produk ini — yang tampil sebagai badge di
+   * pojok kartu. Dihitung sekali di `kartuRegister`, bukan dibaca di dalam
+   * `KartuProduk`, karena status ini soal isi spesifikasinya, bukan soal
+   * gambarannya di layar.
+   */
+  kelengkapan: KelengkapanBom;
+}
+
+/**
+ * Selesai atau belumnya satu BOM.
+ *
+ * `belumDiputuskan` memuat NAMA jenis yang masih kosong, bukan jumlahnya:
+ * yang perlu ditindak dari kartu adalah "jenis mana yang belum", dan angka
+ * saja tidak bisa dipakai membuka barisnya.
+ */
+export interface KelengkapanBom {
+  lengkap: boolean;
+  /** Jenis aksesoris yang belum diputuskan (masih `-`). */
+  belumDiputuskan: string[];
+}
+
+export interface BomProdukRegister {
+  id: number;
+  variant_id: number;
+  raw_material_id: number | null;
+  qty_per_pcs: number;
+  no_need: boolean;
+  nama: string | null;
+  tipe: string | null;
+  jenis: string | null;
+  satuan: string | null;
+  warna: string;
+  warna_kode: string | null;
+  size: string;
 }
 
 export interface ProdukRegister {
@@ -253,6 +289,32 @@ export interface ProdukRegister {
   foto: string | null;
   harga: number;
   spesifikasi: SpesifikasiProduksi;
+  /**
+   * Stok gudang per varian, key `${kodeWarna}|${size}`.
+   *
+   * Terpisah dari `spesifikasi.warna[].pcs[].qty`, dan itu disengaja: `qty`
+   * adalah RENCANA produksi (angka yang diketik di form Tambah Produksi),
+   * sedangkan angka di sini adalah barang yang benar-benar ada di gudang.
+   * Keduanya berbeda dan sering tidak sama besar — menggabungkannya jadi satu
+   * field membuat rencana dan kenyataan saling menimpa.
+   *
+   * Kosong = varian ini belum punya catatan stok, dan itu berbeda dari stok
+   * nol. Produk yang datang dari database selalu mengisinya; produk contoh
+   * di bawah tidak, dan untuk mereka stok dibaca dari peta `STOK` seperti
+   * sebelumnya.
+   */
+  stok?: Record<string, number>;
+  /**
+   * Status pendaftaran marketplace, satu entri per platform.
+   *
+   * Kosong = pakai peta contoh `PASAR` seperti sebelumnya. Produk yang datang
+   * dari database selalu mengirim ketiga barisnya — termasuk yang belum
+   * terdaftar, karena justru itu yang dicari di kartu.
+   */
+  pasar?: StatusPasar[];
+  bom?: BomProdukRegister[];
+  /** Database variant IDs keyed by `${kodeWarna}|${size}` for safe synchronization. */
+  variantIds?: Record<string, number>;
 }
 
 // ===== Data contoh =====
@@ -531,6 +593,59 @@ const PASAR: Record<string, Partial<Record<Platform, boolean>>> = {
 };
 
 /**
+ * Hitung kelengkapan BOM: selesai hanya kalau SETIAP jenis aksesoris sudah
+ * diputuskan — dipakai (ada namanya) atau sengaja tidak dipakai ("no need").
+ *
+ * Dipisah dari `kartuRegister` karena aturannya yang perlu dibaca ulang saat
+ * pertanyaannya "kenapa produk ini masih draft", bukan pemetaannya.
+ *
+ * Tiga keadaan yang sengaja dibedakan, dan ketiganya nyata:
+ *
+ *   - daftar jenis yang wajib KOSONG → LENGKAP. Dipakai pemanggil yang memang
+ *     tidak punya apa pun untuk diputuskan. Halaman TIDAK memakai ini: ia
+ *     selalu mengirim daftar master (bawaan fungsi ini).
+ *   - jenis ada, semuanya sudah punya keputusan → LENGKAP.
+ *   - ada satu saja yang kosong → draft, dan yang kosong disebut namanya.
+ *
+ * "no need" dihitung SUDAH DIPUTUSKAN, bukan kosong: itu justru keputusan
+ * yang dicari. Yang masih kosong (`-`) berarti belum diputuskan.
+ *
+ * Akibat yang SENGAJA dari aturan di atas: produk yang BOM-nya belum diisi
+ * (`aksesori` kosong, dan begitulah setiap produk dari database — lihat
+ * catatan di `lib/registerProduk.ts`) terbaca DRAFT. Itu memang yang diminta
+ * pemilik: lencananya adalah daftar kerja, dan produk yang aksesorinya belum
+ * pernah diputuskan memang belum selesai. Lencana ini baru berhenti berguna
+ * kalau ia menyala untuk produk yang sudah diisi — bukan kalau ia menyala
+ * untuk yang belum.
+ */
+export function fungsiKelengkapanBom(
+  sp: SpesifikasiProduksi,
+  /**
+   * Jenis yang wajib diputuskan. Bawaannya daftar dari master data
+   * (`JENIS_AKSESORI_BOM`) — jenis yang tidak dipakai lagi tetap bisa
+   * dihilangkan dengan mengirim daftar sendiri, dan daftar KOSONG berarti
+   * tidak ada yang perlu diputuskan (selalu selesai).
+   */
+  jenisWajib: string[] = JENIS_AKSESORI_BOM.map((j) => j.value)
+): KelengkapanBom {
+  // Jenis yang wajib diputuskan: yang diminta master data, DITAMBAH jenis yang
+  // sudah punya baris di BOM. Yang kedua mencegah produk yang memakai jenis
+  // lama ikut jadi draft hanya karena master datanya berubah.
+  const wajib = [
+    ...new Set([...jenisWajib, ...sp.aksesori.map((a) => a.jenis ?? '')]),
+  ].filter((jenis) => jenis !== '');
+
+  // Belum diputuskan = belum punya barisnya SAMA SEKALI, atau punya barisnya
+  // tapi namanya masih kosong ("-"). "no need" sudah diputuskan.
+  const belumDiputuskan = wajib.filter((jenis) => {
+    const baris = sp.aksesori.find((a) => a.jenis === jenis);
+    return !baris || (baris.nama ?? '').trim() === '';
+  });
+
+  return { lengkap: belumDiputuskan.length === 0, belumDiputuskan };
+}
+
+/**
  * Rombak katalog jadi satu kartu per produk — bentuk yang dibaca daftar
  * Register.
  *
@@ -570,7 +685,17 @@ export function kartuRegister(
 
     for (const w of p.spesifikasi.warna) {
       for (const ukuran of w.pcs) {
-        const stok = STOK[`${p.id}|${w.kode}|${ukuran.ukuran}`];
+        // Dua sumber angka stok, dan yang satu tidak menimpa yang lain:
+        //   - `p.stok` — angka GUDANG yang dikirim database.
+        //   - `STOK`   — peta contoh untuk produk bawaan yang belum terhubung.
+        // Produk yang punya `stok` TIDAK ikut membaca peta contoh: produk
+        // database berstok nol dan produk contoh berstok nol terlihat sama,
+        // tapi yang pertama berarti "barangnya habis" dan yang kedua berarti
+        // "angkanya belum pernah ada".
+        const dariDb = p.stok?.[`${w.kode}|${ukuran.ukuran}`];
+        const contoh = STOK[`${p.id}|${w.kode}|${ukuran.ukuran}`];
+        const angka = dariDb !== undefined ? { masuk: dariDb, menunggu: 0 } : contoh;
+
         // Varian yang stoknya belum pernah dicatat tetap dihitung, dengan angka
         // nol. Menghilangkannya membuat produk yang baru didaftarkan terlihat
         // tidak punya varian sama sekali.
@@ -584,9 +709,9 @@ export function kartuRegister(
             ukuran.kode || `${p.spesifikasi.designCode}-${w.kode}-${ukuran.ukuran}`,
           warna: w.nama,
           size: ukuran.ukuran,
-          stokMasuk: stok?.masuk ?? 0,
-          stokJual: stok?.jual ?? stok?.masuk ?? 0,
-          stokMenunggu: stok?.menunggu ?? 0,
+          stokMasuk: angka?.masuk ?? 0,
+          stokJual: angka?.jual ?? angka?.masuk ?? 0,
+          stokMenunggu: angka?.menunggu ?? 0,
         });
       }
     }
@@ -622,11 +747,25 @@ export function kartuRegister(
     // Yang tidak disebut di `PASAR` berarti belum terdaftar, dan itu tetap
     // dikirim sebagai baris supaya kartunya bisa menampilkan "belum" alih-alih
     // diam-diam menghilangkan platformnya.
-    const pasar: StatusPasar[] = PLATFORM.map((platform) => ({
-      platform,
-      terdaftar: PASAR[p.id]?.[platform] === true,
-      fotoBukti: null,
-    }));
+    //
+    // Produk yang datang dari database sudah membawa ketiga barisnya sendiri
+    // (`p.pasar`), jadi peta contoh tidak dibaca lagi untuk mereka — kalau
+    // keduanya dibaca, produk database bisa mewarisi status contoh yang
+    // kebetulan punya id sama.
+    const pasar: StatusPasar[] = p.pasar
+      ? PLATFORM.map((platform) => {
+          const dariDb = p.pasar?.find((s) => s.platform === platform);
+          return {
+            platform,
+            terdaftar: dariDb?.terdaftar ?? false,
+            fotoBukti: dariDb?.fotoBukti ?? null,
+          };
+        })
+      : PLATFORM.map((platform) => ({
+          platform,
+          terdaftar: PASAR[p.id]?.[platform] === true,
+          fotoBukti: null,
+        }));
 
     return {
       id: p.id,
@@ -649,6 +788,9 @@ export function kartuRegister(
       // di gudang adalah seluruh barang yang ada, termasuk yang belum bisa
       // dijual.
       nilaiSisa: totalStok * p.harga,
+      // Dihitung di sini, bukan di kartunya: status ini soal isi BOM, dan
+      // perhitungan yang sama juga dipakai penyaring di halaman.
+      kelengkapan: fungsiKelengkapanBom(p.spesifikasi),
     };
   });
 }

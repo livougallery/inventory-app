@@ -162,27 +162,30 @@ const MUTASI = [
     harusGagal: ['kode kembar', 'popup saat bentrok'],
   },
   {
-    nama: 'warna baru tidak benar-benar masuk ke daftar (di-slice balik)',
+    nama: 'daftar warna tidak dimuat ulang setelah Simpan',
     berkas: HALAMAN,
-    // `data` dan `setWarnaBaru` dua-duanya tetap terpakai — kalau salah satu
-    // hilang, yang merah `noUnusedParameters`/`noUnusedLocals` (BUILD), bukan
-    // check-nya. `.slice(0, -1)` membuang elemen terakhir yang baru ditambah,
-    // jadi panjangnya kembali seperti semula tanpa satu pun binding menganggur.
+    // Sejak halaman ini tersambung database (16 Okt 2026), warna baru tidak
+    // lagi disisipkan ke state di klien: `simpanWarna` menulis lewat POST lalu
+    // MEMUAT ULANG tabelnya. Karena itu "warna baru tidak masuk daftar" tidak
+    // bisa lagi dimutasi dengan membuang `setWarnaBaru` — fungsinya sudah tidak
+    // ada. Yang setara sekarang: memuat ulang daftar yang SALAH.
     //
-    // Dulu mutasi ini berbentuk `if (data) return;` dan GAGAL-BUILD: mengganti
-    // isinya jadi `return` membuat `setWarnaBaru` tak terpakai (TS6133), dan
-    // harness membaca itu sebagai "merah" padahal testnya tidak pernah jalan.
-    dari: '    setWarnaBaru((lama) => [...lama, data]);',
-    ke: '    setWarnaBaru((lama) => [...lama, data].slice(0, -1));',
-    // Tiga check ikut merah, dan memang harus: warnanya tidak ada di tabel,
+    // `muatProduk()` dipakai, bukan `muatWarna()` — bentuk salah-tempel yang
+    // wajar, tetap sah secara tipe, dan tidak menyisakan binding menganggur
+    // (kalau `muatWarna` jadi tak terpakai, yang merah justru BUILD-nya).
+    // Akibatnya tabel warna tetap menampilkan isi lama: baris yang barusan
+    // disimpan tidak muncul.
+    dari: '      await muatWarna();',
+    ke: '      await muatProduk();',
+    // Tiga check ikut merah, dan memang harus: barisnya tidak ada di tabel,
     // namanya tidak ketemu, dan jumlahnya tidak bertambah.
     harusGagal: ['warna baru di tabel', 'nama warna baru', 'jumlah warna'],
   },
   {
     nama: 'popup "Tambah Warna" tidak menutup setelah Simpan',
     berkas: HALAMAN,
-    dari: '    setWarnaBaru((lama) => [...lama, data]);\n    setFormWarnaTerbuka(false);',
-    ke: '    setWarnaBaru((lama) => [...lama, data]);\n    setFormWarnaTerbuka(true);',
+    dari: '    setFormWarnaTerbuka(false);\n    try {\n      await muatWarna();',
+    ke: '    setFormWarnaTerbuka(true);\n    try {\n      await muatWarna();',
     harusGagal: ['popup setelah simpan'],
   },
 
@@ -316,11 +319,36 @@ for (const sinyal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 
 process.on('exit', pulihkan);
 
+/**
+ * Sesuaikan pola mutasi dengan akhir baris berkasnya.
+ *
+ * Pola di bawah ditulis dengan '\n', sedangkan berkas di repo ini TIDAK
+ * seragam: `core.autocrlf=true` membuat checkout menghasilkan CRLF, tapi berkas
+ * yang pernah ditulis ulang oleh editor penyimpan-LF jadi LF-saja — dan
+ * keduanya bercampur di pohon kerja yang sama (terukur: RegisterProduk.tsx
+ * CRLF, IsiWarna.tsx LF, PopupBuktiPasar.tsx CRLF).
+ *
+ * Tanpa penyesuaian ini, setiap pola BERBARIS-BANYAK pada berkas CRLF tidak
+ * pernah cocok: `asli.includes('<Tabs\n value={tab}')` selalu salah, dan
+ * harness-nya melaporkan "pola tidak ketemu di sumber" untuk mutasi yang
+ * polanya ADA. Laporan itu menyesatkan ke arah yang mahal — ia menyuruh
+ * memperbaiki mutasi yang sehat. Terukur: 6 dari 16 pola dilaporkan hilang,
+ * padahal cuma 2 yang benar-benar basi.
+ *
+ * Hanya polanya yang disesuaikan; `asli` tetap ditulis balik apa adanya, jadi
+ * akhir baris berkasnya tidak ikut berubah.
+ */
+function polaUntuk(isi, pola) {
+  return /\r\n/.test(isi) ? pola.replace(/\n/g, '\r\n') : pola;
+}
+
 for (const m of MUTASI) {
   const cad = cadangan.get(m.berkas);
   const asli = cad.isi;
+  const dari = polaUntuk(asli, m.dari);
+  const ke = polaUntuk(asli, m.ke);
 
-  if (!asli.includes(m.dari)) {
+  if (!asli.includes(dari)) {
     console.log(`  LEWAT  ${m.nama} — pola tidak ketemu di sumber`);
     masalah++;
     continue;
@@ -335,7 +363,7 @@ for (const m of MUTASI) {
   let pulih = false;
 
   try {
-    writeFileSync(m.berkas, asli.split(m.dari).join(m.ke), 'utf8');
+    writeFileSync(m.berkas, asli.split(dari).join(ke), 'utf8');
 
     // Build dan smoke dijalankan TERPISAH, bukan dalam satu try.
     //

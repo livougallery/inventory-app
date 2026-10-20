@@ -29,13 +29,26 @@ export const KATEGORI_MATERIAL = [
  * disimpan sebagai kategori → daftar jenis.
  */
 export const JENIS_MATERIAL: Record<string, { value: string; label: string }[]> = {
+  // Ejaan di sini MENGIKUTI DATABASE apa adanya (pakai spasi, bukan garis
+  // bawah). Bukan pilihan gaya: `raw_materials` punya CHECK yang menolak
+  // ejaan lain --
+  //   (tipe='aksesoris' AND jenis IN ('hak kait','kancing','resleting',
+  //                                   'karet','label','renda','kain pelapis'))
+  // -- jadi menulis 'hak_kait' di sini membuat pilihan itu ditolak database,
+  // dan `product_bom` menunjuk jenis yang tidak ada di master. Satu ejaan
+  // untuk satu jenis, dan yang berkuasa adalah yang tersimpan.
   accessories: [
-    { value: 'hak_kait', label: 'Hak Kait' },
+    { value: 'hak kait', label: 'Hak Kait' },
     { value: 'kancing', label: 'Kancing' },
     { value: 'resleting', label: 'Resleting' },
     { value: 'label', label: 'Label' },
     { value: 'karet', label: 'Karet' },
     { value: 'renda', label: 'Renda' },
+    // "Kain Pelapis" sengaja di bawah Aksesoris meski namanya mengandung
+    // "Kain": ia komponen yang dijahit ke dalam busana, disimpan seperti
+    // aksesoris lain. Sama dengan keputusan yang sudah tertulis di
+    // `features/material/backend/routes.js` dan CHECK di `db.js`.
+    { value: 'kain pelapis', label: 'Kain Pelapis' },
   ],
   fabric: [
     { value: 'roll', label: 'Roll' },
@@ -52,6 +65,83 @@ export const JENIS_MATERIAL: Record<string, { value: string; label: string }[]> 
     { value: 'real', label: 'Real' },
   ],
 };
+
+// ---- Register Produk: baris BOM ----
+
+/**
+ * Kategori material yang bahannya menempel di satu pcs produk jadi, dan
+ * karenanya punya barisnya sendiri di dialog Register Produk.
+ *
+ * Ini satu-satunya tombol yang perlu diputar kalau nanti ada kategori lain
+ * yang harus ikut (kata pemilik: "kalau ada tambahan nanti aku info lagi mau
+ * tambah kategori apa"). Kategori yang SENGAJA belum ikut: `delivery`
+ * (ongkos kirim), `sample`, dan `cmt_cost` (ongkos jahit) — ketiganya biaya,
+ * bukan bahan yang dipasang ke barang.
+ */
+export const KATEGORI_BOM = ['fabric', 'accessories'] as const;
+
+/**
+ * Jenis bahan yang punya kotaknya sendiri di dialog produk Register.
+ *
+ * Daftarnya DITURUNKAN dari `KATEGORI_BOM` × `JENIS_MATERIAL`, bukan ditulis
+ * ulang: jenis yang ditambah di master material langsung ikut muncul di sini,
+ * dan sebaliknya tidak ada dua daftar yang bisa berbeda ejaan.
+ */
+export const JENIS_AKSESORI_BOM = KATEGORI_BOM.flatMap(
+  (k) => JENIS_MATERIAL[k] ?? []
+);
+
+/**
+ * Nilai `nama` yang berarti "jenis ini sengaja tidak dipakai".
+ *
+ * Dipilih eksplisit oleh pengguna, dan itu bedanya dengan kosong: kosong
+ * berarti belum diputuskan (barisnya masih draft), sedangkan ini berarti
+ * sudah diputuskan tidak perlu. Lihat `statusKelengkapan()`.
+ */
+export const TANPA_AKSESORI = 'no need';
+
+/**
+ * Brand produk jadi — pilihan baku.
+ *
+ * Bukan master yang tumbuh sendiri seperti `KATEGORI_PRODUK`: ini cuma dua
+ * merek yang dipakai grup ini, dan pemilik menyebut keduanya langsung
+ * ("klo di database kosong masukin aja LIVOU dan CASSCA", 19 Okt 2026).
+ *
+ * Daftarnya DIPAKAI BERSAMA sumber lain, bukan menggantikannya: dialog produk
+ * menampilkan gabungan brand yang sudah dipakai produk lain dengan dua nama
+ * ini. Alasannya dua arah. Tanpa daftar ini, semua produk yang brandnya masih
+ * kosong (ketiganya, saat catatan ini ditulis) menghasilkan dropdown KOSONG —
+ * persis keluhan pemilik. Tanpa gabungan itu, brand yang sudah dipakai tapi
+ * tidak ada di sini akan tampil sebagai kotak kosong di produknya sendiri.
+ *
+ * Ditulis KAPITAL mengikuti ejaan yang diminta pemilik. Yang tersimpan di
+ * database persis yang dipilih, jadi ejaannya harus satu.
+ */
+export const BRAND_PRODUK = ['LIVOU', 'CASSCA'] as const;
+
+/**
+ * Kategori produk jadi.
+ *
+ * Dipakai dua tempat: form "Tambah Produk" dan baris Kategori di dialog
+ * detail. Ditulis sekali di sini supaya keduanya tidak menawarkan daftar yang
+ * berbeda — produk yang dibuat dari satu daftar harus bisa dibetulkan dari
+ * daftar yang sama.
+ *
+ * CATATAN PENTING soal isi lama: ketiga produk yang ada di database sekarang
+ * berkategori 'Atasan', 'Top', dan 'Pants' (lihat `tmp/_probe-brand.mjs`).
+ * Dua yang pertama TIDAK ada di daftar ini. Karena itu pemakainya wajib
+ * menyertakan nilai produk itu sendiri sebagai pilihan (lihat `PanelKiri`) —
+ * tanpa itu, membuka dialog produk lama lalu menekan Simpan akan diam-diam
+ * mengubah kategorinya jadi salah satu dari daftar ini.
+ */
+export const KATEGORI_PRODUK = [
+  { value: 'T-Shirt', label: 'T-Shirt' },
+  { value: 'Pants', label: 'Pants' },
+  { value: 'Dress', label: 'Dress' },
+  { value: 'Blouse', label: 'Blouse' },
+  { value: 'Outer', label: 'Outer' },
+  { value: 'Set', label: 'Set' },
+] as const;
 
 /** Satuan material. */
 export const SATUAN = ['pcs', 'yard', 'kg', 'meter', 'time'] as const;

@@ -34,6 +34,7 @@ const TABLES = [
   'purchase_order_photos', 'purchase_order_items', 'purchase_orders',
   'currencies', 'raw_material_photos', 'raw_material_variants', 'raw_materials',
   'categories', 'product_bom', 'product_variants', 'products', 'vendors', 'users',
+  'product_marketplaces', 'warna',
 ];
 
 // Pin search_path = test on every connection the pool hands out. This runs
