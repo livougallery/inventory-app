@@ -3,6 +3,10 @@
     "supabase": {
       "type": "http",
       "url": "https://mcp.supabase.com/mcp?features=docs,account,database,debugging,development,functions,branching"
+    },
+    "reui": {
+      "type": "http",
+      "url": "https://mcp.reui.io/api/mcp"
     }
   }
 }

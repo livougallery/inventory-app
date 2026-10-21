@@ -31,20 +31,132 @@ ini, lalu OAuth login Supabase di browser saat tool pertama dipakai.
 
 ## Konvensi UI
 
-Lihat `~/.claude/CLAUDE.md` — UI component baru pakai shadcn/ui (pengecualian: halaman EJS
-server-rendered di `views/` pakai CSS inline, style referensi shadcn).
+Bagian ini SELF-CONTAINED dengan sengaja. Aturan aslinya dulu hanya hidup di
+`~/.claude/CLAUDE.md` (config user-level, tidak ikut repo), jadi agent yang bekerja dari
+komputer lain atau clone baru tidak pernah membacanya — dan hasil tampilannya langsung
+beda. Jangan kembalikan ke bentuk "lihat file di luar repo".
 
-### ReUI (frontend/)
+### Komponen: shadcn/ui + ReUI, jangan tulis sendiri
 
-MCP server `reui` terdaftar di config **user-level** (`~/.claude.json`), bukan di `.mcp.json`
-project — jadi ia tersedia di semua project, bukan hanya yang ini. Skill-nya ada di
-`.claude/skills/reui/`, dengan salinan untuk agent lain di `.agents/skills/reui/`.
-Sebelum menulis component berat sendiri — tabel, kanban, calendar, stepper, tree — cari dulu
-di ReUI lewat MCP `reui`.
+Saat membuat UI component (button, dialog, form, table, dropdown, dsb.), **selalu** pakai
+[shadcn/ui](https://ui.shadcn.com/). Jangan menulis component dari nol.
 
-- `frontend/components.json` sudah punya registry `@reui`, base `style: "base-nova"` (Base UI)
-- Install: `npx shadcn@latest add @reui/<name> --yes` dari dalam `frontend/`
-- Komponen yang sudah dipasang ada di `frontend/src/components/reui/`
+**Sebelum menulis component sendiri, cek dulu [ReUI](https://reui.io/) lewat MCP `reui`.**
+ReUI adalah registry yang kompatibel dengan shadcn dan punya 22 komponen berat yang tidak ada
+di shadcn biasa — `data-grid` (tabel dengan sorting/filter/paginasi/virtualisasi), `kanban`,
+`filters`, `date-selector`, `tree`, `stepper`, `event-calendar`, `gantt`, dll. Jangan menulis
+`<table>` manual atau membuat ulang pola yang sudah disediakan ReUI.
+
+- Komponen generik yang sudah ada di shadcn (Button, Dialog, Select) tetap pakai **shadcn**.
+  Yang berat (data grid, kanban, calendar, gantt, stepper, tree) pakai **ReUI**.
+- Tambahkan component lewat CLI: `npx shadcn@latest add <component>`, lalu pakai hasil
+  generate di `components/ui/` (atau `src/components/ui/`). Sesuaikan tampilan via Tailwind
+  classes / CSS variables, **bukan** menulis ulang markup.
+- Kalau project belum di-init shadcn, jalankan `npx shadcn@latest init` dulu (butuh Tailwind
+  CSS — cek `package.json` sebelum klaim ke user).
+- Pengecualian: halaman EJS server-rendered di `views/` dan artifact HTML tunggal tanpa
+  React+build. shadcn CLI tidak bisa jalan di situ, jadi pakai CSS inline biasa, tapi tetap
+  ikuti pola tampilan shadcn sebagai referensi style.
+
+### Cara pakai ReUI
+
+1. **Cari** — MCP `reui` `search` dengan intent bahasa natural. Hasilnya berisi `install`,
+   `previewUrl`, `docsUrl`.
+2. **Install** — jalankan perintah yang dikembalikan, mis.
+   `npx shadcn@latest add @reui/<name> --yes` (dari dalam `frontend/`).
+3. **Baca API-nya** — `get_component(name)` untuk API inline (jangan fetch web), lalu
+   `get_examples(name)` untuk contoh komposisi yang sudah jadi.
+4. **Adaptasi** — ganti data demo dengan data asli, jangan desain ulang.
+
+Aturan tambahan:
+
+- Selalu sertakan `previewUrl` saat merekomendasikan item ReUI ke user, supaya bisa dilihat
+  dulu sebelum dipasang.
+- Bedakan base: `frontend/components.json` → `style` (`base-nova` = Base UI, `radix-nova` =
+  Radix UI). File hasil install mengikuti base project — jangan diterjemahkan dari ingatan.
+- Skill `reui` ada di `.claude/skills/reui/` (salinan untuk agent lain di
+  `.agents/skills/reui/`). Aturan desain detailnya ada di `rules/`: `craft.md` (hierarki,
+  density, state wajib), `adapting.md` (reuse, jangan redesign), `styling.md` (token
+  semantik), `quality.md` (a11y, scroll). **Baca `craft.md` + `adapting.md` sebelum menulis
+  UI baru** — di situlah "kayak yang sudah ada" ditentukan.
+- Skill `reui` punya command `/mcp__reui__build`, `/mcp__reui__add`, `/mcp__reui__fix`,
+  `/mcp__reui__improve`.
+- Item gratis (22 komponen + semua contoh `c-*`) bisa dipasang tanpa lisensi. Blok premium
+  dan Motion Icons butuh lisensi Pro/Ultimate (`REUI_LICENSE_KEY`).
+- `frontend/components.json` sudah punya registry `@reui` dengan `style: "base-nova"`.
+  Komponen yang sudah dipasang ada di `frontend/src/components/reui/`.
+
+### MCP `reui`
+
+Server `reui` (`https://mcp.reui.io/api/mcp`, tipe `http`) sekarang terdaftar di `.mcp.json`
+project ini, jadi ia ikut `git clone` dan tersedia di mesin mana pun. Saat pertama dipakai di
+session baru, Claude Code akan meminta approve, lalu membuka browser untuk "Sign in with
+ReUI" (akun gratis dibuat kalau belum ada). Ini perilaku normal, bukan error.
+
+Kalau `.mcp.json` tidak terbaca atau server-nya tidak muncul, daftarkan manual:
+
+```bash
+claude mcp add --transport http reui https://mcp.reui.io/api/mcp
+```
+
+Tanpa MCP-nya, skill `reui` masih terbaca sebagai dokumen, tetapi `search`/`get_component`
+tidak tersedia — pakai fallback `npx shadcn@latest search @reui -q "..."` lalu `add`.
+
+### Alur wajib untuk UI baru: prototype dulu
+
+Untuk **komponen UI baru** atau **perubahan besar** pada UI yang ada: jangan langsung tulis
+kode produksi. Panggil skill `prototype`, lalu **berhenti dan tunggu user memilih** satu
+varian sebelum integrasi ke produksi.
+
+Alurnya: `prototype` membuat 3-5 versi yang benar-benar beda, render di picker visual (HTML
+standalone kalau project statis, route terisolasi kalau ada dev server), user membalik-balik
+secara live, pilih satu, baru promote varian itu ke produksi lalu hapus surface prototype.
+
+**Kecualikan** (langsung saja): perbaikan bug pada komponen yang sudah ada; penyesuaian
+sepele (typo, warna, spacing, teks); menambah field/baris dengan pola yang sudah jelas;
+perubahan yang sudah ada precedent-nya di halaman lain.
+
+Kalau ragu apakah sebuah perubahan cukup "sepele", **tanyakan** — jangan menghabiskan usaha
+membuat prototype untuk perubahan sepele, dan jangan diam-diam langsung coding untuk
+perubahan yang jelas besar.
+
+Setelah varian dipilih, tulis kode produksinya mengikuti standar animasi: `ease-out` (bukan
+`ease-in`), durasi < 300ms, `scale(0.97)` saat press, `transform-origin` untuk popover,
+dan hormati `prefers-reduced-motion`. Skill `emil-design-eng` adalah sumber lengkapnya.
+
+### Standar tampilan yang sudah terbukti dipakai di repo ini
+
+Empat aturan yang paling menentukan hasilnya — semuanya dari `rules/craft.md`:
+
+- **Reuse, jangan redesign.** Ubah data, copy, dan props; pertahankan struktur dan styling
+  yang dikirim komponen ReUI. Kalau diff-mu lebih banyak menyentuh `className`/JSX daripada
+  data/props, kamu over-customizing — balik ke reuse.
+- **State wajib lengkap, bukan cuma happy path.** Empty state yang punya maksud (pesan
+  singkat + aksi utama), loading berupa skeleton yang mengikuti layout asli (bukan spinner
+  di tengah), error inline yang bisa di-retry dengan `role="status"`/`aria-live`.
+- **Density operasional, bukan marketing.** Jarak judul ke deskripsinya rapat (`gap-0.5`,
+  `space-y-1`), lebih kecil daripada jarak antar-section. Jangan memberi padding ala landing
+  page pada permukaan operasional.
+- **Hierarki satu titik fokus.** Satu metrik/tugas dominan per kartu, labelnya kedua,
+  detail pendukung ketiga. Border dan surface dipakai untuk membentuk 2-3 pita informasi,
+  bukan meratakan semuanya ke bobot yang sama.
+
+### Animasi & gerak
+
+- `transition-colors` untuk hover; `duration-200` +
+  `ease-[cubic-bezier(0.22,1,0.36,1)]` untuk reveal.
+- **Jangan** `transition-all`. Maksimal satu animasi masuk per view. Jangan pakai stagger
+  pada baris tabel atau daftar 20+ item.
+- Hanya animasikan `transform` dan `opacity`.
+
+### Kelengkapan sebelum menyatakan UI selesai
+
+- `npx tsc -b` dari `frontend/` bersih, dan `npx oxlint` tidak menambah temuan baru.
+- Periksa `rules/quality.md`: tanpa `dangerouslySetInnerHTML`, `rel="noopener noreferrer"`
+  pada `target="_blank"`, `aria-label` untuk tombol ikon, `type="button"` untuk tombol
+  non-submit, focus ring terlihat, dialog menahan fokus dan tertutup dengan `Escape`.
+- Scroll: rantai `min-h-0` dari parent yang punya tinggi sampai container yang
+  `overflow-auto`. **Jangan menebak `max-h`.**
 
 ## Agent skills
 
