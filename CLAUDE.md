@@ -108,21 +108,32 @@ Untuk **komponen UI baru** atau **perubahan besar** pada UI yang ada: jangan lan
 kode produksi. Panggil skill `prototype`, lalu **berhenti dan tunggu user memilih** satu
 varian sebelum integrasi ke produksi.
 
-Alurnya: `prototype` membuat 3-5 versi yang benar-benar beda, render di picker visual (HTML
-standalone kalau project statis, route terisolasi kalau ada dev server), user membalik-balik
-secara live, pilih satu, baru promote varian itu ke produksi lalu hapus surface prototype.
+Skill-nya ada di `.claude/skills/prototype/` (salinan untuk agent lain di
+`.agents/skills/prototype/`), jadi ikut `git clone` — tidak perlu install ulang. Skill ini
+`disable-model-invocation: true`, artinya agent **tidak bisa memanggilnya sendiri**; kamu
+harus mengetik `/prototype` (atau memintanya dengan bahasa biasa seperti "bikin prototype
+dulu"). Kalau ragu apakah sesuatu perlu prototype, tanyakan.
+
+Isinya dua file dan keduanya penting:
+
+- `SKILL.md` — alurnya: scope → recon (token, personality, konteks) → pilih 3 arah yang
+  benar-benar berbeda → bangun picker → verifikasi → tunggu pilihan → promote.
+- `PICKER.md` — markup dan CSS picker yang harus **disalin verbatim**. Tampilan picker
+  bukan keputusan desain, jadi jangan di-restyle dengan token project.
+
+Aturannya: setiap varian harus berbeda pada **sumbu yang bisa disebut** (layout, density,
+personality, motion, model interaksi) — bukan sekadar beda warna aksen. Varian harus
+berfungsi penuh dengan data realistis, bukan lorem ipsum atau tombol mati. Penjelajahan
+tidak menyentuh kode produksi; integrasi hanya untuk varian yang dipilih, lalu surface
+prototype dihapus.
 
 **Kecualikan** (langsung saja): perbaikan bug pada komponen yang sudah ada; penyesuaian
 sepele (typo, warna, spacing, teks); menambah field/baris dengan pola yang sudah jelas;
 perubahan yang sudah ada precedent-nya di halaman lain.
 
-Kalau ragu apakah sebuah perubahan cukup "sepele", **tanyakan** — jangan menghabiskan usaha
-membuat prototype untuk perubahan sepele, dan jangan diam-diam langsung coding untuk
-perubahan yang jelas besar.
-
 Setelah varian dipilih, tulis kode produksinya mengikuti standar animasi: `ease-out` (bukan
 `ease-in`), durasi < 300ms, `scale(0.97)` saat press, `transform-origin` untuk popover,
-dan hormati `prefers-reduced-motion`. Skill `emil-design-eng` adalah sumber lengkapnya.
+dan hormati `prefers-reduced-motion`.
 
 ### Standar tampilan yang sudah terbukti dipakai di repo ini
 
