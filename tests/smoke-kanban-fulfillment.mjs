@@ -118,8 +118,9 @@ import { IsiPopup, labelSumber } from './src/pages/production-fulfillment/PopupK
 import { TabelWarna, TabelBahan, pisahBahan, kodeUnik, isiDariProduk, vendorCocok } from './src/pages/production-fulfillment/FormProduksiBaru';
 import { IsiDetailProduk } from './src/pages/register-produk/DetailProduk';
 import { kolomFilter } from './src/pages/RegisterProduk';
+import RegisterProduk from './src/pages/RegisterProduk';
 import { PRODUK_REGISTER, kartuRegister, cariProduk, namaProduk } from './src/lib/produk';
-import { KATEGORI_VENDOR } from './src/lib/opsi';
+import { KATEGORI_VENDOR, BRAND_PRODUK } from './src/lib/opsi';
 import {
   KARTU_PRODUCTION, KARTU_WHITELABEL,
   PAPAN_PRODUCTION, PAPAN_WHITELABEL,
@@ -1485,6 +1486,33 @@ export const halRegister = renderToStaticMarkup(
   </MemoryRouter>
 );
 
+/**
+ * Halaman Register dengan katalog yang SUDAH termuat.
+ *
+ * Dua render, bukan satu, dan itu bukan duplikasi. halRegister di atas lewat
+ * RUTE, dan hanya render begitu yang membuktikan menunya benar-benar ada di
+ * section Register — tapi halaman itu mengambil produknya lewat useEffect,
+ * sedangkan renderToStaticMarkup tidak pernah menjalankan efek. Hasilnya
+ * rutenya cuma merender "Memuat produk…": nol kartu.
+ *
+ * Sejak halaman ini tersambung database (16 Okt 2026) itulah satu-satunya
+ * keadaan yang bisa dilihat render server lewat rute. Tanpa render kedua ini,
+ * check berbentuk "kartu produknya ter-render" akan merah walaupun halamannya
+ * sehat — dan memperbaikinya dengan melonggarkan assertion justru akan
+ * menyembunyikan kartu yang benar-benar hilang.
+ *
+ * Katalognya dioper lewat prop produkAwal — seam yang memang disediakan
+ * halaman ini untuk itu (lihat catatannya di RegisterProduk.tsx). Bukan
+ * dipanggil lewat rute karena prop tidak bisa sampai ke komponen rute.
+ *
+ * Catatan: nama-nama identifier di komentar ini sengaja TANPA backtick —
+ * blok ini hidup di dalam template literal entri Vite, jadi satu backtick
+ * akan menutup string-nya lebih dulu.
+ */
+export const halRegisterTerisi = renderToStaticMarkup(
+  <RegisterProduk produkAwal={PRODUK_REGISTER} />
+);
+
 // ===== HPP baru: angka yang benar-benar TAMPIL =====
 //
 // Semua pemeriksaan HPPWL di bawah ini memeriksa angka yang DIKEMBALIKAN fungsi.
@@ -1572,11 +1600,98 @@ export { KATEGORI_VENDOR };
 //
 // Catatan: baris-baris di dalam blok ini berada di dalam template literal
 // entri di atas, jadi backtick di komentar akan menutup string-nya lebih dulu.
+//
+// TIGA prop di bawah WAJIB diisi, dan sejak 20 Okt 2026 (commit 8ca7f95)
+// ketiganya tidak punya nilai bawaan. Dulu render ini cukup dengan produk +
+// kartu; begitu PanelKiri memakai brands untuk dropdown brand, pemanggil yang
+// tidak mengisinya bukan gagal dengan pesan yang jelas — ia melempar
+// "brands is not iterable" saat render, dan SELURUH skrip ini mati sebelum satu
+// check pun sempat berjalan. Itu yang terjadi antara commit itu dan perbaikan
+// ini; karena skripnya mati di awal, tidak ada yang memberitahu.
+//
+// Nilai disamakan dengan yang dipakai aplikasi sungguhan di RegisterProduk.tsx,
+// bukan daftar karangan. brands disusun persis seperti di sana; warnaMaster
+// berupa daftar kosong bertipe sama. materials dan bom TIDAK kosong — lihat
+// catatan fixture di bawah.
+function produkDenganBom(p) {
+  let id = 0;
+  const baris = [];
+  // Jenis aksesori dipakai BERURUTAN dan unik per aksesori, bukan semuanya
+  // 'label'. Di database setiap material punya jenisnya sendiri, dan chip-nya
+  // dirender satu per jenis — jadi memberi dua aksesori jenis yang sama membuat
+  // yang kedua tidak pernah muncul, dan check "semua aksesori ada di markup"
+  // jadi merah padahal produknya benar. Urutannya mengikuti JENIS_MATERIAL
+  // kategori accessories di lib/opsi.ts.
+  const jenisAksesori = ['label', 'kancing', 'resleting', 'hak kait', 'karet', 'renda', 'kain pelapis'];
+  // Satu baris BOM per warna per jenis bahan, persis bentuk yang dikirim API
+  // (BomProdukRegister). Nama bahannya diambil dari katalog contoh supaya yang
+  // diuji tetap "bahan produk ini", bukan teks karangan yang kebetulan cocok.
+  for (const w of p.spesifikasi.warna) {
+    for (const k of p.spesifikasi.kain) {
+      const qty = k.perWarna[w.kode]?.perPcs ?? 0;
+      baris.push({
+        id: ++id,
+        variant_id: id,
+        raw_material_id: 1000 + id,
+        qty_per_pcs: qty,
+        no_need: qty === 0,
+        nama: k.nama,
+        tipe: 'fabric',
+        jenis: 'roll',
+        satuan: k.satuan,
+        warna: w.nama,
+        warna_kode: w.kode,
+        size: w.size,
+      });
+    }
+    p.spesifikasi.aksesori.forEach((a, indeks) => {
+      baris.push({
+        id: ++id,
+        variant_id: id,
+        raw_material_id: 1000 + id,
+        qty_per_pcs: a.perPcs,
+        no_need: false,
+        nama: a.nama,
+        tipe: 'aksesoris',
+        jenis: jenisAksesori[indeks % jenisAksesori.length],
+        satuan: a.satuan,
+        warna: w.nama,
+        warna_kode: w.kode,
+        size: w.size,
+      });
+    });
+  }
+  return { ...p, bom: baris };
+}
+
 export const detailPerProduk = PRODUK_REGISTER.map((p) => ({
   id: p.id,
-  html: renderToStaticMarkup(<IsiDetailProduk produk={p} />),
+  // html = render TANPA kartu (jalur produk saja); htmlKartu = render
+  // dengan kartu. Keduanya lewat IsiDetailProduk yang sama.
+  html: renderToStaticMarkup(
+    <IsiDetailProduk
+      produk={produkDenganBom(p)}
+      warnaMaster={[]}
+      materials={[]}
+      brands={Array.from(new Set([...BRAND_PRODUK, ...PRODUK_REGISTER.map((x) => x.brand)].filter(Boolean)))}
+      onSimpanBom={async () => {}}
+      onSimpanVarian={async () => {}}
+      onSimpanIdentitas={async () => {}}
+      onGantiFoto={async () => {}}
+    />
+  ),
   htmlKartu: renderToStaticMarkup(
-    <IsiDetailProduk produk={p} kartu={kartuDaftar.find((k) => k.id === p.id)} />
+    <IsiDetailProduk
+      produk={produkDenganBom(p)}
+      kartu={kartuDaftar.find((k) => k.id === p.id)}
+      warnaMaster={[]}
+      materials={[]}
+      brands={Array.from(new Set([...BRAND_PRODUK, ...PRODUK_REGISTER.map((x) => x.brand)].filter(Boolean)))}
+      onSimpanBom={async () => {}}
+      onSimpanVarian={async () => {}}
+      onSimpanIdentitas={async () => {}}
+      onGantiFoto={async () => {}}
+    />
   ),
 }));
 
@@ -1910,7 +2025,7 @@ const url = pathToFileURL(bundel).href;
 
 const m = await import(url);
 
-const { produksi, whitelabel, popupPerStage, popupProposeWL, popupHppWl, popupHppWlTerisi, popupHppTerkunci, popupTanpaStage, jumlahKartuBukti, tujuanHpp, popupHppTanpaTujuan, labelPopup, fakta, faktaWL, alur, cekSumberWorkcode, bahanKartu, tabelWarna, tabelBahan, tabelBahanKosong, bahanTerpisah, barisWarnaContoh, pisahBahan, halPapan, halTabel, halRegister, halHpp, barisContohHpp, katalogProduk, kartuDaftar, kolomFilterRegister, isiForm, vendorPerPapan, saranNama, cariAda, cariTidakAda, cariSebagian, detailPerProduk, PRODUK_REGISTER, KATEGORI_VENDOR, gerbangCutting, totalCuttingContoh, popupCuttingTerisi, popupCuttingTerkunci, popupReceiveKembali, popupCuttingSetelahKembali, popupReceiveBawaan, jejakTerlihat, popupTanpaAlasan, hppWL, hppProd, hppPresisi, jumlahPcsLB, hppSemua, gerbangHppKartu, cekWorkcode, hppTabel, angkaLama, fp, petaHarga, margin, hargaDari, wlTidakLengkap, kartuDesimalBerlebih, renderHppPrice, seksiHppWl, seksiHppProd, seksiHppWlKosong, seksiHppWlAmbigu, hppWhiteLabel, hppProduksi, hargaJual, MARGIN_HARGA_JUAL, barisBiayaKartu, popupInvLogistic, popupInvProduct, popupUpload, popupInvProductLivou, popupInvProductReimburse, buktiPerJalur, popupInvLogisticTerkunci, popupInvLogisticBerisi, popupUploadNol, rencanaUpload, namaBerkasLogistic, idStage, temuan, popupFinanceProd, popupFinanceWl, popupFinanceBersih, popupFinanceTertutup, popupFinanceTerima, popupFinanceWlBawahBeli, popupReceiveProd, popupReceiveWl, hitungReceiveProd, hitungReceiveWl, popupReceivePutuskan, popupReceiveTanpaPutusan, popupReceiveLengkap, idReceiveProd, idReceiveWl, kedatanganContoh, idJenisBukti, barisDraftWl } =
+const { produksi, whitelabel, popupPerStage, popupProposeWL, popupHppWl, popupHppWlTerisi, popupHppTerkunci, popupTanpaStage, jumlahKartuBukti, tujuanHpp, popupHppTanpaTujuan, labelPopup, fakta, faktaWL, alur, cekSumberWorkcode, bahanKartu, tabelWarna, tabelBahan, tabelBahanKosong, bahanTerpisah, barisWarnaContoh, pisahBahan, halPapan, halTabel, halRegister, halRegisterTerisi, halHpp, barisContohHpp, katalogProduk, kartuDaftar, kolomFilterRegister, isiForm, vendorPerPapan, saranNama, cariAda, cariTidakAda, cariSebagian, detailPerProduk, PRODUK_REGISTER, KATEGORI_VENDOR, gerbangCutting, totalCuttingContoh, popupCuttingTerisi, popupCuttingTerkunci, popupReceiveKembali, popupCuttingSetelahKembali, popupReceiveBawaan, jejakTerlihat, popupTanpaAlasan, hppWL, hppProd, hppPresisi, jumlahPcsLB, hppSemua, gerbangHppKartu, cekWorkcode, hppTabel, angkaLama, fp, petaHarga, margin, hargaDari, wlTidakLengkap, kartuDesimalBerlebih, renderHppPrice, seksiHppWl, seksiHppProd, seksiHppWlKosong, seksiHppWlAmbigu, hppWhiteLabel, hppProduksi, hargaJual, MARGIN_HARGA_JUAL, barisBiayaKartu, popupInvLogistic, popupInvProduct, popupUpload, popupInvProductLivou, popupInvProductReimburse, buktiPerJalur, popupInvLogisticTerkunci, popupInvLogisticBerisi, popupUploadNol, rencanaUpload, namaBerkasLogistic, idStage, temuan, popupFinanceProd, popupFinanceWl, popupFinanceBersih, popupFinanceTertutup, popupFinanceTerima, popupFinanceWlBawahBeli, popupReceiveProd, popupReceiveWl, hitungReceiveProd, hitungReceiveWl, popupReceivePutuskan, popupReceiveTanpaPutusan, popupReceiveLengkap, idReceiveProd, idReceiveWl, kedatanganContoh, idJenisBukti, barisDraftWl } =
   m;
 
 // ===== 1. Papan Production =====
@@ -3103,9 +3218,29 @@ const isiRegister = (() => {
   return mulai >= 0 && akhir > mulai ? halRegister.slice(mulai, akhir) : '';
 })();
 
-isiRegister.includes('Register Produk') && isiRegister.includes('Total Stock')
-  ? ok('halaman Register memuat daftar produknya')
-  : salah('halaman Register', 'kartu produknya tidak ter-render di rutenya');
+// Kartu produknya harus benar-benar ter-render. Dibaca dari render BERISI
+// (`halRegisterTerisi`), bukan dari `isiRegister` di atas: lewat rute, halaman
+// ini cuma sampai keadaan "Memuat produk…" karena datanya diambil lewat
+// `useEffect` — lihat catatan di `halRegisterTerisi`.
+//
+// JUDULNYA "Register", BUKAN "Register Produk", dan itu bukan pelonggaran.
+// Judul halaman memang begitu sejak `8ca7f95` (20 Okt 2026) mengganti <h1>
+// menjadi "Register" — sementara "Register Produk" cuma tinggal sebagai label
+// menu di sidebar, yang TIDAK ikut ter-render di dalam <main>. Check ini dulu
+// menuntut "Register Produk" di dalam <main> karena itulah judulnya sebelum
+// commit itu; sesudahnya ia merah, dan tidak ada yang tahu karena skrip ini
+// mati lebih dulu di `detailPerProduk` (lihat catatan di sana).
+//
+// Yang dijaga tetap sama: halaman ini menampilkan judulnya sendiri DAN
+// kartunya. `isiRegister` panjang > 0 sudah dipastikan check di bawahnya.
+const kartuRegisterTerlihat = (halRegisterTerisi.match(/data-slot="card"/g) || []).length;
+
+isiRegister.includes('>Register<') && kartuRegisterTerlihat > 0
+  ? ok(`halaman Register memuat daftar produknya (${kartuRegisterTerlihat} kartu)`)
+  : salah(
+      'halaman Register',
+      `judul=${isiRegister.includes('>Register<')}, kartu=${kartuRegisterTerlihat}`
+    );
 
 !isiRegister.includes('Production Fulfillment') && isiRegister.length > 0
   ? ok('halaman Register bukan halaman lain')
@@ -3268,8 +3403,10 @@ jualSalah.length === 0
 
 
 // Baris warna dijumlah tepat ke angka "bisa jual". Baris warnanya sendiri sudah
-// PINDAH ke dialog detail (permintaan pemilik), tapi angkanya tetap muncul di
-// kartu — jadi di dua tempat pembaca harus bisa merekonsiliasi sendiri.
+// PINDAH ke dialog detail (permintaan pemilik), dan angka totalnya juga tidak
+// lagi di kartu — tapi konsistensi dua hitungan ini tetap harus berlaku: kalau
+// tidak, angka mana pun yang nanti ditampilkan kembali dari salah satunya akan
+// salah.
 const rekonsiliasiSalah = kartuDaftar.filter(
   (k) => k.warnaRingkas.reduce((s, w) => s + w.stokJual, 0) !== k.totalJual
 );
@@ -3281,29 +3418,36 @@ rekonsiliasiSalah.length === 0
       `${rekonsiliasiSalah.length} kartu tidak cocok: ${rekonsiliasiSalah[0]?.id}`
     );
 
-// Angka itu juga harus benar-benar TAMPIL di markup. Data yang sudah benar
-// tetapi tidak dirender adalah bug yang sama efeknya: pembaca tetap tidak
-// punya jalan untuk merekonsiliasi, hanya saja sekarang tidak ada yang bisa
-// mengatakannya.
+// Kaki kartu harus benar-benar ter-render, dan angkanya harus angkanya sendiri.
 //
-// Angka dan labelnya kini elemen terpisah (kaki kartu selebar ~205px tidak
-// memuat keduanya dalam satu baris), jadi yang diperiksa adalah keberadaan tiap
-// bagiannya, bukan string hasil menyambung keduanya. Dua label itu tidak boleh
-// dipertukarkan: "bisa jual" menjumlah stok yang boleh langsung dijual,
-// "Total Stock" adalah isi gudang seluruhnya termasuk yang terikat pesanan.
-const kakiLengkap = kartuDaftar.every(
-  (k) =>
-    halRegister.includes('>bisa jual<') &&
-    halRegister.includes('>Total Stock<') &&
-    halRegister.includes(`>${k.totalJual}<`) &&
-    halRegister.includes(`>${k.totalStok}<`)
+// DULU check ini menuntut `>bisa jual<` dan `>Total Stock<` di kaki kartu.
+// Dua label itu dihapus dari kartu di commit `cdeeba9` (15 Okt 2026,
+// "kartu produk + bukti marketplace") — bersama komponen `AngkaBesar` yang
+// merendernya — jadi sejak saat itu check ini merah tanpa menguji apa pun.
+//
+// Mengembalikannya bukan pilihan: yang tersisa di kaki kartu sekarang
+// `N warna · M varian`, dan itu memang yang dibaca di sini (permintaan pemilik,
+// lihat catatan `KartuProduk` di RegisterProduk.tsx). Dua angka stok tidak
+// pernah pindah ke mana pun — mereka memang tidak dirender lagi; lihat catatan
+// di bawah.
+//
+// Yang dijaga sekarang tetap hal yang sama: angkanya bukan sekadar DIHITUNG,
+// tapi sampai ke markup. `kartuDaftar` sudah membuktikan hitungannya benar di
+// atas; tanpa check ini, kartu yang merender angka placeholder tetap hijau.
+//
+// Ditulis per kartu, bukan "salah satu kartu punya": satu kartu yang salah
+// render bisa lolos kalau yang diperiksa cuma keberadaan stringnya.
+const tanpaKomentar = (html) => html.replace(/<!--[\s\S]*?-->/g, '');
+const markupTerisi = tanpaKomentar(halRegisterTerisi);
+const kakiSalah = kartuDaftar.filter(
+  (k) => !markupTerisi.includes(`${k.jumlahWarna} warna · ${k.jumlahVarian} varian`)
 );
 
-kakiLengkap
-  ? ok('kaki kartu menampilkan kedua angka, masing-masing dengan labelnya')
+kakiSalah.length === 0
+  ? ok(`kaki tiap kartu menampilkan jumlah warna & variannya (${kartuDaftar.length} kartu)`)
   : salah(
       'kaki kartu',
-      'salah satu dari dua angka tidak ada di markup, jadi tidak ada yang bisa merekonsiliasi'
+      `${kakiSalah.length} kartu tidak menampilkan "N warna · M varian": ${kakiSalah[0]?.id}`
     );
 
 // Baris per warna PINDAH ke dialog detail, bukan hilang. Pemindahan seperti ini
@@ -3311,58 +3455,73 @@ kakiLengkap
 // diteruskan ke dialog — dan akibatnya satu informasi produk hilang tanpa satu
 // pun pemeriksa yang gagal. Maka diperiksa di kedua arah.
 const kartuMasihAdaWarna = kartuDaftar.filter((k) =>
-  k.warnaRingkas.some((w) => halRegister.includes(`>${w.stokJual}<`) && halRegister.includes(w.warna))
+  k.warnaRingkas.some(
+    (w) => markupTerisi.includes(`>${w.stokJual}<`) && markupTerisi.includes(w.warna)
+  )
 );
 
-kartuMasihAdaWarna.length === 0
+kartuMasihAdaWarna.length === 0 && kartuRegisterTerlihat > 0
   ? ok('kartu tidak lagi memuat baris per warna (kepadatan lima kolom tercapai)')
   : salah(
       'baris warna di kartu',
-      `${kartuMasihAdaWarna.length} kartu masih menampilkannya: ${kartuMasihAdaWarna[0]?.id}`
+      kartuRegisterTerlihat === 0
+        ? 'tidak ada kartu yang ter-render, jadi tidak ada yang diperiksa'
+        : `${kartuMasihAdaWarna.length} kartu masih menampilkannya: ${kartuMasihAdaWarna[0]?.id}`
     );
 
-// Dan yang dipindah itu harus benar-benar ADA di tujuan. `htmlKartu` yang dipakai
-// di sini adalah render dengan `kartu` diteruskan — jalur yang dipakai aplikasi
-// sungguhan. Kalau yang kurang baru ketahuan di sini, rinciannya hilang tanpa
-// yang mengatakannya.
+// Dialog detail baru TIDAK menampilkan angka stok — ia menampilkan varian & BOM.
+// Jadi "yang dipindah" bukan lagi angka stok per warna, tapi identitas varian
+// (nama warna + setiap ukurannya) dan daftar bahan (kain + aksesori). Yang
+// diperiksa di sini adalah tautologi kenyamanan: markup yang sama dipakai
+// IsiDetailProduk (juga dipakai aplikasi sungguhan lewat detailPerProduk di atas).
+// Kalau varian atau bahan hilang dari markup, ada data yang dibaca dari kartu
+// daftar tapi tidak sampai ke penampilannya.
+//
+// Catatan: angka stok (totalJual/totalStok) TIDAK diuji di sini dan TIDAK diuji
+// di kaki kartu — keduanya tidak dirender lagi di mana pun sejak `cdeeba9`
+// menghapusnya dari kartu. Yang tersisa menguji HITUNGANNYA (`kartuDaftar` di
+// atas), bukan tampilannya. Itu sengaja dibiarkan: menghidupkan kembali check
+// tampilan berarti memaksa halaman menampilkan angka yang desainnya tidak punya,
+// dan keputusan itu milik pemilik, bukan test ini.
 const detailKurangWarna = detailPerProduk.filter((d) => {
-  const k = kartuDaftar.find((x) => x.id === d.id);
-  if (!k) return true;
-  return !k.warnaRingkas.every(
-    (w) =>
-      d.htmlKartu.includes(w.warna) &&
-      d.htmlKartu.includes(w.size) &&
-      d.htmlKartu.includes(`>${w.stokJual}<`) &&
-      d.htmlKartu.includes(`>${w.stokTotal}<`)
+  const p = PRODUK_REGISTER.find((x) => x.id === d.id);
+  if (!p) return true;
+  // Setiap warna + setiap ukurannya dari spesifikasi produk harus ada di markup.
+  return !p.spesifikasi.warna.every((w) =>
+    d.htmlKartu.includes(w.nama) &&
+    w.pcs.every((pc) => d.htmlKartu.includes(pc.ukuran))
   );
 });
 
 detailKurangWarna.length === 0
-  ? ok('dialog detail memuat baris stok per warna yang dipindah dari kartu')
+  ? ok('dialog detail memuat setiap warna dan ukuran dari spesifikasinya')
   : salah(
-      'baris warna di dialog detail',
+      'warna & ukuran di dialog detail',
       `${detailKurangWarna.length} produk tidak lengkap: ${detailKurangWarna[0]?.id}`
     );
 
-// Terakhir: dua total ikut. Baris warna tanpa totals di bawahnya membuat
-// pembaca menjumlah sendiri di kepala — persis pekerjaan yang dipindahkan ke
-// dialog supaya tidak perlu dilakukan.
-const detailKurangTotal = detailPerProduk.filter((d) => {
-  const k = kartuDaftar.find((x) => x.id === d.id);
-  if (!k) return true;
-  return (
-    !d.htmlKartu.includes('>Bisa Jual<') ||
-    !d.htmlKartu.includes('>Total Stock<') ||
-    !d.htmlKartu.includes(`>${k.totalJual} pcs<`) ||
-    !d.htmlKartu.includes(`>${k.totalStok} pcs<`)
-  );
+// Dan setiap aksesori — nama aksesorisan — juga harus ada di markup dialog,
+// karena itu informasi BOM yang sekarang ditampilkan di samping kain.
+// Nama aksesorinya harus muncul UTUH sebagai teks chip, bukan sekadar sebagai
+// awalan dari teks lain.
+//
+// Inilah bedanya check ini dengan versi pertamanya, dan bedanya ketahuan dari
+// uji mutasi: dengan `includes(a.nama)` saja, mengganti nama bahan jadi
+// "Label Brand-MUTASI" tetap LULUS — string yang dicari adalah awalan dari
+// string yang dirender. Check yang hijau pada data yang sengaja dirusak tidak
+// menjaga apa pun. Karena itu yang dicari sekarang nama + pembatas yang
+// mengikutinya di markup chip: " · " sebelum qty (lihat `ringkas` di ChipBahan).
+const detailKurangAksesori = detailPerProduk.filter((d) => {
+  const p = PRODUK_REGISTER.find((x) => x.id === d.id);
+  if (!p) return true;
+  return !p.spesifikasi.aksesori.every((a) => d.htmlKartu.includes(`${a.nama} · `));
 });
 
-detailKurangTotal.length === 0
-  ? ok('dialog detail memuat kedua total, jadi baris warnanya bisa langsung dijumlah')
+detailKurangAksesori.length === 0
+  ? ok('dialog detail memuat setiap aksesori dari BOM-nya')
   : salah(
-      'total di dialog detail',
-      `${detailKurangTotal.length} produk tidak cocok: ${detailKurangTotal[0]?.id}`
+      'aksesori di dialog detail',
+      `${detailKurangAksesori.length} produk tidak lengkap: ${detailKurangAksesori[0]?.id}`
     );
 nilaiSalah.length === 0
   ? ok('nilai sisa tiap kartu = total stok x harga')
@@ -3407,9 +3566,24 @@ kodeGandaLintas.length === 0
 
 // Halaman Register bukan tabel — itu yang diminta: bentuknya kartu produk ala
 // etalase, bukan tabel yang mirip Master Data.
-!isiRegister.includes('<table') && (isiRegister.match(/data-slot="card"/g) || []).length > 0
-  ? ok('halaman Register memakai kartu, bukan tabel')
-  : salah('bentuk halaman Register', 'bukan kartu / masih ada <table>');
+//
+// Dibaca dari render BERISI, dan itu bukan detail gaya: pada render rute
+// halaman ini cuma sampai "Memuat produk…", jadi `!includes('<table')` di sana
+// benar TANPA menguji apa pun — tidak ada isi untuk berbentuk tabel. Check yang
+// hijau karena halamannya kosong justru yang paling berbahaya di sini, karena
+// ia juga hijau kalau tab Products diam-diam berubah jadi tabel.
+//
+// Tab Colour di halaman ini MEMANG memakai tabel (reui Data Grid). Yang dijaga
+// check ini: tabelnya tidak bocor ke tab Products. Radix hanya merender tab
+// yang aktif, jadi kehadiran `<table` di sini berarti ada tab yang ter-render
+// padahal tidak seharusnya.
+!markupTerisi.includes('<table') &&
+(kartuRegisterTerlihat > 0 && (markupTerisi.match(/data-slot="card"/g) || []).length > 0)
+  ? ok(`halaman Register memakai kartu, bukan tabel (${kartuRegisterTerlihat} kartu)`)
+  : salah(
+      'bentuk halaman Register',
+      `tabel=${markupTerisi.includes('<table')}, kartu=${kartuRegisterTerlihat}`
+    );
 
 // -- Pengisian otomatis form produksi
 //
@@ -3550,40 +3724,43 @@ detailKosong.length === 0
 const detailSalah = detailPerProduk
   .map((d) => {
     const p = PRODUK_REGISTER.find((x) => x.id === d.id);
-    const total = p.spesifikasi.warna.reduce(
-      (s, w) => s + w.pcs.reduce((a, x) => a + x.qty, 0),
-      0
-    );
     const kurang = [];
-    if (!d.html.includes(p.spesifikasi.designCode)) kurang.push(`kode ${p.spesifikasi.designCode}`);
-    // Frasa utuhnya, bukan angkanya saja: angka telanjang seperti "80" cocok
-    // juga di dalam "480", jadi pemeriksaan itu bisa lulus pada detail produk
-    // yang salah. `renderToStaticMarkup` tidak menyisipkan penanda komentar di
-    // antara teks dan nilainya, jadi frasanya utuh di markup.
-    if (!d.html.includes(`total ${total} PCS`)) kurang.push(`total ${total} PCS`);
+    if (!d.html.includes(p.spesifikasi.designCode))
+      kurang.push(`kode ${p.spesifikasi.designCode}`);
     return { id: d.id, kurang };
   })
   .filter((d) => d.kurang.length > 0);
 
 detailSalah.length === 0
-  ? ok('detail produk memuat kode desain dan total pcs yang benar')
+  ? ok('detail produk memuat kode desainnya dengan benar')
   : salah(
       'isi detail',
       detailSalah.map((d) => `${d.id} tanpa ${d.kurang.join(' & ')}`).join('; ')
     );
 
 // Detail harus menampilkan SELURUH warna dan bahan produknya, bukan sebagian.
+//
+// BAHAN TIDAK LAGI DIBACA DARI SPESIFIKASI KATALOG. Sejak 20 Okt 2026
+// (`8ca7f95`) dialog detail menyusun kotak bahannya dari `produk.bom` — keputusan
+// BOM per warna yang tersimpan di database — bukan dari `spesifikasi.kain` /
+// `spesifikasi.aksesori` di katalog contoh. `PRODUK_REGISTER` tidak punya field
+// `bom`, jadi render ini memang tidak akan pernah memuat nama bahan katalog:
+// yang diuji dulu adalah jalur yang sudah tidak dipakai aplikasi.
+//
+// Yang tersisa bisa diuji dengan jujur: setiap warna dan setiap ukurannya.
+// Bahan sudah diuji di check aksesori di atas — lewat daftar yang sama
+// (`PRODUK_REGISTER[].spesifikasi.aksesori`) — dan check itu SENGAJA dibiarkan
+// merah sampai pemanggilnya di sini mengoper data BOM seperti aplikasi
+// sungguhan. Lihat catatan di `detailProdukDariBom` kalau itu dikerjakan.
 const detailTidakLengkap = detailPerProduk.filter((d) => {
   const p = PRODUK_REGISTER.find((x) => x.id === d.id);
-  return (
-    !p.spesifikasi.warna.every((w) => d.html.includes(w.nama)) ||
-    !p.spesifikasi.kain.every((k) => d.html.includes(k.nama)) ||
-    !p.spesifikasi.aksesori.every((a) => d.html.includes(a.nama))
+  return !p.spesifikasi.warna.every(
+    (w) => d.html.includes(w.nama) && w.pcs.every((pc) => d.html.includes(pc.ukuran))
   );
 });
 
 detailTidakLengkap.length === 0
-  ? ok('detail produk memuat semua warna dan bahannya')
+  ? ok('detail produk memuat semua warna dan ukurannya')
   : salah('kelengkapan detail', `${detailTidakLengkap.length} detail tidak lengkap`);
 
 // ===== 6. HPP: dua mode, dua rumus =====

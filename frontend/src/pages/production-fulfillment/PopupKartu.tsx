@@ -366,8 +366,8 @@ export default function PopupKartu({
 
   return (
     <Dialog open onOpenChange={(buka) => !buka && onTutup()}>
-      <DialogContent className="max-h-[90vh] gap-0 overflow-hidden p-0 sm:max-w-[900px]">
-        <DialogHeader className="border-b px-6 py-4">
+      <DialogContent className="h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-none gap-0 overflow-hidden p-0 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:w-[calc(100vw-2rem)] sm:max-w-none">
+        <DialogHeader className="shrink-0 border-b px-4 py-3 sm:px-6 sm:py-4">
           <DialogTitle className="text-base">
             {stage ? `${stage.label} Fulfillment` : 'Production Fulfillment'}
           </DialogTitle>
@@ -608,7 +608,7 @@ export function IsiPopup({
   const tahapLewat = (id: string) => sudahLewat.includes(id);
 
   return (
-    <div className="max-h-[calc(90vh-5rem)] space-y-6 overflow-y-auto px-6 py-5">
+    <div className="min-h-0 flex-1 space-y-6 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
       <SeksiIdentitas kartu={kartu} />
       <SeksiWarnaUkuran
         kartu={kartu}

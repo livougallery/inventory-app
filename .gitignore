@@ -65,6 +65,29 @@ tmp/_*
 tmp/debug-*.js
 tmp/test-*.js
 
+# Profil Chrome bekas screenshot otomatis (Playwright/Puppeteer) — JANGAN commit.
+#
+# Ini bukan sekadar sampah: isinya `Default/Network/Cookies`, `Default/Login
+# Data`, `Default/History`, dan `Local Storage/` — cookie sesi, kredensial
+# tersimpan, dan riwayat penjelajahan. Repo ini PUBLIK, jadi satu `git add -A`
+# yang menyapunya masuk berarti membocorkan seluruh isi profil browser.
+#
+# Ditambahkan 2026-10-21 setelah 200+ berkas profil muncul sebagai untracked
+# (sisa `--user-data-dir` yang tidak pernah dibersihkan). Kalau butuh profil
+# untuk browser otomatis, arahkan ke luar repo atau hapus setelah selesai.
+tmp/chrome-ss-profile/
+tmp/HeadlessChrome*/
+tmp/chrome_*/
+tmp/*.tmp
+
+# Hasil debug sekali pakai di root & tmp/: dump, diff, tangkapan console, dan
+# hasil mutasi. Semuanya keluaran perintah, bukan sumber.
+/.tmp-*
+*.bak
+tmp/*.txt
+tmp/*.png
+tmp/*.diff
+
 # Frontend build output
 frontend/dist/
 frontend/dist-artifact/

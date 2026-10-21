@@ -680,7 +680,7 @@ export function IsiPopup({
   };
 
   return (
-    <>
+    <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
       {/* ===== Informasi Pembelian ===== */}
         <div className="space-y-3 rounded-lg border p-3">
           <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">
@@ -1027,7 +1027,7 @@ export function IsiPopup({
             )}
           </div>
         </div>
-    </>
+    </div>
   );
 }
 
@@ -1072,10 +1072,10 @@ export default function PopupPo({
         onTutup();
       }}
     >
-      <DialogContent className="max-h-[90vh] gap-3 overflow-y-auto sm:max-w-4xl">
+      <DialogContent className="flex h-[calc(100dvh-1rem)] max-h-[calc(100dvh-1rem)] w-[calc(100vw-1rem)] max-w-none flex-col gap-0 overflow-hidden p-0 sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:w-[calc(100vw-2rem)] sm:max-w-none">
         {kartu && (
           <>
-            <DialogHeader>
+            <DialogHeader className="shrink-0 border-b px-4 py-3 sm:px-6 sm:py-4">
               <DialogTitle className="text-base">{judulPopup(kartu)}</DialogTitle>
             </DialogHeader>
             <IsiPopup
